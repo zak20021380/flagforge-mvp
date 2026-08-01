@@ -72,6 +72,15 @@ export class LadderSystem {
     if (unit.navigationArea !== 'ground' && unit.navigationArea !== 'towerTop') return true;
 
     const ladder = this.ladders[this.preferredLadder(unit.team)];
+    // A full queue still owns the height transition for this frame. The unit
+    // waits in place and retries next frame instead of walking through the tower.
+    if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) {
+      unit.target = null;
+      unit.attackClock = 0;
+      unit.attackHitApplied = false;
+      unit.state = 'queued';
+      return true;
+    }
     ladder.queue.push({
       unit,
       direction: unitIsTop ? 'descending' : 'ascending',
@@ -126,7 +135,7 @@ export class LadderSystem {
     const climbTop = point(config.climbTop);
     const topExit = point(config.topExit);
     const groundQueue: Vector3[] = [];
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < CENTRAL_TOWER.maximumQueuePerLadder; index += 1) {
       groundQueue.push(new Vector3(
         config.groundQueueOrigin.x + config.groundQueueStep.x * index,
         config.groundQueueOrigin.y + config.groundQueueStep.y * index,

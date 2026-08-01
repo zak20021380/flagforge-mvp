@@ -1,6 +1,7 @@
 import {
   Mesh,
   MeshBuilder,
+  Quaternion,
   Scene,
   TransformNode,
   Vector3,
@@ -13,8 +14,10 @@ export interface CentralTowerVisual {
   readonly topCenter: Vector3;
 }
 
+type LadderId = keyof typeof CENTRAL_TOWER.ladders;
+
 export function createCentralTower(scene: Scene, materials: MaterialLibrary): CentralTowerVisual {
-  const root = new TransformNode('central-fortress-root', scene);
+  const root = new TransformNode('central-flag-tower-root', scene);
 
   const addOctagonalLayer = (
     name: string,
@@ -40,36 +43,42 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     return mesh;
   };
 
-  // A stepped, tapered silhouette reads as masonry from the portrait camera while
-  // keeping the structure to a handful of low-poly primitive meshes.
-  addOctagonalLayer('tower-foundation', 0.5, 8.4, 8.4, 0.25, 7.6 / 8.4, materials.stoneDark);
-  addOctagonalLayer('tower-lower-plinth', 0.38, 7.8, 8.15, 0.67, 0.9, materials.stoneWarm);
-  addOctagonalLayer('tower-upper-plinth', 0.34, 7.15, 7.55, 1.02, 0.9, materials.stoneLight);
-  addOctagonalLayer('tower-keep', CENTRAL_TOWER.shaftHeight, 6.55, 5.72, 4.19, 0.88, materials.stone);
+  // A low stepped base keys into the plaza. Above it, the entire shaft is an
+  // open arcade so the enemy castle and combat remain visible through the tower.
+  addOctagonalLayer(
+    'tower-plaza-foundation',
+    0.34,
+    CENTRAL_TOWER.baseWidth,
+    CENTRAL_TOWER.baseWidth,
+    0.17,
+    CENTRAL_TOWER.baseDepth / CENTRAL_TOWER.baseWidth,
+    materials.stoneDark,
+  );
+  addOctagonalLayer('tower-plaza-plinth', 0.34, 6.95, 6.55, 0.48, 0.9, materials.stoneWarm);
+  addOctagonalLayer('tower-arcade-step', 0.28, 6.35, 5.95, 0.79, 0.88, materials.stoneLight);
 
-  for (const [index, band] of [
-    { y: 1.55, diameter: 6.7, depthScale: 0.88 },
-    { y: 3.25, diameter: 6.45, depthScale: 0.88 },
-    { y: 5.05, diameter: 6.2, depthScale: 0.9 },
-    { y: 6.65, diameter: 6.02, depthScale: 0.9 },
-  ].entries()) {
-    addOctagonalLayer(`tower-stone-band-${index}`, 0.18, band.diameter, band.diameter, band.y, band.depthScale, materials.stoneWarm);
-  }
+  createOpenArcade(scene, root, materials);
 
-  addOctagonalLayer('tower-corbel', 0.42, 6.18, 6.9, 7.34, 0.9, materials.stoneDark);
-  addOctagonalLayer('tower-crown-trim', 0.4, 7.08, 6.8, 7.65, 0.9, materials.stoneLight);
-  addOctagonalLayer('tower-objective-ring', 0.14, 7.16, 7.16, 7.83, 0.9, materials.gold);
-  addOctagonalLayer('tower-top-deck', 0.32, 6.82, 6.82, 7.99, 0.9, materials.road);
+  const platformDepthScale = CENTRAL_TOWER.topPlatformDepth / CENTRAL_TOWER.topPlatformWidth;
+  addOctagonalLayer('tower-open-corbel', 0.34, 5.45, 5.9, 8.62, 0.87, materials.stoneDark);
+  addOctagonalLayer('tower-crown-trim', 0.2, 5.9, 6.08, 8.87, platformDepthScale, materials.stoneLight);
+  addOctagonalLayer('tower-objective-ring', 0.12, 6.18, 6.18, 9, platformDepthScale, materials.gold);
+  addOctagonalLayer(
+    'tower-top-platform',
+    0.26,
+    CENTRAL_TOWER.topPlatformWidth,
+    CENTRAL_TOWER.topPlatformWidth,
+    CENTRAL_TOWER.topSurfaceY - 0.13,
+    platformDepthScale,
+    materials.road,
+  );
 
-  createButtresses(scene, root, materials);
-  createParapets(scene, root, materials);
-  createLadder(scene, root, materials, -1);
-  createLadder(scene, root, materials, 1);
-  createBraziers(scene, root, materials);
-  createCrownSpires(scene, root, materials);
-  createBanners(scene, root, materials);
+  createOpenParapet(scene, root, materials);
+  createSideLadder(scene, root, materials, 'player');
+  createSideLadder(scene, root, materials, 'enemy');
+  createSideBanners(scene, root, materials);
   createHeraldry(scene, root, materials);
-  createApproachAccents(scene, root, materials);
+  createPlazaConnections(scene, root, materials);
 
   return {
     root,
@@ -77,217 +86,223 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
   };
 }
 
-function createButtresses(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const [index, position] of [
-    new Vector3(-2.72, 3.82, -2.18),
-    new Vector3(2.72, 3.82, -2.18),
-    new Vector3(-2.72, 3.82, 2.18),
-    new Vector3(2.72, 3.82, 2.18),
-  ].entries()) {
-    const buttress = MeshBuilder.CreateBox(`tower-buttress-${index}`, { width: 0.72, height: 5.85, depth: 0.82 }, scene);
-    buttress.parent = root;
-    buttress.position.copyFrom(position);
-    buttress.rotation.y = position.x * position.z > 0 ? -0.18 : 0.18;
-    buttress.scaling.y = 1 + (index % 2) * 0.025;
-    buttress.material = index % 2 === 0 ? materials.stoneWarm : materials.stoneDark;
-    buttress.receiveShadows = true;
-    buttress.isPickable = false;
+function configureStatic(mesh: Mesh, root: TransformNode, material: Mesh['material']): void {
+  mesh.parent = root;
+  mesh.material = material;
+  mesh.receiveShadows = true;
+  mesh.isPickable = false;
+}
 
-    const foot = MeshBuilder.CreateBox(`tower-buttress-foot-${index}`, { width: 1.02, height: 0.48, depth: 1.12 }, scene);
-    foot.parent = root;
-    foot.position.set(position.x, 0.78, position.z * 1.08);
-    foot.rotation.y = buttress.rotation.y;
-    foot.material = materials.stoneDark;
-    foot.receiveShadows = true;
-    foot.isPickable = false;
+function createOpenArcade(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  const pillarPositions = [
+    new Vector3(-2.2, 4.61, -1.58),
+    new Vector3(2.2, 4.61, -1.58),
+    new Vector3(-2.2, 4.61, 1.58),
+    new Vector3(2.2, 4.61, 1.58),
+  ];
+  const pillar = MeshBuilder.CreateBox('tower-arcade-pillar-source', {
+    width: 0.58,
+    height: CENTRAL_TOWER.shaftHeight,
+    depth: 0.58,
+  }, scene);
+  configureStatic(pillar, root, materials.stone);
+  pillar.position.copyFrom(pillarPositions[0]);
+  for (let index = 1; index < pillarPositions.length; index += 1) {
+    const instance = pillar.createInstance(`tower-arcade-pillar-${index}`);
+    instance.parent = root;
+    instance.position.copyFrom(pillarPositions[index]);
+    instance.isPickable = false;
+  }
+
+  const foot = MeshBuilder.CreateBox('tower-pillar-foot-source', { width: 0.86, height: 0.34, depth: 0.86 }, scene);
+  configureStatic(foot, root, materials.stoneDark);
+  foot.position.set(pillarPositions[0].x, 1.08, pillarPositions[0].z);
+  const capital = MeshBuilder.CreateBox('tower-pillar-capital-source', { width: 0.88, height: 0.3, depth: 0.88 }, scene);
+  configureStatic(capital, root, materials.stoneLight);
+  capital.position.set(pillarPositions[0].x, 8.25, pillarPositions[0].z);
+  for (let index = 1; index < pillarPositions.length; index += 1) {
+    const footInstance = foot.createInstance(`tower-pillar-foot-${index}`);
+    footInstance.parent = root;
+    footInstance.position.set(pillarPositions[index].x, 1.08, pillarPositions[index].z);
+    footInstance.isPickable = false;
+    const capitalInstance = capital.createInstance(`tower-pillar-capital-${index}`);
+    capitalInstance.parent = root;
+    capitalInstance.position.set(pillarPositions[index].x, 8.25, pillarPositions[index].z);
+    capitalInstance.isPickable = false;
+  }
+
+  // Short angled stones imply four arches without filling their openings.
+  for (const z of [-1.58, 1.58]) {
+    for (const side of [-1, 1]) {
+      const arch = MeshBuilder.CreateBox(`tower-arch-long-${z}-${side}`, { width: 1.82, height: 0.36, depth: 0.46 }, scene);
+      configureStatic(arch, root, materials.stoneWarm);
+      arch.position.set(side * 1.36, 8.12, z);
+      arch.rotation.z = -side * 0.39;
+    }
+    const keystone = MeshBuilder.CreateBox(`tower-arch-long-keystone-${z}`, { width: 0.74, height: 0.52, depth: 0.54 }, scene);
+    configureStatic(keystone, root, materials.stoneLight);
+    keystone.position.set(0, 8.38, z);
+  }
+
+  for (const x of [-2.2, 2.2]) {
+    for (const side of [-1, 1]) {
+      const arch = MeshBuilder.CreateBox(`tower-arch-side-${x}-${side}`, { width: 0.46, height: 0.34, depth: 1.25 }, scene);
+      configureStatic(arch, root, materials.stoneWarm);
+      arch.position.set(x, 8.08, side * 0.96);
+      arch.rotation.x = side * 0.34;
+    }
+    const keystone = MeshBuilder.CreateBox(`tower-arch-side-keystone-${x}`, { width: 0.54, height: 0.48, depth: 0.58 }, scene);
+    configureStatic(keystone, root, materials.stoneLight);
+    keystone.position.set(x, 8.35, 0);
   }
 }
 
-function createParapets(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  const wallY = CENTRAL_TOWER.topSurfaceY + 0.19;
-  for (const [index, wall] of [
-    { width: 2.15, depth: 0.36, x: -2.08, z: -2.68 },
-    { width: 2.15, depth: 0.36, x: 2.08, z: -2.68 },
-    { width: 2.15, depth: 0.36, x: -2.08, z: 2.68 },
-    { width: 2.15, depth: 0.36, x: 2.08, z: 2.68 },
-    { width: 0.36, depth: 4.65, x: -3.05, z: 0 },
-    { width: 0.36, depth: 4.65, x: 3.05, z: 0 },
-  ].entries()) {
-    const rail = MeshBuilder.CreateBox(`tower-parapet-rail-${index}`, { width: wall.width, height: 0.38, depth: wall.depth }, scene);
-    rail.parent = root;
-    rail.position.set(wall.x, wallY, wall.z);
-    rail.material = materials.stoneDark;
-    rail.receiveShadows = true;
-    rail.isPickable = false;
+function createOpenParapet(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  const railY = CENTRAL_TOWER.topSurfaceY + 0.2;
+  const rails = [
+    { width: 2.05, depth: 0.2, x: -1.6, z: -2.47 },
+    { width: 2.05, depth: 0.2, x: 1.6, z: -2.47 },
+    { width: 2.05, depth: 0.2, x: -1.6, z: 2.47 },
+    { width: 2.05, depth: 0.2, x: 1.6, z: 2.47 },
+    // Side gaps line up with the ladder exits.
+    { width: 0.2, depth: 1.25, x: -2.92, z: 1.22 },
+    { width: 0.2, depth: 1.25, x: 2.92, z: -1.22 },
+  ];
+  for (const [index, rail] of rails.entries()) {
+    const mesh = MeshBuilder.CreateBox(`tower-open-parapet-rail-${index}`, {
+      width: rail.width,
+      height: 0.22,
+      depth: rail.depth,
+    }, scene);
+    configureStatic(mesh, root, materials.stoneDark);
+    mesh.position.set(rail.x, railY, rail.z);
   }
 
-  const positions: Vector3[] = [];
-  for (const z of [-2.7, 2.7]) {
-    for (const x of [-2.72, -1.72, 1.72, 2.72]) positions.push(new Vector3(x, CENTRAL_TOWER.topSurfaceY + 0.53, z));
-  }
-  for (const x of [-3.08, 3.08]) {
-    for (const z of [-1.72, -0.58, 0.58, 1.72]) positions.push(new Vector3(x, CENTRAL_TOWER.topSurfaceY + 0.53, z));
-  }
-
-  const source = MeshBuilder.CreateBox('tower-battlement-source', { width: 0.7, height: 1.05, depth: 0.62 }, scene);
-  source.parent = root;
-  source.position.copyFrom(positions[0]);
-  source.material = materials.stoneLight;
-  source.receiveShadows = true;
-  source.isPickable = false;
-  for (let index = 1; index < positions.length; index += 1) {
-    const block = source.createInstance(`tower-battlement-${index}`);
-    block.parent = root;
-    block.position.copyFrom(positions[index]);
-    block.isPickable = false;
+  const posts = [
+    [-2.75, -2.35], [0, -2.52], [2.75, -2.35],
+    [-2.75, 2.35], [0, 2.52], [2.75, 2.35],
+    [-2.9, 0.35], [-2.9, 2], [2.9, -2], [2.9, -0.35],
+  ] as const;
+  const post = MeshBuilder.CreateBox('tower-parapet-post-source', { width: 0.46, height: 0.72, depth: 0.46 }, scene);
+  configureStatic(post, root, materials.stoneLight);
+  post.position.set(posts[0][0], CENTRAL_TOWER.topSurfaceY + 0.39, posts[0][1]);
+  for (let index = 1; index < posts.length; index += 1) {
+    const instance = post.createInstance(`tower-parapet-post-${index}`);
+    instance.parent = root;
+    instance.position.set(posts[index][0], CENTRAL_TOWER.topSurfaceY + 0.39, posts[index][1]);
+    instance.isPickable = false;
   }
 }
 
-function createLadder(scene: Scene, root: TransformNode, materials: MaterialLibrary, side: -1 | 1): void {
-  const label = side < 0 ? 'player' : 'enemy';
-  const ladder = CENTRAL_TOWER.ladders[label];
-  const bottom = ladder.groundAlign;
-  const top = ladder.climbTop;
-  const centerY = (bottom.y + top.y) / 2;
-  const centerZ = (bottom.z + top.z) / 2;
-  const deltaY = top.y - bottom.y;
-  const deltaZ = top.z - bottom.z;
-  const length = Math.hypot(deltaY, deltaZ);
-  const pitch = Math.atan2(deltaZ, deltaY);
+function createSideLadder(
+  scene: Scene,
+  root: TransformNode,
+  materials: MaterialLibrary,
+  id: LadderId,
+): void {
+  const ladder = CENTRAL_TOWER.ladders[id];
+  const bottom = new Vector3(ladder.groundAlign.x, ladder.groundAlign.y, ladder.groundAlign.z);
+  const top = new Vector3(ladder.climbTop.x, ladder.climbTop.y, ladder.climbTop.z);
+  const shaft = top.subtract(bottom);
+  const length = shaft.length();
+  const shaftDirection = shaft.scale(1 / length);
+  const radialCenter = bottom.add(top).scale(0.5);
+  const rungDirection = new Vector3(-radialCenter.z, 0, radialCenter.x).normalize();
+  const outwardDirection = Vector3.Cross(rungDirection, shaftDirection).normalize();
+  const rotation = Quaternion.RotationQuaternionFromAxis(rungDirection, shaftDirection, outwardDirection);
+  const sideLabel = ladder.side;
 
-  for (const x of [-0.67, 0.67]) {
-    const rail = MeshBuilder.CreateCylinder(`tower-${label}-ladder-rail-${x}`, { height: length, diameter: 0.16, tessellation: 7 }, scene);
-    rail.parent = root;
-    rail.position.set(x, centerY, centerZ);
-    rail.rotation.x = pitch;
-    rail.material = materials.wood;
-    rail.isPickable = false;
+  for (const offset of [-0.64, 0.64]) {
+    const rail = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-rail-${offset}`, {
+      height: length,
+      diameter: 0.15,
+      tessellation: 7,
+    }, scene);
+    configureStatic(rail, root, materials.wood);
+    rail.position.copyFrom(bottom.add(top).scale(0.5).add(rungDirection.scale(offset)));
+    rail.rotationQuaternion = rotation.clone();
   }
 
-  const rungCount = Math.ceil(length / 0.42);
-  const rungSource = MeshBuilder.CreateBox(`tower-${label}-ladder-rung-source`, { width: 1.52, height: 0.13, depth: 0.16 }, scene);
-  rungSource.parent = root;
-  rungSource.material = materials.wood;
-  rungSource.isPickable = false;
+  const rungCount = Math.ceil(length / 0.43);
+  const rung = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-rung-source`, {
+    width: 1.48,
+    height: 0.12,
+    depth: 0.15,
+  }, scene);
+  configureStatic(rung, root, materials.wood);
+  rung.rotationQuaternion = rotation.clone();
   for (let index = 0; index < rungCount; index += 1) {
     const t = (index + 0.5) / rungCount;
-    const rung = index === 0 ? rungSource : rungSource.createInstance(`tower-${label}-ladder-rung-${index}`);
-    rung.parent = root;
-    rung.position.set(0, bottom.y + deltaY * t, bottom.z + deltaZ * t);
-    rung.rotation.x = pitch;
-    rung.isPickable = false;
-  }
-
-  const landing = MeshBuilder.CreateBox(`tower-${label}-ladder-landing`, { width: 2.05, height: 0.18, depth: 1.15 }, scene);
-  landing.parent = root;
-  landing.position.set(0, 0.12, ladder.groundEntry.z - side * 0.18);
-  landing.material = materials.road;
-  landing.receiveShadows = true;
-  landing.isPickable = false;
-}
-
-function createBraziers(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const [index, x] of [-2.05, 2.05].entries()) {
-    const pedestal = MeshBuilder.CreateCylinder(`tower-brazier-pedestal-${index}`, { height: 0.7, diameterTop: 0.48, diameterBottom: 0.7, tessellation: 8 }, scene);
-    pedestal.parent = root;
-    pedestal.position.set(x, CENTRAL_TOWER.topSurfaceY + 0.35, 0);
-    pedestal.material = materials.stoneDark;
-    pedestal.isPickable = false;
-
-    const bowl = MeshBuilder.CreateCylinder(`tower-brazier-bowl-${index}`, { height: 0.32, diameterTop: 0.9, diameterBottom: 0.44, tessellation: 10 }, scene);
-    bowl.parent = root;
-    bowl.position.set(x, CENTRAL_TOWER.topSurfaceY + 0.77, 0);
-    bowl.material = materials.metal;
-    bowl.isPickable = false;
-
-    const flame = MeshBuilder.CreateSphere(`tower-brazier-flame-${index}`, { diameter: 0.56, segments: 6 }, scene);
-    flame.parent = root;
-    flame.position.set(x, CENTRAL_TOWER.topSurfaceY + 1.13, 0);
-    flame.scaling.set(0.72, 1.35, 0.72);
-    flame.material = materials.torchGlow;
-    flame.isPickable = false;
+    const position = bottom.add(shaft.scale(t));
+    const item = index === 0 ? rung : rung.createInstance(`tower-${sideLabel}-ladder-rung-${index}`);
+    item.parent = root;
+    item.position.copyFrom(position);
+    item.isPickable = false;
+    if (index > 0) item.rotationQuaternion = rotation.clone();
   }
 }
 
-function createCrownSpires(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const [index, position] of [
-    new Vector3(-2.5, CENTRAL_TOWER.topSurfaceY + 0.92, -2.1),
-    new Vector3(2.5, CENTRAL_TOWER.topSurfaceY + 0.92, -2.1),
-    new Vector3(-2.5, CENTRAL_TOWER.topSurfaceY + 0.92, 2.1),
-    new Vector3(2.5, CENTRAL_TOWER.topSurfaceY + 0.92, 2.1),
-  ].entries()) {
-    const spire = MeshBuilder.CreateCylinder(`tower-crown-spire-${index}`, {
-      height: 1.65,
-      diameterTop: 0.12,
-      diameterBottom: 0.58,
-      tessellation: 6,
-    }, scene);
-    spire.parent = root;
-    spire.position.copyFrom(position);
-    spire.material = materials.stoneLight;
-    spire.isPickable = false;
+function createSideBanners(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  for (const [index, x] of [-2.42, 2.42].entries()) {
+    const pole = MeshBuilder.CreateCylinder(`tower-side-banner-pole-${index}`, { height: 2.75, diameter: 0.09, tessellation: 7 }, scene);
+    configureStatic(pole, root, materials.metal);
+    pole.position.set(x, 7.15, -1.82);
 
-    const finial = MeshBuilder.CreateSphere(`tower-crown-finial-${index}`, { diameter: 0.3, segments: 6 }, scene);
-    finial.parent = root;
-    finial.position.set(position.x, position.y + 0.91, position.z);
-    finial.material = materials.gold;
-    finial.isPickable = false;
-  }
-}
+    const crossbar = MeshBuilder.CreateBox(`tower-side-banner-crossbar-${index}`, { width: 0.82, height: 0.08, depth: 0.08 }, scene);
+    configureStatic(crossbar, root, materials.gold);
+    crossbar.position.set(x + (x < 0 ? 0.32 : -0.32), 8.22, -1.88);
 
-function createBanners(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const [index, x] of [-2.28, 2.28].entries()) {
-    const pole = MeshBuilder.CreateCylinder(`tower-banner-pole-${index}`, { height: 2.45, diameter: 0.1, tessellation: 7 }, scene);
-    pole.parent = root;
-    pole.position.set(x, CENTRAL_TOWER.topSurfaceY - 1.17, -2.76);
-    pole.material = materials.metal;
-    pole.isPickable = false;
-
-    const cloth = MeshBuilder.CreateBox(`tower-banner-cloth-${index}`, { width: 0.92, height: 1.2, depth: 0.08 }, scene);
-    cloth.parent = root;
-    cloth.position.set(x + (x < 0 ? 0.46 : -0.46), CENTRAL_TOWER.topSurfaceY - 0.73, -2.86);
-    cloth.rotation.z = 0.04 * (index === 0 ? -1 : 1);
-    cloth.material = materials.objectiveCloth;
-    cloth.isPickable = false;
+    const cloth = MeshBuilder.CreateBox(`tower-side-banner-cloth-${index}`, { width: 0.68, height: 1.38, depth: 0.06 }, scene);
+    configureStatic(cloth, root, materials.objectiveCloth);
+    cloth.position.set(x + (x < 0 ? 0.34 : -0.34), 7.48, -1.9);
+    cloth.rotation.z = x < 0 ? -0.035 : 0.035;
   }
 }
 
 function createHeraldry(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
   for (const side of [-1, 1] as const) {
-    const shield = MeshBuilder.CreateCylinder(`tower-shield-${side}`, { height: 0.18, diameter: 1.2, tessellation: 10 }, scene);
-    shield.parent = root;
-    shield.position.set(2.05 * side, 4.35, -2.74);
+    const shield = MeshBuilder.CreateCylinder(`tower-arcade-shield-${side}`, { height: 0.12, diameter: 0.92, tessellation: 8 }, scene);
+    configureStatic(shield, root, materials.metal);
+    shield.position.set(2.2 * side, 4.8, -1.9);
     shield.rotation.x = Math.PI / 2;
-    shield.scaling.y = 1.15;
-    shield.material = materials.metal;
-    shield.isPickable = false;
+    shield.scaling.y = 1.12;
 
-    const boss = MeshBuilder.CreateSphere(`tower-shield-boss-${side}`, { diameter: 0.34, segments: 6 }, scene);
-    boss.parent = root;
-    boss.position.set(2.05 * side, 4.35, -2.86);
-    boss.material = materials.gold;
-    boss.isPickable = false;
+    const boss = MeshBuilder.CreateSphere(`tower-arcade-shield-boss-${side}`, { diameter: 0.25, segments: 5 }, scene);
+    configureStatic(boss, root, materials.gold);
+    boss.position.set(2.2 * side, 4.8, -1.98);
   }
 }
 
-function createApproachAccents(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const side of [-1, 1] as const) {
-    const apron = MeshBuilder.CreateBox(`tower-approach-${side}`, { width: 3.2, height: 0.13, depth: 3.25 }, scene);
-    apron.parent = root;
-    apron.position.set(0, 0.1, side * 5.35);
-    apron.material = materials.road;
-    apron.receiveShadows = true;
-    apron.isPickable = false;
+function createPlazaConnections(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  for (const id of ['player', 'enemy'] as const) {
+    const ladder = CENTRAL_TOWER.ladders[id];
+    const start = ladder.groundEntry;
+    const end = ladder.groundAlign;
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+    const length = Math.hypot(dx, dz);
+    const yaw = Math.atan2(dx, dz);
+    const path = MeshBuilder.CreateBox(`tower-${ladder.side}-plaza-path`, { width: 1.72, height: 0.1, depth: length + 0.72 }, scene);
+    configureStatic(path, root, materials.paving);
+    path.position.set((start.x + end.x) / 2, 0.11, (start.z + end.z) / 2);
+    path.rotation.y = yaw;
 
-    for (const x of [-1.72, 1.72]) {
-      for (const offset of [-0.85, 0, 0.85]) {
-        const edge = MeshBuilder.CreateBox(`tower-edge-stone-${side}-${x}-${offset}`, { width: 0.48, height: 0.24, depth: 0.62 }, scene);
-        edge.parent = root;
-        edge.position.set(x, 0.19, side * 5.35 + offset);
-        edge.rotation.y = (side * x + offset) * 0.035;
-        edge.material = materials.stoneWarm;
-        edge.receiveShadows = true;
-        edge.isPickable = false;
+    const tangentX = Math.cos(yaw);
+    const tangentZ = -Math.sin(yaw);
+    for (const side of [-1, 1]) {
+      for (const t of [0.2, 0.8]) {
+        const marker = MeshBuilder.CreateBox(`tower-${ladder.side}-path-marker-${side}-${t}`, {
+          width: 0.42,
+          height: 0.18,
+          depth: 0.48,
+        }, scene);
+        configureStatic(marker, root, materials.stoneWarm);
+        marker.position.set(
+          start.x + dx * t + tangentX * side * 0.98,
+          0.17,
+          start.z + dz * t + tangentZ * side * 0.98,
+        );
+        marker.rotation.y = yaw;
       }
     }
   }

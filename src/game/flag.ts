@@ -36,19 +36,19 @@ export class FlagController {
       CENTRAL_TOWER.safeFlagDrops.towerTop.z,
     );
 
-    const pole = MeshBuilder.CreateCylinder('central-flag-pole', { height: 4.65, diameter: 0.15, tessellation: 8 }, scene);
+    const pole = MeshBuilder.CreateCylinder('central-flag-pole', { height: 5.5, diameter: 0.14, tessellation: 8 }, scene);
     pole.parent = this.root;
-    pole.position.y = 2.325;
+    pole.position.y = 2.75;
     pole.material = materials.metal;
 
     const finial = MeshBuilder.CreateSphere('central-flag-finial', { diameter: 0.38, segments: 7 }, scene);
     finial.parent = this.root;
-    finial.position.y = 4.74;
+    finial.position.y = 5.61;
     finial.material = materials.gold;
 
-    this.cloth = MeshBuilder.CreateBox('central-flag-cloth', { width: 2.35, height: 1.35, depth: 0.08 }, scene);
+    this.cloth = MeshBuilder.CreateBox('central-flag-cloth', { width: 2.5, height: 1.42, depth: 0.08 }, scene);
     this.cloth.parent = this.root;
-    this.cloth.position = new Vector3(1.2, 3.93, 0);
+    this.cloth.position = new Vector3(1.27, 4.77, 0);
     this.cloth.material = materials.objectiveCloth;
 
     this.tail = MeshBuilder.CreateBox('central-flag-tail', { width: 0.92, height: 0.92, depth: 0.085 }, scene);

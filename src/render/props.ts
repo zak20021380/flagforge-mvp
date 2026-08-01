@@ -1,22 +1,18 @@
 import { Mesh, MeshBuilder, Scene } from '@babylonjs/core';
+import { PORTRAIT_LAYOUT } from '../core/config';
 import { createRandom, Scatter, StaticBatch } from './decorKit';
 import { MaterialLibrary } from './materials';
-import { isNearWater, isOnDeploymentPad, roadClearance, surroundingsHeight } from './terrain';
+import { surroundingsHeight } from './terrain';
 
 const SURROUNDINGS_Y = -0.84;
+const ARENA = PORTRAIT_LAYOUT.arena;
+const PERIMETER_HALF_WIDTH = ARENA.foundationWidth / 2;
+const PERIMETER_HALF_LENGTH = ARENA.foundationLength / 2;
+const TREE_EDGE_CLEARANCE = 2.8;
+const LOW_GROWTH_EDGE_CLEARANCE = 0.9;
 
 /** Ground height for props that sit outside the arena plinth. */
 const outsideGround = (x: number, z: number): number => SURROUNDINGS_Y + surroundingsHeight(x, z);
-
-/**
- * Half-width the portrait camera can actually see at a given depth. The outer forest is culled
- * against this instead of paying for trees behind the camera or far off frame.
- */
-const visibleHalfWidth = (z: number): number => 4 + 0.24 * (z + 41);
-
-/** Distance from the arena centre line to the nearest spot a standing prop may occupy. */
-const VERGE_MIN = 8.4;
-const VERGE_MAX = 12.3;
 
 interface TreeSpecies {
   readonly trunk: Scatter;
@@ -74,76 +70,95 @@ function createForestSources(scene: Scene, materials: MaterialLibrary): Forest {
 }
 
 /**
- * Verge treeline. With the side walls gone this short row is what frames the battlefield, so it is
- * deliberately sparse and widely spaced: trees keep clear of water and the invisible deployment
- * areas, and species rotate in order rather than at random so the row reads intentionally placed.
+ * Dense perimeter forest. Side rows span the arena length, a fuller far row closes the horizon,
+ * and only shorter corner trees are allowed on the camera-facing edge. Every crown is given enough
+ * clearance to remain outside the foundation, so gameplay and castle silhouettes stay unobstructed.
  */
-function plantVergeTrees(forest: Forest, density: number): void {
+function plantPerimeterForest(forest: Forest, density: number): void {
   const random = createRandom(4271);
-  const target = Math.round(6 * density);
-  const placed: Array<[number, number]> = [];
-  for (let attempt = 0; attempt < target * 30 && placed.length < target; attempt += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const x = side * (9.9 + random() * 2.3);
-    const z = -29 + random() * 58;
-    if (isNearWater(z, 2.6) || isOnDeploymentPad(x, z, 0.9)) continue;
-    if (placed.some(([px, pz]) => px * side > 0 && Math.hypot(x - px, z - pz) < 5.2)) continue;
-    const species = forest.species[placed.length % forest.species.length];
-    plantTree(species, x, z, 0, 0.85 + random() * 0.4, random() * Math.PI * 2, (random() - 0.5) * 0.05);
-    placed.push([x, z]);
-  }
-}
 
-/**
- * Forest ring on the rolling ground outside the arena. Placement is weighted towards the far
- * half of the map, where the portrait camera actually has empty screen space behind the enemy
- * castle, and every candidate is culled against the visible cone so nothing is paid for twice.
- */
-function plantOuterForest(forest: Forest, density: number): void {
-  const random = createRandom(8813);
-  const target = Math.round(12 * density);
-  for (let attempt = 0, planted = 0; attempt < target * 10 && planted < target; attempt += 1) {
-    const z = -26 + random() * 80;
-    const x = (random() * 2 - 1) * visibleHalfWidth(z);
-    if (Math.abs(z) < 33.8 && Math.abs(x) < 15.6) continue;
-    if (random() * 90 > z + 34) continue;
+  const sideCount = Math.max(14, Math.round(24 * density));
+  for (const side of [-1, 1]) {
+    for (let index = 0; index < sideCount; index += 1) {
+      const progress = (index + 0.5) / sideCount;
+      const x = side * (PERIMETER_HALF_WIDTH + TREE_EDGE_CLEARANCE + random() * 2.3);
+      const z = -PERIMETER_HALF_LENGTH + 1.2
+        + progress * (PERIMETER_HALF_LENGTH * 2 - 2.4)
+        + (random() - 0.5) * 2.1;
+      const species = forest.species[(index + (side > 0 ? 1 : 0)) % forest.species.length];
+      plantTree(
+        species,
+        x,
+        z,
+        outsideGround(x, z),
+        0.78 + random() * 0.5,
+        random() * Math.PI * 2,
+        (random() - 0.5) * 0.055,
+      );
+    }
+  }
+
+  const farCount = Math.max(10, Math.round(18 * density));
+  for (let index = 0; index < farCount; index += 1) {
+    const progress = (index + 0.5) / farCount;
+    const x = -PERIMETER_HALF_WIDTH - 2 + progress * (PERIMETER_HALF_WIDTH * 2 + 4)
+      + (random() - 0.5) * 1.8;
+    const z = PERIMETER_HALF_LENGTH + TREE_EDGE_CLEARANCE + random() * 2.4;
     const species = forest.distant[Math.floor(random() * forest.distant.length)];
-    plantTree(species, x, z, outsideGround(x, z), 0.95 + random() * 0.75, random() * Math.PI * 2, (random() - 0.5) * 0.05);
-    planted += 1;
+    plantTree(species, x, z, outsideGround(x, z), 0.88 + random() * 0.62, random() * Math.PI * 2, (random() - 0.5) * 0.05);
+  }
+
+  const nearCornerCount = Math.max(2, Math.round(3 * density));
+  for (const side of [-1, 1]) {
+    for (let index = 0; index < nearCornerCount; index += 1) {
+      const x = side * (PERIMETER_HALF_WIDTH * 0.82 + index * 1.8 + random() * 1.25);
+      const z = -PERIMETER_HALF_LENGTH - TREE_EDGE_CLEARANCE - random() * 1.6;
+      const species = forest.species[(index + 1) % forest.species.length];
+      plantTree(species, x, z, outsideGround(x, z), 0.7 + random() * 0.24, random() * Math.PI * 2, (random() - 0.5) * 0.04);
+    }
   }
 }
 
 /**
- * Low planting is limited to a few broad bushes on the outer verge. Small grass-tuft scatter is
- * deliberately absent so lanes, deployment areas and combat silhouettes stay uninterrupted.
+ * Returns a point in a narrow rectangular band outside the foundation. Edge choice is weighted by
+ * edge length, avoiding a corner-heavy ring while still leaving enough random overlap to feel wild.
  */
+function perimeterPoint(random: () => number, clearance: number, bandDepth: number): { x: number; z: number } {
+  const sideWeight = PERIMETER_HALF_LENGTH / (PERIMETER_HALF_LENGTH + PERIMETER_HALF_WIDTH);
+  if (random() < sideWeight) {
+    const side = random() < 0.5 ? -1 : 1;
+    return {
+      x: side * (PERIMETER_HALF_WIDTH + clearance + random() * bandDepth),
+      z: (random() * 2 - 1) * (PERIMETER_HALF_LENGTH + bandDepth * 0.45),
+    };
+  }
+  const end = random() < 0.5 ? -1 : 1;
+  return {
+    x: (random() * 2 - 1) * (PERIMETER_HALF_WIDTH + bandDepth * 0.45),
+    z: end * (PERIMETER_HALF_LENGTH + clearance + random() * bandDepth),
+  };
+}
+
+/** Low bushes fill gaps between trunks while remaining below every gameplay silhouette. */
 function createUndergrowth(scene: Scene, materials: MaterialLibrary, density: number): void {
   const random = createRandom(5519);
   const bush = scatterOf(MeshBuilder.CreateSphere('bush-source', { diameter: 1.35, segments: 4 }, scene), materials.foliage);
   const bushMid = scatterOf(MeshBuilder.CreateSphere('bush-mid-source', { diameter: 1.1, segments: 4 }, scene), materials.foliageMid);
 
-  const bushTarget = Math.round(8 * density);
-  for (let attempt = 0, placed = 0; attempt < bushTarget * 14 && placed < bushTarget; attempt += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const outer = random() < 0.36;
-    const x = side * (outer ? 15 + random() * 7 : VERGE_MIN + random() * (VERGE_MAX - VERGE_MIN));
-    const z = outer ? -24 + random() * 74 : -30 + random() * 61;
-    if (outer
-      ? Math.abs(x) > visibleHalfWidth(z)
-      : isNearWater(z, 1.7) || roadClearance(x) < 0.8 || isOnDeploymentPad(x, z, 1)) continue;
+  const bushTarget = Math.max(24, Math.round(44 * density));
+  for (let placed = 0; placed < bushTarget; placed += 1) {
+    const { x, z } = perimeterPoint(random, LOW_GROWTH_EDGE_CLEARANCE, 3.4);
     const scale = 0.66 + random() * 0.6;
     const source = random() < 0.5 ? bush : bushMid;
-    source.add(x, (outer ? outsideGround(x, z) : 0) + 0.34 * scale, z, random() * 3, scale, scale * (0.6 + random() * 0.35), scale);
-    placed += 1;
+    source.add(x, outsideGround(x, z) + 0.34 * scale, z, random() * 3, scale, scale * (0.6 + random() * 0.35), scale);
   }
 
   for (const source of [bush, bushMid]) source.finish();
 }
 
 /**
- * Rock variation: two low-poly boulder shapes, thin-instanced onto the verge and the outer ground.
- * No pebble layer and no standing stones, so the ground stays clear and the boulders that remain
- * read as deliberate landmarks rather than scatter.
+ * A few low-poly boulders break up the planted ring. They use the same outside-only band as the
+ * vegetation and stay widely separated so they read as accents rather than obstacles.
  */
 function createRockField(scene: Scene, materials: MaterialLibrary, density: number): void {
   const random = createRandom(3121);
@@ -152,21 +167,14 @@ function createRockField(scene: Scene, materials: MaterialLibrary, density: numb
     scatterOf(MeshBuilder.CreatePolyhedron('rock-b-source', { type: 3, size: 0.9 }, scene), materials.stoneMoss),
   ];
 
-  const rockTarget = Math.round(6 * density);
+  const rockTarget = Math.max(6, Math.round(9 * density));
   const placedSpots: Array<[number, number]> = [];
   for (let attempt = 0; attempt < rockTarget * 20 && placedSpots.length < rockTarget; attempt += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const outer = random() < 0.45;
-    const x = side * (outer ? 15.2 + random() * 8 : VERGE_MIN + 0.3 + random() * 3.2);
-    const z = outer ? -24 + random() * 74 : -30 + random() * 61;
-    if (outer
-      ? Math.abs(x) > visibleHalfWidth(z)
-      : isOnDeploymentPad(x, z, 1.6)) continue;
-    if (placedSpots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 6)) continue;
-    const scale = (outer ? 0.85 : 0.6) + random() * 0.7;
-    const ground = outer ? outsideGround(x, z) : 0;
+    const { x, z } = perimeterPoint(random, 1.8, 3.8);
+    if (placedSpots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 5.5)) continue;
+    const scale = 0.7 + random() * 0.72;
     rocks[placedSpots.length % rocks.length]
-      .add(x, ground + 0.16 * scale, z, random() * 3, scale, scale * (0.55 + random() * 0.4), scale * (0.8 + random() * 0.5), (random() - 0.5) * 0.2);
+      .add(x, outsideGround(x, z) + 0.16 * scale, z, random() * 3, scale, scale * (0.55 + random() * 0.4), scale * (0.8 + random() * 0.5), (random() - 0.5) * 0.2);
     placedSpots.push([x, z]);
   }
   for (const source of rocks) source.finish();
@@ -227,14 +235,13 @@ function createTorchlight(scene: Scene, materials: MaterialLibrary, batch: Stati
 }
 
 /**
- * Builds the reduced prop layer. Repeated props are thin instances, one-offs are merged per
- * material, and every placement stays outside roads, water and the castle-front deployment areas.
+ * Builds the prop layer. Repeated natural props are thin instances, one-offs are merged per
+ * material, and the perimeter vegetation stays entirely outside the arena foundation.
  */
 export function createProps(scene: Scene, materials: MaterialLibrary, density: number): void {
   const batch = new StaticBatch();
   const forest = createForestSources(scene, materials);
-  plantVergeTrees(forest, density);
-  plantOuterForest(forest, density);
+  plantPerimeterForest(forest, density);
   for (const source of forest.sources) source.finish();
   createUndergrowth(scene, materials, density);
   createRockField(scene, materials, density);

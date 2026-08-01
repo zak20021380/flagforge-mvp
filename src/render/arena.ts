@@ -158,6 +158,7 @@ export function framePortraitCamera(
   fitPoint(-cameraConfig.flagFrameHalfWidth, cameraConfig.flagFrameTopY, 0);
   fitPoint(cameraConfig.flagFrameHalfWidth, cameraConfig.flagFrameTopY, 0);
 
+  distance += cameraConfig.elevationDistance;
   restingPosition.set(
     cameraConfig.targetX,
     cameraConfig.targetY + distance * sinPitch,

@@ -41,7 +41,12 @@ export const isOnDeploymentPad = (x: number, z: number, margin = 0): boolean =>
  * footprint so the battlefield itself stays perfectly flat for unit movement and picking.
  */
 export function surroundingsHeight(x: number, z: number): number {
-  const mask = smoothStep(0, 1, clamp(Math.max((Math.abs(x) - 15.5) / 11.5, (Math.abs(z) - 34.5) / 14), 0, 1));
+  const flatHalfWidth = ARENA.foundationWidth / 2 + 1.1;
+  const flatHalfLength = ARENA.foundationLength / 2 + 1.2;
+  const mask = smoothStep(0, 1, clamp(Math.max(
+    (Math.abs(x) - flatHalfWidth) / 11.5,
+    (Math.abs(z) - flatHalfLength) / 14,
+  ), 0, 1));
   const rolling = valueNoise(x * 0.032 + 12.7, z * 0.026 - 5.3) - 0.5;
   const detail = valueNoise(x * 0.105 - 4.1, z * 0.093 + 9.6) - 0.5;
   return mask * (rolling * 5.6 + detail * 1.4);

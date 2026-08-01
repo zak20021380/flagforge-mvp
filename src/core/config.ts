@@ -7,19 +7,21 @@ export const PORTRAIT_LAYOUT = {
     resizeDebounceMs: 90,
   },
   arena: {
+    // Gameplay coordinates below retain their authored spacing. Only the visual stage envelope is
+    // wider, giving the lanes and castles more breathing room without changing unit navigation.
     halfWidth: 13.4,
     halfLength: 31.5,
-    groundWidth: 27.6,
-    groundLength: 64,
-    foundationWidth: 29,
-    foundationLength: 65.2,
+    groundWidth: 31.8,
+    groundLength: 65,
+    foundationWidth: 33.2,
+    foundationLength: 66.2,
     laneOffset: 6.25,
     laneBoundary: 2.7,
     sideRoadWidth: 3.25,
     centerRoadWidth: 3.8,
     roadLength: 52.5,
     riverZ: 8.6,
-    riverWidth: 25.8,
+    riverWidth: 30,
     deploymentCenterZ: 17,
     deploymentDepth: 7.4,
     deploymentWidth: 22.4,
@@ -65,10 +67,10 @@ export const PORTRAIT_LAYOUT = {
     maxPitchDegrees: 65,
     minTargetZ: -10.5,
     maxTargetZ: -5,
-    // The foundation nearly touches the side edges. The asymmetric vertical limits
-    // reserve the existing top/bottom HUD and phone safe-area bands so both castles
-    // remain fully readable without changing the interface.
-    horizontalScreenCoverage: 0.97,
+    // A tiny horizontal overscan on the narrowest shells lets the widened foundation fill the
+    // viewport; the camera lift below brings almost all of that edge back into view. Vertical
+    // limits still reserve the existing HUD and safe-area bands for both castle silhouettes.
+    horizontalScreenCoverage: 1.04,
     topScreenLimit: 0.8,
     bottomScreenLimit: 0.7,
     minDistance: 60,
@@ -82,6 +84,9 @@ export const PORTRAIT_LAYOUT = {
     raisedGateFrameTopY: 10.8,
     flagFrameHalfWidth: 2.8,
     flagFrameTopY: 15,
+    // A short move along the existing view ray raises the camera while preserving the aim point,
+    // pitch and FOV. The wider stage absorbs this small distance increase in the final framing.
+    elevationDistance: 2.2,
     // Brief, subtle dolly-in used for flag capture / gate opening / breach (world units).
     emphasisPush: 1.5,
   },

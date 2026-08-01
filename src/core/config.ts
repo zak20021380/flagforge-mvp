@@ -1,5 +1,11 @@
 import type { QualityTier, UnitKind, UnitStats } from './types';
 
+const ARENA_FOUNDATION_LENGTH = 76.6;
+// The tower caps are the castle geometry nearest the battlefield. Positioning the roots by this
+// exact extent leaves only that front edge on the foundation boundary and every other part behind it.
+const CASTLE_FRONT_EDGE_FROM_ROOT = 4.2;
+const CASTLE_CENTER_Z = ARENA_FOUNDATION_LENGTH / 2 + CASTLE_FRONT_EDGE_FROM_ROOT;
+
 export const PORTRAIT_LAYOUT = {
   viewport: {
     desktopMaxWidth: 520,
@@ -14,7 +20,7 @@ export const PORTRAIT_LAYOUT = {
     groundWidth: 35.6,
     groundLength: 75.2,
     foundationWidth: 37,
-    foundationLength: 76.6,
+    foundationLength: ARENA_FOUNDATION_LENGTH,
     laneOffset: 6.25,
     laneBoundary: 2.7,
     sideRoadWidth: 3.55,
@@ -28,13 +34,13 @@ export const PORTRAIT_LAYOUT = {
     deploymentCenterZ: 17,
     deploymentDepth: 7.4,
     deploymentWidth: 22.4,
-    castleZ: 26.35,
+    castleZ: CASTLE_CENTER_Z,
     castleWidthScale: 0.74,
     gateOffset: 4.8,
     deliveryOffset: 5.7,
     interiorOffset: 1.3,
     unitBoundsX: 12.15,
-    unitBoundsZ: 29.8,
+    unitBoundsZ: CASTLE_CENTER_Z + 3.45,
     aiSpawnMinZ: 14.5,
     aiSpawnMaxZ: 19.7,
     route: {
@@ -158,8 +164,10 @@ export const CENTRAL_TOWER = {
   },
 } as const;
 
-// The red castle is the portrait-facing enemy objective. Its assault routes use
-// authored world-space points so queues and falls never need collision queries.
+const ENEMY_CASTLE_Z = PORTRAIT_LAYOUT.arena.castleZ;
+
+// The red castle is the portrait-facing enemy objective. Its assault routes retain their authored
+// offsets from the castle root so its queues, access points and collision bounds move as one group.
 export const ENEMY_CASTLE_ASSAULT = {
   wallTopY: 4.78,
   climbSpeed: 2.8,
@@ -172,39 +180,39 @@ export const ENEMY_CASTLE_ASSAULT = {
   wallBounds: {
     minX: -6.65,
     maxX: 6.65,
-    minZ: 24.05,
-    maxZ: 25.5,
+    minZ: ENEMY_CASTLE_Z - 2.3,
+    maxZ: ENEMY_CASTLE_Z - 0.85,
   },
   rangerSupport: {
-    left: { x: -5.25, y: 0.16, z: 21.2 },
-    right: { x: 5.25, y: 0.16, z: 21.2 },
+    left: { x: -5.25, y: 0.16, z: ENEMY_CASTLE_Z - 5.15 },
+    right: { x: 5.25, y: 0.16, z: ENEMY_CASTLE_Z - 5.15 },
   },
   ladders: {
     left: {
       id: 'left',
-      groundEntry: { x: -5.3, y: 0.16, z: 22.45 },
-      groundAlign: { x: -5.3, y: 0.16, z: 23.42 },
-      climbTop: { x: -5.3, y: 4.78, z: 23.96 },
-      topExit: { x: -5.3, y: 4.78, z: 24.7 },
-      groundQueueOrigin: { x: -5.3, y: 0.16, z: 21.9 },
+      groundEntry: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 3.9 },
+      groundAlign: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 2.93 },
+      climbTop: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 2.39 },
+      topExit: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.65 },
+      groundQueueOrigin: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 4.45 },
       groundQueueStep: { x: -0.08, y: 0, z: -1.08 },
-      defenderGroundEntry: { x: -5.3, y: 0.16, z: 27.15 },
-      defenderTopEntry: { x: -5.3, y: 4.78, z: 25.34 },
-      defenderGuard: { x: -5.3, y: 4.78, z: 24.82 },
-      breachGroundExit: { x: -5.3, y: 0.16, z: 26.75 },
+      defenderGroundEntry: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.8 },
+      defenderTopEntry: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.01 },
+      defenderGuard: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.53 },
+      breachGroundExit: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.4 },
     },
     right: {
       id: 'right',
-      groundEntry: { x: 5.3, y: 0.16, z: 22.45 },
-      groundAlign: { x: 5.3, y: 0.16, z: 23.42 },
-      climbTop: { x: 5.3, y: 4.78, z: 23.96 },
-      topExit: { x: 5.3, y: 4.78, z: 24.7 },
-      groundQueueOrigin: { x: 5.3, y: 0.16, z: 21.9 },
+      groundEntry: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 3.9 },
+      groundAlign: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 2.93 },
+      climbTop: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 2.39 },
+      topExit: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.65 },
+      groundQueueOrigin: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 4.45 },
       groundQueueStep: { x: 0.08, y: 0, z: -1.08 },
-      defenderGroundEntry: { x: 5.3, y: 0.16, z: 27.15 },
-      defenderTopEntry: { x: 5.3, y: 4.78, z: 25.34 },
-      defenderGuard: { x: 5.3, y: 4.78, z: 24.82 },
-      breachGroundExit: { x: 5.3, y: 0.16, z: 26.75 },
+      defenderGroundEntry: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.8 },
+      defenderTopEntry: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.01 },
+      defenderGuard: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.53 },
+      breachGroundExit: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.4 },
     },
   },
 } as const;

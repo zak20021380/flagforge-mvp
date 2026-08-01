@@ -45,51 +45,43 @@ export const PORTRAIT_LAYOUT = {
     },
   },
   camera: {
-    // Aim point: chest height in the central combat band, biased a little behind the
-    // flag platform so the objective sits just above the optical centre.
+    // Aim point stays on the arena centre line. The Z bias is aspect-dependent so the
+    // two castle silhouettes share the available portrait height evenly.
     targetX: 0,
     targetY: 1.4,
-    // Framing is interpolated between two tuned anchors on the real render aspect.
-    // narrow = phone portrait (360x800 / 393x873 / 412x915 all land on ~0.450),
-    // wide = the widest the CSS shell can ever be (min(vw, 520, vh * 0.625)).
+    // Narrow phones need a more overhead angle to fit the long arena without shrinking
+    // units unnecessarily. Wider portrait shells retain more of the angled 3D view.
     narrowAspect: 0.45,
     wideAspect: 0.625,
-    narrowFov: 0.8,
-    wideFov: 0.76,
-    narrowPitchDegrees: 45,
-    widePitchDegrees: 46,
-    narrowDistance: 54,
-    wideDistance: 51,
-    narrowTargetZ: -6.2,
-    wideTargetZ: -8,
-    // Same-aspect phones still differ in CSS height, so the HUD eats a different share
-    // of the frame. Trim the aim (and marginally the distance) against a reference
-    // height; the correction fades out toward the desktop shell aspect, where the
-    // enemy gate arch rather than the HUD share is the binding constraint.
-    referenceHeight: 873,
-    heightTrimMin: 0.86,
-    heightTrimMax: 1.16,
-    targetZHeightTrim: -10.4,
-    distanceHeightTrim: -6.5,
-    maxTargetZTrim: 1.3,
-    maxDistanceTrim: 0.9,
-    // Safety net for aspects narrower than the tuned phone anchor (21:9 and taller).
-    // The small cap keeps the portrait presentation close and allows intentional side crop.
-    deployCoverageMargin: 0.15,
-    maxCoverageTrim: 1.2,
-    // Portrait-safe clamps.
-    minFov: 0.74,
-    maxFov: 0.84,
+    narrowFov: 0.9,
+    wideFov: 0.86,
+    narrowPitchDegrees: 57.5,
+    widePitchDegrees: 45,
+    narrowTargetZ: -7.05,
+    wideTargetZ: -9.95,
+    minFov: 0.84,
+    maxFov: 0.94,
     minPitchDegrees: 43,
-    maxPitchDegrees: 48,
-    minDistance: 48,
-    maxDistance: 60,
-    minTargetZ: -9.5,
-    maxTargetZ: -4.8,
-    minHeight: 34,
-    maxHeight: 46,
-    minBackDistance: 32,
-    maxBackDistance: 50,
+    maxPitchDegrees: 65,
+    minTargetZ: -10.5,
+    maxTargetZ: -5,
+    // The foundation nearly touches the side edges. The asymmetric vertical limits
+    // reserve the existing top/bottom HUD and phone safe-area bands so both castles
+    // remain fully readable without changing the interface.
+    horizontalScreenCoverage: 0.97,
+    topScreenLimit: 0.8,
+    bottomScreenLimit: 0.7,
+    minDistance: 60,
+    // Conservative visual extrema used only for camera framing. They include both
+    // castle silhouettes, a fully raised gate, and the flag at the tower top.
+    castleFrameHalfWidth: 10.2,
+    castleFrameOuterZ: 33.5,
+    castleFrameTopY: 9,
+    raisedGateFrameHalfWidth: 3,
+    raisedGateFrameZ: 24.35,
+    raisedGateFrameTopY: 10.8,
+    flagFrameHalfWidth: 2.8,
+    flagFrameTopY: 15,
     // Brief, subtle dolly-in used for flag capture / gate opening / breach (world units).
     emphasisPush: 1.5,
   },

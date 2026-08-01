@@ -106,18 +106,9 @@ export function framePortraitCamera(
   const renderWidth = engine.getRenderWidth();
   const renderHeight = Math.max(1, engine.getRenderHeight());
   const renderAspect = renderWidth / renderHeight;
-  // CSS pixel height without touching the DOM (the engine is built with adaptToDeviceRatio off,
-  // so the only scaling between CSS and buffer pixels is the quality tier's hardware scaling).
-  const cssHeight = Math.max(1, renderHeight * engine.getHardwareScalingLevel());
 
   const wideFactor = (renderAspect - cameraConfig.narrowAspect) / (cameraConfig.wideAspect - cameraConfig.narrowAspect);
   const mix = (narrow: number, wide: number): number => narrow + (wide - narrow) * wideFactor;
-  const heightTrim = (clamp(
-    cameraConfig.referenceHeight / cssHeight,
-    cameraConfig.heightTrimMin,
-    cameraConfig.heightTrimMax,
-  ) - 1) * clamp(1 - wideFactor, 0, 1);
-
   const fov = clamp(mix(cameraConfig.narrowFov, cameraConfig.wideFov), cameraConfig.minFov, cameraConfig.maxFov);
   const pitch = clamp(
     mix(cameraConfig.narrowPitchDegrees, cameraConfig.widePitchDegrees),
@@ -125,36 +116,52 @@ export function framePortraitCamera(
     cameraConfig.maxPitchDegrees,
   ) * (Math.PI / 180);
   const targetZ = clamp(
-    mix(cameraConfig.narrowTargetZ, cameraConfig.wideTargetZ)
-      + clamp(heightTrim * cameraConfig.targetZHeightTrim, -cameraConfig.maxTargetZTrim, cameraConfig.maxTargetZTrim),
+    mix(cameraConfig.narrowTargetZ, cameraConfig.wideTargetZ),
     cameraConfig.minTargetZ,
     cameraConfig.maxTargetZ,
   );
-  let distance = clamp(
-    mix(cameraConfig.narrowDistance, cameraConfig.wideDistance)
-      + clamp(heightTrim * cameraConfig.distanceHeightTrim, -cameraConfig.maxDistanceTrim, cameraConfig.maxDistanceTrim),
-    cameraConfig.minDistance,
-    cameraConfig.maxDistance,
-  );
 
-  // Ultra-tall aspects see less width at the same distance. Allow only a slight step
-  // back; the outer deployment edges are intentionally cropped to preserve unit scale.
-  const deployRowZ = -arenaLayout.deploymentCenterZ - arenaLayout.deploymentDepth / 2;
-  const requiredHalfWidth = arenaLayout.deploymentWidth / 2 + cameraConfig.deployCoverageMargin;
-  const axisOffset = cameraConfig.targetY * Math.sin(pitch) + Math.cos(pitch) * (deployRowZ - targetZ);
-  const coverageDistance = requiredHalfWidth / (Math.tan(fov / 2) * renderAspect) - axisOffset;
-  if (renderAspect < cameraConfig.narrowAspect && coverageDistance > distance) {
-    distance = clamp(
-      distance + Math.min(coverageDistance - distance, cameraConfig.maxCoverageTrim),
-      cameraConfig.minDistance,
-      cameraConfig.maxDistance,
-    );
+  // Find the nearest distance that contains the actual gameplay silhouette. Unlike a
+  // fixed dolly anchor, this accounts for perspective: the player-side edge is wider
+  // on screen than the enemy-side edge, while raised structures constrain height.
+  const sinPitch = Math.sin(pitch);
+  const cosPitch = Math.cos(pitch);
+  const tanHalfFov = Math.tan(fov / 2);
+  let distance: number = cameraConfig.minDistance;
+  const fitPoint = (x: number, y: number, z: number): void => {
+    const depthOffset = (cameraConfig.targetY - y) * sinPitch + (z - targetZ) * cosPitch;
+    const verticalOffset = (y - cameraConfig.targetY) * cosPitch + (z - targetZ) * sinPitch;
+    const horizontalDistance = Math.abs(x)
+      / (cameraConfig.horizontalScreenCoverage * tanHalfFov * renderAspect) - depthOffset;
+    const upperDistance = verticalOffset
+      / (cameraConfig.topScreenLimit * tanHalfFov) - depthOffset;
+    const lowerDistance = -verticalOffset
+      / (cameraConfig.bottomScreenLimit * tanHalfFov) - depthOffset;
+    distance = Math.max(distance, horizontalDistance, upperDistance, lowerDistance);
+  };
+
+  const foundationHalfWidth = arenaLayout.foundationWidth / 2;
+  const foundationHalfLength = arenaLayout.foundationLength / 2;
+  for (const x of [-foundationHalfWidth, foundationHalfWidth]) {
+    for (const z of [-foundationHalfLength, foundationHalfLength]) fitPoint(x, 0, z);
   }
+  for (const x of [-cameraConfig.castleFrameHalfWidth, cameraConfig.castleFrameHalfWidth]) {
+    for (const z of [-cameraConfig.castleFrameOuterZ, cameraConfig.castleFrameOuterZ]) {
+      fitPoint(x, 0, z);
+      fitPoint(x, cameraConfig.castleFrameTopY, z);
+    }
+  }
+  for (const x of [-cameraConfig.raisedGateFrameHalfWidth, cameraConfig.raisedGateFrameHalfWidth]) {
+    fitPoint(x, cameraConfig.raisedGateFrameTopY, -cameraConfig.raisedGateFrameZ);
+    fitPoint(x, cameraConfig.raisedGateFrameTopY, cameraConfig.raisedGateFrameZ);
+  }
+  fitPoint(-cameraConfig.flagFrameHalfWidth, cameraConfig.flagFrameTopY, 0);
+  fitPoint(cameraConfig.flagFrameHalfWidth, cameraConfig.flagFrameTopY, 0);
 
   restingPosition.set(
     cameraConfig.targetX,
-    clamp(cameraConfig.targetY + distance * Math.sin(pitch), cameraConfig.minHeight, cameraConfig.maxHeight),
-    clamp(targetZ - distance * Math.cos(pitch), -cameraConfig.maxBackDistance, -cameraConfig.minBackDistance),
+    cameraConfig.targetY + distance * sinPitch,
+    targetZ - distance * cosPitch,
   );
   camera.position.copyFrom(restingPosition);
   camera.fov = fov;

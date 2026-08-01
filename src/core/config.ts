@@ -56,14 +56,14 @@ export const PORTRAIT_LAYOUT = {
     // wide = the widest the CSS shell can ever be (min(vw, 520, vh * 0.625)).
     narrowAspect: 0.45,
     wideAspect: 0.625,
-    narrowFov: 0.9,
-    wideFov: 0.86,
-    narrowPitchDegrees: 49,
-    widePitchDegrees: 50,
-    narrowDistance: 62.6,
-    wideDistance: 59,
-    narrowTargetZ: -3.95,
-    wideTargetZ: -7,
+    narrowFov: 0.8,
+    wideFov: 0.76,
+    narrowPitchDegrees: 45,
+    widePitchDegrees: 46,
+    narrowDistance: 54,
+    wideDistance: 51,
+    narrowTargetZ: -6.2,
+    wideTargetZ: -8,
     // Same-aspect phones still differ in CSS height, so the HUD eats a different share
     // of the frame. Trim the aim (and marginally the distance) against a reference
     // height; the correction fades out toward the desktop shell aspect, where the
@@ -75,23 +75,23 @@ export const PORTRAIT_LAYOUT = {
     distanceHeightTrim: -6.5,
     maxTargetZTrim: 1.3,
     maxDistanceTrim: 0.9,
-    // Safety net for aspects narrower than the tuned anchor (21:9 and taller): keep the
-    // player deployment row inside the frame, but never dolly back more than this.
+    // Safety net for aspects narrower than the tuned phone anchor (21:9 and taller).
+    // The small cap keeps the portrait presentation close and allows intentional side crop.
     deployCoverageMargin: 0.15,
-    maxCoverageTrim: 3.2,
+    maxCoverageTrim: 1.2,
     // Portrait-safe clamps.
-    minFov: 0.78,
-    maxFov: 0.92,
-    minPitchDegrees: 46,
-    maxPitchDegrees: 53,
-    minDistance: 52,
-    maxDistance: 68,
-    minTargetZ: -9,
-    maxTargetZ: -2.4,
-    minHeight: 38,
-    maxHeight: 56,
-    minBackDistance: 34,
-    maxBackDistance: 58,
+    minFov: 0.74,
+    maxFov: 0.84,
+    minPitchDegrees: 43,
+    maxPitchDegrees: 48,
+    minDistance: 48,
+    maxDistance: 60,
+    minTargetZ: -9.5,
+    maxTargetZ: -4.8,
+    minHeight: 34,
+    maxHeight: 46,
+    minBackDistance: 32,
+    maxBackDistance: 50,
     // Brief, subtle dolly-in used for flag capture / gate opening / breach (world units).
     emphasisPush: 1.5,
   },

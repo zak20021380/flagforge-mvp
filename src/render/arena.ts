@@ -34,7 +34,7 @@ export interface ArenaScene {
 
 export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, quality: QualityTier): ArenaScene {
   const scene = new Scene(engine);
-  scene.clearColor = new Color4(0.035, 0.072, 0.12, 1);
+  scene.clearColor = new Color4(0.055, 0.105, 0.12, 1);
   scene.ambientColor = new Color3(0.18, 0.2, 0.24);
   scene.skipPointerMovePicking = true;
 
@@ -136,14 +136,13 @@ export function framePortraitCamera(
     cameraConfig.maxDistance,
   );
 
-  // Narrower-than-tuned aspects (21:9 and taller) see less width at the same distance:
-  // ease back just enough to keep the tappable player deployment row framed, capped so a
-  // tall screen can never be pushed far away simply to reveal more ground.
+  // Ultra-tall aspects see less width at the same distance. Allow only a slight step
+  // back; the outer deployment edges are intentionally cropped to preserve unit scale.
   const deployRowZ = -arenaLayout.deploymentCenterZ - arenaLayout.deploymentDepth / 2;
   const requiredHalfWidth = arenaLayout.deploymentWidth / 2 + cameraConfig.deployCoverageMargin;
   const axisOffset = cameraConfig.targetY * Math.sin(pitch) + Math.cos(pitch) * (deployRowZ - targetZ);
   const coverageDistance = requiredHalfWidth / (Math.tan(fov / 2) * renderAspect) - axisOffset;
-  if (coverageDistance > distance) {
+  if (renderAspect < cameraConfig.narrowAspect && coverageDistance > distance) {
     distance = clamp(
       distance + Math.min(coverageDistance - distance, cameraConfig.maxCoverageTrim),
       cameraConfig.minDistance,
@@ -165,6 +164,11 @@ export function framePortraitCamera(
 
 function createGroundAndPaths(scene: Scene, materials: MaterialLibrary): void {
   const layout = PORTRAIT_LAYOUT.arena;
+  const surroundings = MeshBuilder.CreateGround('arena-surroundings', { width: 110, height: 180, subdivisions: 1 }, scene);
+  surroundings.position.y = -0.84;
+  surroundings.material = materials.foliageDark;
+  surroundings.isPickable = false;
+
   const ground = MeshBuilder.CreateGround('arena-ground', { width: layout.groundWidth, height: layout.groundLength, subdivisions: 1 }, scene);
   ground.material = materials.grass;
   ground.receiveShadows = true;

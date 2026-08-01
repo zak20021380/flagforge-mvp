@@ -1,0 +1,62 @@
+import { Vector3 } from '@babylonjs/core';
+import { UNIT_STATS } from '../core/config';
+import type { Lane, Team, UnitKind, UnitState } from '../core/types';
+import { UnitRig } from '../render/unitRig';
+
+export class UnitEntity {
+  readonly stats;
+  active = false;
+  health = 1;
+  state: UnitState = 'idle';
+  lane: Lane = 'center';
+  target: UnitEntity | null = null;
+  lastAttacker: UnitEntity | null = null;
+  carryingFlag = false;
+  attackClock = 0;
+  attackHitApplied = false;
+  hitClock = 0;
+  deathClock = 0;
+  targetRefreshClock = 0;
+  age = 0;
+
+  constructor(
+    readonly id: number,
+    readonly team: Team,
+    readonly kind: UnitKind,
+    readonly rig: UnitRig,
+  ) {
+    this.stats = UNIT_STATS[kind];
+  }
+
+  get position(): Vector3 {
+    return this.rig.root.position;
+  }
+
+  spawn(position: Vector3, lane: Lane): void {
+    this.active = true;
+    this.health = this.stats.maxHealth;
+    this.state = 'idle';
+    this.lane = lane;
+    this.target = null;
+    this.lastAttacker = null;
+    this.carryingFlag = false;
+    this.attackClock = 0;
+    this.attackHitApplied = false;
+    this.hitClock = 0;
+    this.deathClock = 0;
+    this.targetRefreshClock = Math.random() * 0.16;
+    this.age = 0;
+    this.rig.root.position.copyFrom(position);
+    this.rig.root.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
+    this.rig.resetVisual();
+    this.rig.setEnabled(true);
+  }
+
+  deactivate(): void {
+    this.active = false;
+    this.target = null;
+    this.lastAttacker = null;
+    this.carryingFlag = false;
+    this.rig.setEnabled(false);
+  }
+}

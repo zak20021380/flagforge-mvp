@@ -26,7 +26,8 @@ export function createEnvironment(scene: Scene, materials: MaterialLibrary, qual
  */
 function configureDepthFog(scene: Scene): void {
   scene.fogMode = Scene.FOGMODE_LINEAR;
-  scene.fogColor = new Color3(0.09, 0.15, 0.18);
+  // Pale haze matched to the daylight sky so the treeline dissolves into it.
+  scene.fogColor = new Color3(0.66, 0.79, 0.86);
   scene.fogStart = 74;
   scene.fogEnd = 150;
 }

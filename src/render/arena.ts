@@ -35,8 +35,10 @@ export interface ArenaScene {
 
 export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, quality: QualityTier): ArenaScene {
   const scene = new Scene(engine);
-  scene.clearColor = new Color4(0.055, 0.105, 0.12, 1);
-  scene.ambientColor = new Color3(0.18, 0.2, 0.24);
+  // Bright daylight sky and a warm ambient fill: with the clutter gone the map is read almost
+  // entirely off flat colour, so the lighting has to keep the grass fresh and the shadows soft.
+  scene.clearColor = new Color4(0.47, 0.7, 0.85, 1);
+  scene.ambientColor = new Color3(0.26, 0.29, 0.3);
   scene.skipPointerMovePicking = true;
 
   const cameraRestingPosition = Vector3.Zero();
@@ -47,8 +49,8 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
   camera.inputs.clear();
 
   const hemispheric = new HemisphericLight('ambient-light', new Vector3(0, 1, -0.15), scene);
-  hemispheric.intensity = 0.82;
-  hemispheric.groundColor = new Color3(0.15, 0.2, 0.25);
+  hemispheric.intensity = 0.9;
+  hemispheric.groundColor = new Color3(0.34, 0.4, 0.34);
 
   const sun = new DirectionalLight('sun-light', new Vector3(-0.42, -1, 0.38), scene);
   sun.position = new Vector3(26, 38, -32);

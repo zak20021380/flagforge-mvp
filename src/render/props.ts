@@ -2,7 +2,7 @@ import { AbstractMesh, Mesh, MeshBuilder, Scene, TransformNode } from '@babylonj
 import { PORTRAIT_LAYOUT } from '../core/config';
 import { createRandom, Scatter, StaticBatch } from './decorKit';
 import { MaterialLibrary } from './materials';
-import { isNearWater, isOnPlaza, roadClearance, surroundingsHeight } from './terrain';
+import { isNearWater, isOnDeploymentPad, isOnPlaza, roadClearance, surroundingsHeight } from './terrain';
 
 const ARENA = PORTRAIT_LAYOUT.arena;
 const LANES = [-ARENA.laneOffset, 0, ARENA.laneOffset];
@@ -12,20 +12,15 @@ const SURROUNDINGS_Y = -0.84;
 const outsideGround = (x: number, z: number): number => SURROUNDINGS_Y + surroundingsHeight(x, z);
 
 /**
- * Authored anchors (banners, torches, camps, deployment posts) that scattered vegetation must
- * leave alone, so a hand-placed silhouette never ends up buried inside a random bush.
+ * Authored anchors that scattered vegetation must leave alone, so a hand-placed silhouette never
+ * ends up buried inside a random bush. Only the four objective banners qualify now — the camps,
+ * monoliths, deployment posts and verge torches they used to protect are gone.
  */
 const ANCHORS: Array<[number, number, number]> = [];
 const reserve = (x: number, z: number, radius: number): void => {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) ANCHORS.push([sx * x, sz * z, radius]);
 };
-reserve(9, 5.4, 2.2);
-reserve(9.7, 6.2, 1.5);
-reserve(11.6, 17, 1.9);
-reserve(10.7, 12.98, 1.3);
-reserve(10.7, 21.02, 1.3);
-reserve(11.2, 24.2, 3.4);
-reserve(10.6, 11.5, 1.7);
+reserve(9, 5.4, 2.6);
 
 const clearsAnchors = (x: number, z: number, radius: number): boolean =>
   ANCHORS.every(([ax, az, ar]) => Math.hypot(x - ax, z - az) > ar + radius);
@@ -103,20 +98,23 @@ function createForestSources(scene: Scene, materials: MaterialLibrary): Forest {
 }
 
 /**
- * Verge treeline. Trees start outside the outer road edge and keep clear of the water and of
- * every authored anchor, so the marching lanes and the river crossings stay completely open.
+ * Verge treeline. With the side walls gone this short row is what frames the battlefield, so it is
+ * deliberately sparse and widely spaced: trees keep clear of the water, the deployment pads and
+ * every authored anchor, and species rotate in order rather than at random so the row reads placed.
  */
 function plantVergeTrees(forest: Forest, density: number): void {
   const random = createRandom(4271);
-  const target = Math.round(40 * density);
-  for (let attempt = 0, planted = 0; attempt < target * 14 && planted < target; attempt += 1) {
+  const target = Math.round(18 * density);
+  const placed: Array<[number, number]> = [];
+  for (let attempt = 0; attempt < target * 30 && placed.length < target; attempt += 1) {
     const side = random() < 0.5 ? -1 : 1;
-    const x = side * (9.7 + random() * 2.5);
-    const z = -30.5 + random() * 62;
-    if (isNearWater(z, 2.4) || !clearsAnchors(x, z, 1.6)) continue;
-    const species = forest.species[Math.floor(random() * forest.species.length)];
-    plantTree(species, x, z, 0, 0.8 + random() * 0.45, random() * Math.PI * 2, (random() - 0.5) * 0.06);
-    planted += 1;
+    const x = side * (9.9 + random() * 2.3);
+    const z = -29 + random() * 58;
+    if (isNearWater(z, 2.6) || !clearsAnchors(x, z, 1.6) || isOnDeploymentPad(x, z, 0.9)) continue;
+    if (placed.some(([px, pz]) => px * side > 0 && Math.hypot(x - px, z - pz) < 5.2)) continue;
+    const species = forest.species[placed.length % forest.species.length];
+    plantTree(species, x, z, 0, 0.85 + random() * 0.4, random() * Math.PI * 2, (random() - 0.5) * 0.05);
+    placed.push([x, z]);
   }
 }
 
@@ -127,7 +125,7 @@ function plantVergeTrees(forest: Forest, density: number): void {
  */
 function plantOuterForest(forest: Forest, density: number): void {
   const random = createRandom(8813);
-  const target = Math.round(112 * density);
+  const target = Math.round(90 * density);
   for (let attempt = 0, planted = 0; attempt < target * 10 && planted < target; attempt += 1) {
     const z = -26 + random() * 80;
     const x = (random() * 2 - 1) * visibleHalfWidth(z);
@@ -140,153 +138,88 @@ function plantOuterForest(forest: Forest, density: number): void {
 }
 
 /**
- * Low planting: bushes on the verge and outer ground, grass tufts in the safe gaps between the
- * roads, and flower clusters. Nothing here rises above knee height on a unit, so the layer adds
- * life without ever hiding a soldier, a health bar or a lane.
+ * Low planting: a few bushes on the verge and outer ground plus grass tufts in the safe bands
+ * between the roads. Two bush shapes and one tuft, all fresh green — no flowers, no dry straw and
+ * nothing inside a deployment pad — so the layer adds life without adding a single point of noise.
  */
 function createUndergrowth(scene: Scene, materials: MaterialLibrary, density: number): void {
   const random = createRandom(5519);
   const bush = scatterOf(MeshBuilder.CreateSphere('bush-source', { diameter: 1.35, segments: 4 }, scene), materials.foliage);
   const bushMid = scatterOf(MeshBuilder.CreateSphere('bush-mid-source', { diameter: 1.1, segments: 4 }, scene), materials.foliageMid);
   const tuft = scatterOf(MeshBuilder.CreateCylinder('grass-tuft-source', { height: 0.52, diameterBottom: 0.34, diameterTop: 0.02, tessellation: 4 }, scene), materials.grassLush);
-  const dryTuft = scatterOf(MeshBuilder.CreateCylinder('grass-dry-source', { height: 0.44, diameterBottom: 0.3, diameterTop: 0.02, tessellation: 4 }, scene), materials.grassDry);
-  const flower = scatterOf(MeshBuilder.CreateSphere('flower-source', { diameter: 0.28, segments: 3 }, scene), materials.blossom);
 
-  const bushTarget = Math.round(70 * density);
-  for (let attempt = 0, placed = 0; attempt < bushTarget * 12 && placed < bushTarget; attempt += 1) {
+  const bushTarget = Math.round(30 * density);
+  for (let attempt = 0, placed = 0; attempt < bushTarget * 14 && placed < bushTarget; attempt += 1) {
     const side = random() < 0.5 ? -1 : 1;
-    const outer = random() < 0.32;
+    const outer = random() < 0.36;
     const x = side * (outer ? 15 + random() * 7 : VERGE_MIN + random() * (VERGE_MAX - VERGE_MIN));
     const z = outer ? -24 + random() * 74 : -30 + random() * 61;
-    if (outer ? Math.abs(x) > visibleHalfWidth(z) : isNearWater(z, 1.7) || !clearsAnchors(x, z, 1)) continue;
-    const scale = 0.62 + random() * 0.62;
+    if (outer
+      ? Math.abs(x) > visibleHalfWidth(z)
+      : isNearWater(z, 1.7) || !clearsAnchors(x, z, 1) || isOnDeploymentPad(x, z, 1)) continue;
+    const scale = 0.66 + random() * 0.6;
     const source = random() < 0.5 ? bush : bushMid;
     source.add(x, (outer ? outsideGround(x, z) : 0) + 0.34 * scale, z, random() * 3, scale, scale * (0.6 + random() * 0.35), scale);
     placed += 1;
   }
 
-  const tuftTarget = Math.round(300 * density);
-  for (let attempt = 0, placed = 0; attempt < tuftTarget * 6 && placed < tuftTarget; attempt += 1) {
-    const roll = random();
+  const tuftTarget = Math.round(110 * density);
+  for (let attempt = 0, placed = 0; attempt < tuftTarget * 8 && placed < tuftTarget; attempt += 1) {
     const side = random() < 0.5 ? -1 : 1;
-    let ground = 0;
-    let x: number;
-    let z: number;
-    if (roll < 0.42) {
-      x = side * (2.3 + random() * 2);
-      z = -25 + random() * 50;
-    } else if (roll < 0.8) {
-      x = side * (VERGE_MIN - 0.3 + random() * 4.2);
-      z = -30 + random() * 61;
-    } else {
-      x = side * (15 + random() * 9);
-      z = -22 + random() * 70;
-      ground = outsideGround(x, z);
-    }
-    if (roadClearance(x) < 0.24 || isNearWater(z, 1.4) || isOnPlaza(x, z)) continue;
-    const scale = 0.65 + random() * 0.7;
-    const source = random() < 0.62 ? tuft : dryTuft;
-    source.add(x, ground + 0.24 * scale, z, random() * 3, scale, scale * (0.75 + random() * 0.6), scale, (random() - 0.5) * 0.25);
+    const inner = random() < 0.4;
+    const x = side * (inner ? 2.4 + random() * 1.9 : VERGE_MIN - 0.2 + random() * 4);
+    const z = -29 + random() * 58;
+    if (roadClearance(x) < 0.26 || isNearWater(z, 1.4) || isOnPlaza(x, z) || isOnDeploymentPad(x, z, 0.2)) continue;
+    const scale = 0.7 + random() * 0.65;
+    tuft.add(x, 0.24 * scale, z, random() * 3, scale, scale * (0.8 + random() * 0.5), scale, (random() - 0.5) * 0.22);
     placed += 1;
   }
-
-  const clusterTarget = Math.round(34 * density);
-  for (let attempt = 0, placed = 0; attempt < clusterTarget * 12 && placed < clusterTarget; attempt += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const x = side * (VERGE_MIN + random() * (VERGE_MAX - VERGE_MIN));
-    const z = -29 + random() * 59;
-    if (isNearWater(z, 1.5) || !clearsAnchors(x, z, 0.8)) continue;
-    for (let petal = 0; petal < 3; petal += 1) {
-      const scale = 0.7 + random() * 0.8;
-      flower.add(x + (random() - 0.5) * 0.7, 0.13 + random() * 0.09, z + (random() - 0.5) * 0.7, random() * 3, scale, scale, scale);
-    }
-    placed += 1;
-  }
-  for (const source of [bush, bushMid, tuft, dryTuft, flower]) source.finish();
+  for (const source of [bush, bushMid, tuft]) source.finish();
 }
 
 /**
- * Rock variation: four low-poly boulder shapes plus a pebble, all thin-instanced, and four merged
- * standing stones that give the mid-field verge an authored landmark on each side.
+ * Rock variation: two low-poly boulder shapes, thin-instanced onto the verge and the outer ground.
+ * No pebble layer and no standing stones, so the ground stays clear and the boulders that remain
+ * read as deliberate landmarks rather than scatter.
  */
-function createRockField(scene: Scene, materials: MaterialLibrary, batch: StaticBatch, density: number): void {
+function createRockField(scene: Scene, materials: MaterialLibrary, density: number): void {
   const random = createRandom(3121);
   const rocks = [
-    scatterOf(MeshBuilder.CreatePolyhedron('rock-a-source', { type: 1, size: 1.05 }, scene), materials.stoneDark),
-    scatterOf(MeshBuilder.CreatePolyhedron('rock-b-source', { type: 0, size: 0.95 }, scene), materials.stone),
-    scatterOf(MeshBuilder.CreatePolyhedron('rock-c-source', { type: 2, size: 0.85 }, scene), materials.stoneLight),
-    scatterOf(MeshBuilder.CreatePolyhedron('rock-d-source', { type: 3, size: 0.9 }, scene), materials.stoneMoss),
+    scatterOf(MeshBuilder.CreatePolyhedron('rock-a-source', { type: 1, size: 1.05 }, scene), materials.stone),
+    scatterOf(MeshBuilder.CreatePolyhedron('rock-b-source', { type: 3, size: 0.9 }, scene), materials.stoneMoss),
   ];
-  const pebble = scatterOf(MeshBuilder.CreatePolyhedron('pebble-source', { type: 1, size: 0.3 }, scene), materials.stone);
 
-  const rockTarget = Math.round(46 * density);
-  for (let attempt = 0, placed = 0; attempt < rockTarget * 12 && placed < rockTarget; attempt += 1) {
+  const rockTarget = Math.round(18 * density);
+  const placedSpots: Array<[number, number]> = [];
+  for (let attempt = 0; attempt < rockTarget * 20 && placedSpots.length < rockTarget; attempt += 1) {
     const side = random() < 0.5 ? -1 : 1;
-    const outer = random() < 0.4;
-    const x = side * (outer ? 15.2 + random() * 8 : VERGE_MIN + 0.2 + random() * 3.5);
+    const outer = random() < 0.45;
+    const x = side * (outer ? 15.2 + random() * 8 : VERGE_MIN + 0.3 + random() * 3.2);
     const z = outer ? -24 + random() * 74 : -30 + random() * 61;
-    if (outer ? Math.abs(x) > visibleHalfWidth(z) : !clearsAnchors(x, z, 1)) continue;
-    const scale = (outer ? 0.75 : 0.5) + random() * 0.7;
+    if (outer
+      ? Math.abs(x) > visibleHalfWidth(z)
+      : !clearsAnchors(x, z, 1.2) || isOnDeploymentPad(x, z, 1.6)) continue;
+    if (placedSpots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 6)) continue;
+    const scale = (outer ? 0.85 : 0.6) + random() * 0.7;
     const ground = outer ? outsideGround(x, z) : 0;
-    rocks[Math.floor(random() * rocks.length)]
+    rocks[placedSpots.length % rocks.length]
       .add(x, ground + 0.16 * scale, z, random() * 3, scale, scale * (0.55 + random() * 0.4), scale * (0.8 + random() * 0.5), (random() - 0.5) * 0.2);
-    placed += 1;
+    placedSpots.push([x, z]);
   }
-
-  const pebbleTarget = Math.round(150 * density);
-  for (let attempt = 0, placed = 0; attempt < pebbleTarget * 5 && placed < pebbleTarget; attempt += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const inner = random() < 0.45;
-    const x = side * (inner ? 2.25 + random() * 2.05 : VERGE_MIN - 0.4 + random() * 4.4);
-    const z = -30 + random() * 60;
-    if (roadClearance(x) < 0.22 || isOnPlaza(x, z)) continue;
-    const scale = 0.6 + random() * 0.9;
-    pebble.add(x, 0.06 * scale, z, random() * 3, scale, scale * 0.7, scale, (random() - 0.5) * 0.4);
-    placed += 1;
-  }
-  for (const source of [...rocks, pebble]) source.finish();
-  createStandingStones(scene, materials, batch);
-}
-
-/** Mossy monoliths on a paved base — four cheap landmarks that give the verge some story. */
-function createStandingStones(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const x = sx * 10.6;
-      const z = sz * 11.5;
-      const yaw = sx * sz * 0.24;
-      const base = MeshBuilder.CreateCylinder(`standing-stone-base-${sx}-${sz}`, { height: 0.16, diameter: 2.15, tessellation: 9 }, scene);
-      base.position.set(x, 0.08, z);
-      base.material = materials.stoneWarm;
-      batch.add(base);
-
-      const stone = MeshBuilder.CreateBox(`standing-stone-${sx}-${sz}`, { width: 0.86, height: 2.55, depth: 0.62 }, scene);
-      stone.position.set(x, 1.3, z);
-      stone.rotation.set(0, yaw, sx * 0.03);
-      stone.material = materials.stoneLight;
-      batch.add(stone);
-
-      const moss = MeshBuilder.CreateBox(`standing-stone-moss-${sx}-${sz}`, { width: 0.92, height: 0.3, depth: 0.68 }, scene);
-      moss.position.set(x, 2.55, z);
-      moss.rotation.y = yaw;
-      moss.material = materials.stoneMoss;
-      batch.add(moss);
-    }
-  }
+  for (const source of rocks) source.finish();
 }
 
 /**
- * Water-edge dressing. Reeds and lily pads only appear on the open stretches of each river,
- * never near a bridge, so the crossings stay clean and readable while the banks look finished.
+ * Water-edge dressing: a light band of reeds on the open stretches of each river, never near a
+ * bridge. No lily pads, so the water surface itself stays a clean readable ribbon.
  */
 function createWaterEdge(scene: Scene, materials: MaterialLibrary, density: number): void {
   const random = createRandom(7717);
   const reed = scatterOf(MeshBuilder.CreateCylinder('reed-source', { height: 1.15, diameterBottom: 0.16, diameterTop: 0.02, tessellation: 4 }, scene), materials.foliageDeep);
-  const lily = scatterOf(MeshBuilder.CreateCylinder('lily-pad-source', { height: 0.03, diameter: 0.62, tessellation: 6 }, scene), materials.foliageMid);
   const nearBridge = (x: number): boolean => LANES.some((lane) => Math.abs(x - lane) < 2.6);
 
-  const reedTarget = Math.round(90 * density);
-  for (let attempt = 0, placed = 0; attempt < reedTarget * 5 && placed < reedTarget; attempt += 1) {
+  const reedTarget = Math.round(28 * density);
+  for (let attempt = 0, placed = 0; attempt < reedTarget * 8 && placed < reedTarget; attempt += 1) {
     const x = (random() * 2 - 1) * 12.6;
     if (nearBridge(x)) continue;
     const z = (random() < 0.5 ? -ARENA.riverZ : ARENA.riverZ) + (random() < 0.5 ? -1 : 1) * (1.05 + random() * 0.8);
@@ -294,18 +227,7 @@ function createWaterEdge(scene: Scene, materials: MaterialLibrary, density: numb
     reed.add(x, 0.5 * scale, z, random() * 3, scale, scale * (0.8 + random() * 0.6), scale, (random() - 0.5) * 0.3);
     placed += 1;
   }
-
-  const lilyTarget = Math.round(40 * density);
-  for (let attempt = 0, placed = 0; attempt < lilyTarget * 5 && placed < lilyTarget; attempt += 1) {
-    const x = (random() * 2 - 1) * 12.4;
-    if (nearBridge(x)) continue;
-    const z = (random() < 0.5 ? -ARENA.riverZ : ARENA.riverZ) + (random() - 0.5) * 1.7;
-    const scale = 0.7 + random() * 0.8;
-    lily.add(x, 0.092, z, random() * 3, scale, 1, scale);
-    placed += 1;
-  }
   reed.finish();
-  lily.finish();
 }
 
 /**
@@ -360,153 +282,24 @@ function addTorch(
 }
 
 /**
- * Firelight around everything that matters: the castle gates, the objective plaza, both river
- * crossings, the wall pillars and the centre bridges. Every position sits in the safe bands
- * between the roads or out on the verge, so no flame ever stands in a marching lane.
+ * Firelight only where it means something: four torches on the castle approaches and four framing
+ * the objective plaza. Every position sits in the safe band between the roads, so no flame ever
+ * stands in a marching lane, and the whole map now carries eight fixtures instead of twenty-eight.
  */
 function createTorchlight(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
   for (const sz of [-1, 1]) {
     for (const sx of [-1, 1]) {
       addTorch(scene, materials, batch, sx * 3.5, 0, sz * 23.4, 1.15, sx * sz > 0);
       addTorch(scene, materials, batch, sx * 3.2, 0.07, sz * 5.6, 0.95, sx > 0);
-      addTorch(scene, materials, batch, sx * 9.7, 0, sz * 6.2, 1, sz > 0);
-    }
-  }
-
-  // Wall pillars every third bay carry a brazier; no ground pool, they light the parapet itself.
-  for (const sx of [-1, 1]) {
-    for (let index = 2; index <= 11; index += 3) {
-      const z = -ARENA.sideWallLength / 2 + (index / 11) * ARENA.sideWallLength;
-      addTorch(scene, materials, batch, sx * ARENA.sideWallX, 2, z, 0.6, index % 2 === 0, false);
-    }
-  }
-
-  // Small flames on the centre bridge posts, marking the crossings after dark.
-  for (const sz of [-1, 1]) {
-    for (const sx of [-1, 1]) {
-      for (const end of [-1, 1]) {
-        const flame = MeshBuilder.CreateSphere(`bridge-flame-${sx}-${sz}-${end}`, { diameter: 0.32, segments: 5 }, scene);
-        flame.position.set(sx * 2, 1.03, sz * ARENA.riverZ + end * 2.06);
-        flame.scaling.set(1, 1.45, 1);
-        flame.material = end > 0 ? materials.torchGlow : materials.torchGlowWarm;
-        batch.add(flame);
-      }
     }
   }
 }
 
 /**
- * Supply camps behind each deployment pad: tents, crates, barrels, a spear rack and a campfire.
- * They are authored one-offs merged into the shared prop batch, so all four camps together add
- * nothing beyond the materials they already share with the rest of the arena.
- */
-function createCamps(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const id = `${sx}-${sz}`;
-      // Local frame: +dx points out towards the side wall, +dz towards that team's castle.
-      const at = (dx: number, dz: number): { x: number; z: number } => ({ x: sx * (11.2 + dx), z: sz * (24.2 + dz) });
-
-      for (const [index, spot] of [at(-0.35, 1.5), at(0.55, 0.85)].entries()) {
-        const tent = MeshBuilder.CreateCylinder(`camp-tent-${id}-${index}`, { height: 1.85, diameterTop: 0, diameterBottom: 2.6, tessellation: 4 }, scene);
-        tent.position.set(spot.x, 0.92, spot.z);
-        tent.rotation.y = 0.72 + index * 0.26;
-        tent.material = materials.canvas;
-        batch.add(tent);
-
-        const pole = MeshBuilder.CreateCylinder(`camp-tent-pole-${id}-${index}`, { height: 2.35, diameter: 0.1, tessellation: 5 }, scene);
-        pole.position.set(spot.x, 1.17, spot.z);
-        pole.material = materials.wood;
-        batch.add(pole);
-      }
-
-      for (const [index, spot] of [at(-1, -1.9), at(-0.1, -2.15), at(0.8, -1.75)].entries()) {
-        const crate = MeshBuilder.CreateBox(`camp-crate-${id}-${index}`, { width: 0.72, height: 0.58 + index * 0.09, depth: 0.72 }, scene);
-        crate.position.set(spot.x, 0.29 + index * 0.045, spot.z);
-        crate.rotation.y = 0.32 * index;
-        crate.material = materials.wood;
-        batch.add(crate);
-      }
-
-      for (const [index, spot] of [at(1, -1.15), at(1.05, -0.45)].entries()) {
-        const barrel = MeshBuilder.CreateCylinder(`camp-barrel-${id}-${index}`, { height: 0.86, diameter: 0.62, tessellation: 8 }, scene);
-        barrel.position.set(spot.x, 0.43, spot.z);
-        barrel.material = materials.wood;
-        batch.add(barrel);
-
-        const band = MeshBuilder.CreateCylinder(`camp-barrel-band-${id}-${index}`, { height: 0.11, diameter: 0.68, tessellation: 8 }, scene);
-        band.position.set(spot.x, 0.55, spot.z);
-        band.material = materials.metal;
-        batch.add(band);
-      }
-      createCampFire(scene, materials, batch, id, sx, at(-0.55, -0.35));
-      createSpearRack(scene, materials, batch, id, at(-1.05, 1.45));
-    }
-  }
-}
-
-/** Ring of stones, crossed logs, a flame and an additive pool: a campfire for four draw groups. */
-function createCampFire(
-  scene: Scene,
-  materials: MaterialLibrary,
-  batch: StaticBatch,
-  id: string,
-  side: number,
-  spot: { x: number; z: number },
-): void {
-  for (let index = 0; index < 6; index += 1) {
-    const angle = (index / 6) * Math.PI * 2;
-    const stone = MeshBuilder.CreateBox(`camp-fire-stone-${id}-${index}`, { width: 0.34, height: 0.22, depth: 0.26 }, scene);
-    stone.position.set(spot.x + Math.cos(angle) * 0.62, 0.11, spot.z + Math.sin(angle) * 0.62);
-    stone.rotation.y = angle;
-    stone.material = materials.stoneWarm;
-    batch.add(stone);
-  }
-  for (const index of [0, 1]) {
-    const log = MeshBuilder.CreateCylinder(`camp-fire-log-${id}-${index}`, { height: 1.05, diameter: 0.18, tessellation: 6 }, scene);
-    log.position.set(spot.x, 0.16, spot.z);
-    log.rotation.set(Math.PI / 2, index === 0 ? 0.6 : -0.7, 0);
-    log.material = materials.wood;
-    batch.add(log);
-  }
-  const flame = MeshBuilder.CreateSphere(`camp-fire-flame-${id}`, { diameter: 0.5, segments: 5 }, scene);
-  flame.position.set(spot.x, 0.42, spot.z);
-  flame.scaling.set(1, 1.5, 1);
-  flame.material = side > 0 ? materials.torchGlow : materials.torchGlowWarm;
-  batch.add(flame);
-
-  const pool = MeshBuilder.CreateCylinder(`camp-fire-pool-${id}`, { height: 0.02, diameter: 4.2, tessellation: 12 }, scene);
-  pool.position.set(spot.x, 0.15, spot.z);
-  pool.material = materials.lightPool;
-  batch.add(pool);
-}
-
-/** Two posts, a rail and three spears — a cheap silhouette that reads as an army camp. */
-function createSpearRack(scene: Scene, materials: MaterialLibrary, batch: StaticBatch, id: string, spot: { x: number; z: number }): void {
-  for (const side of [-1, 1]) {
-    const post = MeshBuilder.CreateBox(`camp-rack-post-${id}-${side}`, { width: 0.12, height: 1.15, depth: 0.12 }, scene);
-    post.position.set(spot.x + side * 0.55, 0.58, spot.z);
-    post.material = materials.wood;
-    batch.add(post);
-  }
-  const rail = MeshBuilder.CreateBox(`camp-rack-rail-${id}`, { width: 1.3, height: 0.1, depth: 0.14 }, scene);
-  rail.position.set(spot.x, 1.05, spot.z);
-  rail.material = materials.wood;
-  batch.add(rail);
-
-  for (const [index, offset] of [-0.4, 0.02, 0.42].entries()) {
-    const spear = MeshBuilder.CreateCylinder(`camp-rack-spear-${id}-${index}`, { height: 1.75, diameter: 0.07, tessellation: 5 }, scene);
-    spear.position.set(spot.x + offset, 0.88, spot.z + 0.12);
-    spear.rotation.x = 0.13 * (index - 1);
-    spear.material = materials.metal;
-    batch.add(spear);
-  }
-}
-
-/**
- * Banners: four gold objective banners framing the centre, plus a team banner on each side of
- * both deployment pads. Poles, arms, bases and finials are merged into the static batch; only the
- * eight cloths stay separate, hung on pivot nodes so they can sway.
+ * Banners: four gold objective banners framing the centre. Poles, arms, bases and finials are
+ * merged into the static batch; only the four cloths stay separate, hung on pivot nodes so they can
+ * sway. The team banners that used to flank both deployment pads are gone with the rest of the
+ * clutter, leaving the pads as clean team-coloured rectangles.
  */
 function createBanners(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): TransformNode[] {
   const pivots: TransformNode[] = [];
@@ -558,13 +351,6 @@ function createBanners(scene: Scene, materials: MaterialLibrary, batch: StaticBa
       index += 1;
     }
   }
-  for (const sz of [-1, 1]) {
-    for (const sx of [-1, 1]) {
-      const team = sz < 0 ? 'blue' : 'red';
-      place(team, sz < 0 ? materials.blue : materials.red, sx * 11.6, sz * ARENA.deploymentCenterZ, 4.2, index);
-      index += 1;
-    }
-  }
   return pivots;
 }
 
@@ -580,10 +366,9 @@ export function createProps(scene: Scene, materials: MaterialLibrary, density: n
   plantOuterForest(forest, density);
   for (const source of forest.sources) source.finish();
   createUndergrowth(scene, materials, density);
-  createRockField(scene, materials, batch, density);
+  createRockField(scene, materials, density);
   createWaterEdge(scene, materials, density);
   createTorchlight(scene, materials, batch);
-  createCamps(scene, materials, batch);
   const banners = createBanners(scene, materials, batch);
   batch.flush('prop-dressing');
   return banners;
@@ -591,7 +376,7 @@ export function createProps(scene: Scene, materials: MaterialLibrary, density: n
 
 /**
  * The only per-frame environment work: two flame materials pulse out of phase, the additive light
- * pools breathe with them, and the banner cloths sway. Two material updates and eight transforms
+ * pools breathe with them, and the banner cloths sway. Two material updates and four transforms
  * per frame for the whole map — no particle systems and no extra lights.
  */
 export function startEnvironmentLife(scene: Scene, materials: MaterialLibrary, banners: TransformNode[]): void {

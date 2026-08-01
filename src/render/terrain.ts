@@ -6,14 +6,13 @@ import {
 } from '@babylonjs/core';
 import { PORTRAIT_LAYOUT } from '../core/config';
 import { clamp } from '../core/math';
-import { createRandom, Scatter, smoothStep, StaticBatch, valueNoise } from './decorKit';
+import { createRandom, smoothStep, StaticBatch, valueNoise } from './decorKit';
 import { MaterialLibrary } from './materials';
 
 const ARENA = PORTRAIT_LAYOUT.arena;
 const LANES = [-ARENA.laneOffset, 0, ARENA.laneOffset];
 const RIVER_HALF_DEPTH = 1.25;
 const BRIDGE_HALF = 2.05;
-const ROAD_HALF_LENGTH = ARENA.roadLength / 2;
 const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
@@ -39,6 +38,11 @@ export const isNearWater = (z: number, margin = 0.6): boolean =>
 export const isOnPlaza = (x: number, z: number): boolean =>
   Math.abs(x) < PLAZA_HALF_X + 0.4 && Math.abs(z) < PLAZA_HALF_Z + 0.4;
 
+/** Deployment pads are read as UI, so no decoration is allowed to stand on or overhang one. */
+export const isOnDeploymentPad = (x: number, z: number, margin = 0): boolean =>
+  Math.abs(x) < ARENA.deploymentWidth / 2 + margin
+  && Math.abs(Math.abs(z) - ARENA.deploymentCenterZ) < ARENA.deploymentDepth / 2 + margin;
+
 /**
  * Rolling ground outside the arena. The displacement is masked to zero across the playfield
  * footprint so the battlefield itself stays perfectly flat for unit movement and picking.
@@ -57,9 +61,8 @@ export function createTerrain(scene: Scene, materials: MaterialLibrary, density:
   createRoads(scene, materials);
   createRiverAndBridges(scene, materials);
   createCenterPlaza(scene, materials);
-  createGroundDetail(scene, materials, density);
+  createMeadowPatches(scene, materials, density);
   createDeploymentZones(scene, materials);
-  createSideWalls(scene, materials);
 }
 
 function createSurroundingTerrain(scene: Scene, materials: MaterialLibrary): void {
@@ -71,7 +74,9 @@ function createSurroundingTerrain(scene: Scene, materials: MaterialLibrary): voi
     updatable: true,
   }, scene);
   terrain.position.y = -0.84;
-  terrain.material = materials.foliageDark;
+  // Shares the playfield grass material so the world reads as one continuous meadow; the vertex
+  // tint below is a touch deeper and cooler, which is all the separation the distance needs.
+  terrain.material = materials.grass;
   terrain.isPickable = false;
 
   const positions = terrain.getVerticesData(VertexBuffer.PositionKind)!;
@@ -83,9 +88,10 @@ function createSurroundingTerrain(scene: Scene, materials: MaterialLibrary): voi
     positions[i + 1] = height;
     const shade = valueNoise(x * 0.058 + 1.7, z * 0.049 - 2.3);
     const slope = clamp(height / 3.4, -1, 1);
-    colors[c] = 0.84 + shade * 0.34 + slope * 0.14;
-    colors[c + 1] = 0.9 + shade * 0.24 + slope * 0.1;
-    colors[c + 2] = 0.88 + shade * 0.18 - slope * 0.05;
+    const tint = 0.82 + shade * 0.15 + slope * 0.1;
+    colors[c] = tint * 0.93;
+    colors[c + 1] = tint;
+    colors[c + 2] = tint * 0.85;
     colors[c + 3] = 1;
   }
   terrain.updateVerticesData(VertexBuffer.PositionKind, positions);
@@ -125,22 +131,14 @@ function createArenaPlatform(scene: Scene, materials: MaterialLibrary): void {
     trim.material = materials.stoneWarm;
     batch.add(trim);
   }
-  for (const x of [-trimX, trimX]) {
-    for (const z of [-trimZ, trimZ]) {
-      const corner = MeshBuilder.CreateBox(`arena-trim-corner-${x}-${z}`, { width: 1.5, height: 0.44, depth: 1.5 }, scene);
-      corner.position.set(x, 0.02, z);
-      corner.material = materials.stoneLight;
-      batch.add(corner);
-    }
-  }
   batch.flush('arena-platform-trim');
 }
 
 /**
  * The playfield stays one flat pickable ground mesh (deployment picking and unit heights depend
- * on it). All variation is baked into vertex colours at load: trodden earth along the lanes and
- * around the objective, richer grass in the quiet corners, and a soft vignette that pulls the
- * eye to the centre. No textures, no decals, no extra draw calls, zero runtime cost.
+ * on it). It is clean, fresh grass: the only thing baked into the vertex colours is a broad
+ * low-amplitude tint so the meadow never reads as one flat fill, plus a very soft edge falloff
+ * that keeps the eye on the centre. No trodden earth, no dirt, no textures, no runtime cost.
  */
 function createPlayfieldGround(scene: Scene, materials: MaterialLibrary): void {
   const ground = MeshBuilder.CreateGround('arena-ground', {
@@ -158,35 +156,34 @@ function createPlayfieldGround(scene: Scene, materials: MaterialLibrary): void {
   for (let i = 0, c = 0; i < positions.length; i += 3, c += 4) {
     const x = positions[i];
     const z = positions[i + 2];
-    const broad = valueNoise(x * 0.082 + 3.4, z * 0.068 - 1.9);
-    const fine = valueNoise(x * 0.29 - 7.2, z * 0.26 + 4.5);
-    const patch = broad * 0.74 + fine * 0.26;
-    const trodden = 1 - smoothStep(0.15, 2.9, roadClearance(x));
-    const objective = 1 - smoothStep(7, 14.5, Math.hypot(x, z * 0.85));
-    const staging = smoothStep(11.5, 15.5, Math.abs(z)) * (1 - smoothStep(20.5, 24, Math.abs(z)));
-    const wear = clamp(trodden * 0.64 + objective * 0.38 + staging * 0.2, 0, 1);
-    const vignette = 1
-      - 0.22 * smoothStep(9.4, GROUND_HALF_WIDTH, Math.abs(x))
-      - 0.16 * smoothStep(23, GROUND_HALF_LENGTH, Math.abs(z));
-    colors[c] = (0.88 + patch * 0.2 + wear * 0.4) * vignette;
-    colors[c + 1] = (0.93 + patch * 0.16 + wear * 0.12) * vignette;
-    colors[c + 2] = (0.86 + patch * 0.12 - wear * 0.22) * vignette;
+    const broad = valueNoise(x * 0.052 + 3.4, z * 0.044 - 1.9);
+    const tint = 0.965 + broad * 0.075;
+    const falloff = 1
+      - 0.09 * smoothStep(10.2, GROUND_HALF_WIDTH, Math.abs(x))
+      - 0.07 * smoothStep(25, GROUND_HALF_LENGTH, Math.abs(z));
+    colors[c] = tint * 0.975 * falloff;
+    colors[c + 1] = tint * 1.02 * falloff;
+    colors[c + 2] = tint * 0.94 * falloff;
     colors[c + 3] = 1;
   }
   ground.setVerticesData(VertexBuffer.ColorKind, colors, false);
   ground.freezeWorldMatrix();
 }
 
-/** Lane roads plus the dressed stone border and castle-approach paving that frame them. */
+/**
+ * Lane roads: one pale slab per lane sitting on a slightly wider stone kerb. Two pieces per lane
+ * is enough to separate the road hard from the grass, so the lanes stay the clearest read on the
+ * map with no aprons, junction paving or edge stones cluttering them.
+ */
 function createRoads(scene: Scene, materials: MaterialLibrary): void {
   const batch = new StaticBatch();
   for (const lane of LANES) {
     const width = laneHalfWidth(lane) * 2;
     // A wider, lower slab under each road reads as a dressed kerb line along the whole lane.
     const border = MeshBuilder.CreateBox(`road-border-${lane}`, {
-      width: width + 0.95,
+      width: width + 0.8,
       height: 0.09,
-      depth: ARENA.roadLength + 1.2,
+      depth: ARENA.roadLength + 0.8,
     }, scene);
     border.position.set(lane, 0.035, 0);
     border.material = materials.stoneWarm;
@@ -198,24 +195,14 @@ function createRoads(scene: Scene, materials: MaterialLibrary): void {
     road.isPickable = false;
     road.receiveShadows = true;
     road.freezeWorldMatrix();
-
-    for (const side of [-1, 1]) {
-      const apron = MeshBuilder.CreateBox(`road-apron-${lane}-${side}`, {
-        width: width + 2.6,
-        height: 0.1,
-        depth: 3.6,
-      }, scene);
-      apron.position.set(lane, 0.045, side * (ROAD_HALF_LENGTH - 1.3));
-      apron.material = materials.paving;
-      batch.add(apron);
-    }
   }
   batch.flush('road-dressing', true);
 }
 
 /**
- * Layered water: a dark bed under a translucent surface, stone kerbs and a pale shallow line
- * along every stretch of bank that is not covered by a bridge.
+ * Layered water: a dark bed under a translucent surface, with a single stone kerb along every
+ * stretch of bank that is not covered by a bridge. Nothing else — no foam lines, no shallows —
+ * so both crossings stay clean and instantly readable.
  */
 function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
   const batch = new StaticBatch();
@@ -250,11 +237,6 @@ function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
         kerb.position.set(centre, 0.02, riverZ + side * (RIVER_HALF_DEPTH + 0.05));
         kerb.material = materials.stoneWarm;
         batch.add(kerb);
-
-        const shallow = MeshBuilder.CreateBox(`river-shallow-${riverZ}-${centre}-${side}`, { width: width - 0.12, height: 0.06, depth: 0.46 }, scene);
-        shallow.position.set(centre, 0.055, riverZ + side * (RIVER_HALF_DEPTH - 0.36));
-        shallow.material = materials.waterShallow;
-        batch.add(shallow);
       }
     }
   }
@@ -262,7 +244,7 @@ function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
   batch.flush('river-dressing');
 }
 
-/** Bridge decks keep their footprint; the dressing is low kerbs and short corner posts only. */
+/** Bridge decks keep their footprint; the only dressing is a low kerb along each side. */
 function createBridges(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
   for (const riverZ of [-ARENA.riverZ, ARENA.riverZ]) {
     for (const lane of LANES) {
@@ -278,31 +260,15 @@ function createBridges(scene: Scene, materials: MaterialLibrary, batch: StaticBa
         kerb.position.set(lane + side * 2, 0.35, riverZ);
         kerb.material = materials.stoneLight;
         batch.add(kerb);
-
-        for (const end of [-1, 1]) {
-          const post = MeshBuilder.CreateBox(`bridge-post-${lane}-${riverZ}-${side}-${end}`, { width: 0.44, height: 0.58, depth: 0.44 }, scene);
-          post.position.set(lane + side * 2, 0.46, riverZ + end * 2.06);
-          post.material = materials.stoneWarm;
-          batch.add(post);
-
-          const cap = MeshBuilder.CreateCylinder(`bridge-cap-${lane}-${riverZ}-${side}-${end}`, {
-            height: 0.16,
-            diameterTop: 0.12,
-            diameterBottom: 0.5,
-            tessellation: 4,
-          }, scene);
-          cap.position.set(lane + side * 2, 0.81, riverZ + end * 2.06);
-          cap.material = materials.gold;
-          batch.add(cap);
-        }
       }
     }
   }
 }
 
 /**
- * Courtyard around the central objective. Everything here is flat paving, inlay or wear, so the
- * centre reads as the most important place on the map without adding a single occluder.
+ * Courtyard around the central objective: a stone rim, a paved deck and one gold inlay ring.
+ * Three flat pieces, no wedges, steps or worn earth and no occluders at all, so the flag tower is
+ * the only thing the centre of the map asks the player to look at.
  */
 function createCenterPlaza(scene: Scene, materials: MaterialLibrary): void {
   const batch = new StaticBatch();
@@ -322,28 +288,7 @@ function createCenterPlaza(scene: Scene, materials: MaterialLibrary): void {
   deck.material = materials.paving;
   batch.add(deck);
 
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const wedge = MeshBuilder.CreateBox(`plaza-wedge-${sx}-${sz}`, { width: 4.6, height: 0.03, depth: 2 }, scene);
-      wedge.position.set(sx * 4.35, 0.075, sz * 4.45);
-      wedge.rotation.y = sx * sz * 0.7;
-      wedge.material = materials.stoneLight;
-      batch.add(wedge);
-
-      const step = MeshBuilder.CreateBox(`plaza-step-${sx}-${sz}`, { width: 1.5, height: 0.16, depth: 1.1 }, scene);
-      step.position.set(sx * 3.25, 0.07, sz * 4.15);
-      step.material = materials.stoneWarm;
-      batch.add(step);
-    }
-  }
-
-  // Earth worn bare where units crowd the tower base, and a gold inlay ring marking the prize.
-  const worn = MeshBuilder.CreateTorus('plaza-worn-ring', { diameter: 10.2, thickness: 2.4, tessellation: 20 }, scene);
-  worn.position.y = 0.085;
-  worn.scaling.y = 0.012;
-  worn.material = materials.dirt;
-  batch.add(worn);
-
+  // A single gold inlay ring marks the prize; the rest of the plaza is bare paving.
   const inlay = MeshBuilder.CreateTorus('plaza-inlay-ring', { diameter: 11.4, thickness: 0.34, tessellation: 28 }, scene);
   inlay.position.y = 0.135;
   inlay.scaling.y = 0.11;
@@ -353,67 +298,40 @@ function createCenterPlaza(scene: Scene, materials: MaterialLibrary): void {
 }
 
 /**
- * Ground dressing: seeded flat patches of dirt, dry grass, lush grass, moss and paving that break
- * up the tinted grass. Patches are pure decals (2cm tall, never pickable) merged per material, so
- * the whole layer is five draw calls and can never hide a unit or block a deployment pick.
+ * Meadow patches: a handful of soft flat discs of richer grass, the only ground decals left on the
+ * map. Grass tones only (no dirt, moss or paving), 2cm tall, never pickable and merged into a
+ * single mesh, so the ground gains gentle colour variation without a speck of visual noise.
  */
-function createGroundDetail(scene: Scene, materials: MaterialLibrary, density: number): void {
+function createMeadowPatches(scene: Scene, materials: MaterialLibrary, density: number): void {
   const batch = new StaticBatch();
   const random = createRandom(9137);
-  const palette = [materials.dirt, materials.grassDry, materials.grassLush, materials.stoneMoss, materials.paving];
-  const target = Math.round(118 * density);
-  for (let attempt = 0, placed = 0; attempt < target * 8 && placed < target; attempt += 1) {
-    const x = (random() * 2 - 1) * (GROUND_HALF_WIDTH - 0.8);
-    const z = (random() * 2 - 1) * 23.5;
-    const radius = 0.55 + random() * 1.35;
-    const inDeployment = Math.abs(Math.abs(z) - ARENA.deploymentCenterZ) < ARENA.deploymentDepth / 2
-      && Math.abs(x) < ARENA.deploymentWidth / 2;
-    if (roadClearance(x) < radius + 0.12 || isNearWater(z, 1 + radius) || isOnPlaza(x, z) || inDeployment) continue;
-    const patch = MeshBuilder.CreateCylinder(`ground-patch-${placed}`, {
+  const target = Math.round(24 * density);
+  for (let attempt = 0, placed = 0; attempt < target * 12 && placed < target; attempt += 1) {
+    const x = (random() * 2 - 1) * (GROUND_HALF_WIDTH - 1.4);
+    const z = (random() * 2 - 1) * 24;
+    const radius = 1.2 + random() * 1.9;
+    if (roadClearance(x) < 0.7 || isNearWater(z, 1.2 + radius) || isOnPlaza(x, z)
+      || isOnDeploymentPad(x, z, radius)) continue;
+    const patch = MeshBuilder.CreateCylinder(`meadow-patch-${placed}`, {
       height: 0.02,
       diameter: radius * 2,
-      tessellation: 7,
+      tessellation: 12,
     }, scene);
-    // Each patch gets its own height inside a 2cm band so overlapping decals never z-fight.
-    patch.position.set(x, 0.012 + random() * 0.016, z);
+    // Each patch gets its own height inside a 1cm band so overlapping discs never z-fight.
+    patch.position.set(x, 0.012 + random() * 0.01, z);
     patch.rotation.y = random() * Math.PI;
-    patch.scaling.z = 0.55 + random() * 0.8;
-    patch.material = palette[Math.floor(random() * palette.length)];
+    patch.scaling.z = 0.7 + random() * 0.5;
+    patch.material = materials.grassLush;
     batch.add(patch);
     placed += 1;
   }
-  batch.flush('ground-patch');
-  createLaneKerbs(scene, materials, density);
-}
-
-/**
- * Kerb stones marking every road edge: raised blocks out on the verge where they read as masonry,
- * and flattened inlay slabs in the gaps units walk through, so nothing ever clips a marching unit.
- * All of them are thin instances of a single box, so the entire lane trim is one draw call.
- */
-function createLaneKerbs(scene: Scene, materials: MaterialLibrary, density: number): void {
-  const source = MeshBuilder.CreateBox('lane-kerb-source', { width: 0.36, height: 0.26, depth: 0.64 }, scene);
-  source.material = materials.stoneWarm;
-  const kerbs = new Scatter(source);
-  const spacing = 2.4 / clamp(density, 0.5, 1);
-  for (const lane of LANES) {
-    for (const side of [-1, 1]) {
-      const x = lane + side * (laneHalfWidth(lane) + 0.72);
-      const raised = Math.abs(x) > 8;
-      for (let z = -ROAD_HALF_LENGTH + 1.2; z <= ROAD_HALF_LENGTH - 1.2; z += spacing) {
-        if (isNearWater(z, 1.6) || isOnPlaza(x, z)) continue;
-        const jitter = Math.abs((z * 17.3) % 1) * 0.12;
-        if (raised) kerbs.add(x + jitter * 0.4, 0.13, z, jitter, 1, 0.85 + jitter, 1);
-        else kerbs.add(x, 0.018, z, jitter * 0.3, 1.25, 0.14, 1.5);
-      }
-    }
-  }
-  kerbs.finish();
+  batch.flush('meadow-patch');
 }
 
 /**
  * Deployment pads. The tinted slabs keep their exact names, size and pickability because
- * deployment input ray-picks them by name; everything added here is non-pickable dressing.
+ * deployment input ray-picks them by name; the only dressing is a flat stone trim around the
+ * edge, so each pad reads as a clean team-coloured rectangle with nothing standing on it.
  */
 function createDeploymentZones(scene: Scene, materials: MaterialLibrary): void {
   const batch = new StaticBatch();
@@ -429,7 +347,6 @@ function createDeploymentZones(scene: Scene, materials: MaterialLibrary): void {
     zone.material = teamZ < 0 ? materials.glowBlue : materials.glowRed;
     zone.isPickable = true;
 
-    const accent = teamZ < 0 ? materials.blueDark : materials.redDark;
     for (const side of [-1, 1]) {
       const rail = MeshBuilder.CreateBox(`deploy-trim-x-${teamZ}-${side}`, { width: ARENA.deploymentWidth + 1.2, height: 0.03, depth: 0.42 }, scene);
       rail.position.set(0, 0.02, teamZ + side * (halfDepth + 0.3));
@@ -441,68 +358,6 @@ function createDeploymentZones(scene: Scene, materials: MaterialLibrary): void {
       edge.material = materials.stoneLight;
       batch.add(edge);
     }
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const post = MeshBuilder.CreateBox(`deploy-post-${teamZ}-${sx}-${sz}`, { width: 0.42, height: 1.05, depth: 0.42 }, scene);
-        post.position.set(sx * (halfWidth - 0.5), 0.52, teamZ + sz * (halfDepth + 0.32));
-        post.material = materials.stoneWarm;
-        batch.add(post);
-
-        const cap = MeshBuilder.CreateBox(`deploy-post-cap-${teamZ}-${sx}-${sz}`, { width: 0.6, height: 0.2, depth: 0.6 }, scene);
-        cap.position.set(sx * (halfWidth - 0.5), 1.13, teamZ + sz * (halfDepth + 0.32));
-        cap.material = accent;
-        batch.add(cap);
-      }
-    }
   }
   batch.flush('deployment-dressing');
-}
-
-/**
- * Side walls framing the arena. The wall itself keeps its original footprint; the polish is a
- * capstone and a rhythm of pillars, which give the edges a built silhouette without stealing any
- * playable width (the inner pillar face stops just outside the unit bounds).
- */
-function createSideWalls(scene: Scene, materials: MaterialLibrary): void {
-  const batch = new StaticBatch();
-  for (const x of [-ARENA.sideWallX, ARENA.sideWallX]) {
-    const wall = MeshBuilder.CreateBox(`side-wall-${x}`, { width: 0.9, height: 1.25, depth: ARENA.sideWallLength }, scene);
-    wall.position.set(x, 0.65, 0);
-    wall.material = materials.stoneDark;
-    wall.isPickable = false;
-    wall.receiveShadows = true;
-    wall.freezeWorldMatrix();
-
-    const capstone = MeshBuilder.CreateBox(`side-wall-cap-${x}`, { width: 1.16, height: 0.18, depth: ARENA.sideWallLength }, scene);
-    capstone.position.set(x, 1.36, 0);
-    capstone.material = materials.stoneLight;
-    batch.add(capstone);
-
-    const half = ARENA.sideWallLength / 2;
-    for (let index = 0; index <= 11; index += 1) {
-      const z = -half + (index / 11) * ARENA.sideWallLength;
-      const pillar = MeshBuilder.CreateBox(`side-pillar-${x}-${index}`, { width: 1.3, height: 1.78, depth: 1.3 }, scene);
-      pillar.position.set(x, 0.89, z);
-      pillar.material = materials.stoneWarm;
-      batch.add(pillar);
-
-      const cap = MeshBuilder.CreateBox(`side-pillar-cap-${x}-${index}`, { width: 1.62, height: 0.22, depth: 1.62 }, scene);
-      cap.position.set(x, 1.89, z);
-      cap.material = materials.stoneLight;
-      batch.add(cap);
-
-      if (index % 3 === 1) {
-        const finial = MeshBuilder.CreateCylinder(`side-pillar-finial-${x}-${index}`, {
-          height: 0.42,
-          diameterTop: 0.06,
-          diameterBottom: 0.44,
-          tessellation: 4,
-        }, scene);
-        finial.position.set(x, 2.21, z);
-        finial.material = materials.gold;
-        batch.add(finial);
-      }
-    }
-  }
-  batch.flush('side-wall-dressing');
 }

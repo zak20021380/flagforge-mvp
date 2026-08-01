@@ -282,28 +282,11 @@ function createPlazaConnections(scene: Scene, root: TransformNode, materials: Ma
     const dz = end.z - start.z;
     const length = Math.hypot(dx, dz);
     const yaw = Math.atan2(dx, dz);
+    // One paving slab per ladder approach and nothing else: the edge markers that used to line
+    // these paths were pure clutter at the busiest point on the map.
     const path = MeshBuilder.CreateBox(`tower-${ladder.side}-plaza-path`, { width: 1.72, height: 0.1, depth: length + 0.72 }, scene);
     configureStatic(path, root, materials.paving);
     path.position.set((start.x + end.x) / 2, 0.11, (start.z + end.z) / 2);
     path.rotation.y = yaw;
-
-    const tangentX = Math.cos(yaw);
-    const tangentZ = -Math.sin(yaw);
-    for (const side of [-1, 1]) {
-      for (const t of [0.2, 0.8]) {
-        const marker = MeshBuilder.CreateBox(`tower-${ladder.side}-path-marker-${side}-${t}`, {
-          width: 0.42,
-          height: 0.18,
-          depth: 0.48,
-        }, scene);
-        configureStatic(marker, root, materials.stoneWarm);
-        marker.position.set(
-          start.x + dx * t + tangentX * side * 0.98,
-          0.17,
-          start.z + dz * t + tangentZ * side * 0.98,
-        );
-        marker.rotation.y = yaw;
-      }
-    }
   }
 }

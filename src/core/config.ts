@@ -23,8 +23,6 @@ export const PORTRAIT_LAYOUT = {
     deploymentCenterZ: 17,
     deploymentDepth: 7.4,
     deploymentWidth: 22.4,
-    sideWallX: 12.85,
-    sideWallLength: 60,
     castleZ: 26.35,
     castleWidthScale: 0.74,
     gateOffset: 4.8,

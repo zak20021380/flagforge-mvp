@@ -11,12 +11,12 @@ import { MaterialLibrary } from './materials';
 
 const ARENA = PORTRAIT_LAYOUT.arena;
 const LANES = [-ARENA.laneOffset, 0, ARENA.laneOffset];
-const RIVER_HALF_DEPTH = 1.25;
-const BRIDGE_HALF = 2.05;
+const RIVER_HALF_DEPTH = ARENA.riverDepth / 2;
 const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
 const laneHalfWidth = (lane: number): number => (lane === 0 ? ARENA.centerRoadWidth : ARENA.sideRoadWidth) / 2;
+const bridgeWidth = (lane: number): number => laneHalfWidth(lane) * 2 + ARENA.bridgeShoulder;
 
 /**
  * Signed clearance to the nearest lane road edge. Negative means the point sits on a road, so
@@ -140,7 +140,7 @@ function createPlayfieldGround(scene: Scene, materials: MaterialLibrary): void {
     width: ARENA.groundWidth,
     height: ARENA.groundLength,
     subdivisionsX: 20,
-    subdivisionsY: 44,
+    subdivisionsY: 50,
     updatable: true,
   }, scene);
   ground.material = materials.grass;
@@ -190,7 +190,10 @@ function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
   const batch = new StaticBatch();
   const edges = [
     -ARENA.riverWidth / 2,
-    ...LANES.flatMap((lane) => [lane - BRIDGE_HALF, lane + BRIDGE_HALF]),
+    ...LANES.flatMap((lane) => {
+      const halfWidth = bridgeWidth(lane) / 2;
+      return [lane - halfWidth, lane + halfWidth];
+    }),
     ARENA.riverWidth / 2,
   ];
   const bankSpans: Array<[number, number]> = [];
@@ -199,12 +202,20 @@ function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
   }
 
   for (const riverZ of [-ARENA.riverZ, ARENA.riverZ]) {
-    const bed = MeshBuilder.CreateBox(`river-bed-${riverZ}`, { width: ARENA.riverWidth + 1, height: 0.2, depth: 3.5 }, scene);
+    const bed = MeshBuilder.CreateBox(`river-bed-${riverZ}`, {
+      width: ARENA.riverWidth + 1,
+      height: 0.2,
+      depth: ARENA.riverDepth + 1,
+    }, scene);
     bed.position.set(0, -0.04, riverZ);
     bed.material = materials.waterDeep;
     batch.add(bed);
 
-    const stream = MeshBuilder.CreateBox(`stream-${riverZ}`, { width: ARENA.riverWidth, height: 0.1, depth: 2.5 }, scene);
+    const stream = MeshBuilder.CreateBox(`stream-${riverZ}`, {
+      width: ARENA.riverWidth,
+      height: 0.1,
+      depth: ARENA.riverDepth,
+    }, scene);
     stream.position.set(0, 0.028, riverZ);
     stream.material = materials.water;
     stream.isPickable = false;
@@ -230,7 +241,12 @@ function createRiverAndBridges(scene: Scene, materials: MaterialLibrary): void {
 function createBridges(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
   for (const riverZ of [-ARENA.riverZ, ARENA.riverZ]) {
     for (const lane of LANES) {
-      const deck = MeshBuilder.CreateBox(`bridge-${lane}-${riverZ}`, { width: 4.1, height: 0.24, depth: 4.1 }, scene);
+      const width = bridgeWidth(lane);
+      const deck = MeshBuilder.CreateBox(`bridge-${lane}-${riverZ}`, {
+        width,
+        height: 0.24,
+        depth: ARENA.bridgeDepth,
+      }, scene);
       deck.position.set(lane, 0.15, riverZ);
       deck.material = materials.road;
       deck.isPickable = false;
@@ -238,8 +254,12 @@ function createBridges(scene: Scene, materials: MaterialLibrary, batch: StaticBa
       deck.freezeWorldMatrix();
 
       for (const side of [-1, 1]) {
-        const kerb = MeshBuilder.CreateBox(`bridge-kerb-${lane}-${riverZ}-${side}`, { width: 0.28, height: 0.2, depth: 4.35 }, scene);
-        kerb.position.set(lane + side * 2, 0.35, riverZ);
+        const kerb = MeshBuilder.CreateBox(`bridge-kerb-${lane}-${riverZ}-${side}`, {
+          width: 0.28,
+          height: 0.2,
+          depth: ARENA.bridgeDepth + 0.25,
+        }, scene);
+        kerb.position.set(lane + side * (width / 2 - 0.05), 0.35, riverZ);
         kerb.material = materials.stoneLight;
         batch.add(kerb);
       }

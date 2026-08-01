@@ -77,7 +77,7 @@ function createForestSources(scene: Scene, materials: MaterialLibrary): Forest {
 function plantPerimeterForest(forest: Forest, density: number): void {
   const random = createRandom(4271);
 
-  const sideCount = Math.max(14, Math.round(24 * density));
+  const sideCount = Math.max(20, Math.round(34 * density));
   for (const side of [-1, 1]) {
     for (let index = 0; index < sideCount; index += 1) {
       const progress = (index + 0.5) / sideCount;
@@ -98,7 +98,7 @@ function plantPerimeterForest(forest: Forest, density: number): void {
     }
   }
 
-  const farCount = Math.max(10, Math.round(18 * density));
+  const farCount = Math.max(14, Math.round(24 * density));
   for (let index = 0; index < farCount; index += 1) {
     const progress = (index + 0.5) / farCount;
     const x = -PERIMETER_HALF_WIDTH - 2 + progress * (PERIMETER_HALF_WIDTH * 2 + 4)
@@ -108,7 +108,7 @@ function plantPerimeterForest(forest: Forest, density: number): void {
     plantTree(species, x, z, outsideGround(x, z), 0.88 + random() * 0.62, random() * Math.PI * 2, (random() - 0.5) * 0.05);
   }
 
-  const nearCornerCount = Math.max(2, Math.round(3 * density));
+  const nearCornerCount = Math.max(3, Math.round(5 * density));
   for (const side of [-1, 1]) {
     for (let index = 0; index < nearCornerCount; index += 1) {
       const x = side * (PERIMETER_HALF_WIDTH * 0.82 + index * 1.8 + random() * 1.25);
@@ -145,7 +145,7 @@ function createUndergrowth(scene: Scene, materials: MaterialLibrary, density: nu
   const bush = scatterOf(MeshBuilder.CreateSphere('bush-source', { diameter: 1.35, segments: 4 }, scene), materials.foliage);
   const bushMid = scatterOf(MeshBuilder.CreateSphere('bush-mid-source', { diameter: 1.1, segments: 4 }, scene), materials.foliageMid);
 
-  const bushTarget = Math.max(24, Math.round(44 * density));
+  const bushTarget = Math.max(32, Math.round(64 * density));
   for (let placed = 0; placed < bushTarget; placed += 1) {
     const { x, z } = perimeterPoint(random, LOW_GROWTH_EDGE_CLEARANCE, 3.4);
     const scale = 0.66 + random() * 0.6;
@@ -167,7 +167,7 @@ function createRockField(scene: Scene, materials: MaterialLibrary, density: numb
     scatterOf(MeshBuilder.CreatePolyhedron('rock-b-source', { type: 3, size: 0.9 }, scene), materials.stoneMoss),
   ];
 
-  const rockTarget = Math.max(6, Math.round(9 * density));
+  const rockTarget = Math.max(8, Math.round(12 * density));
   const placedSpots: Array<[number, number]> = [];
   for (let attempt = 0; attempt < rockTarget * 20 && placedSpots.length < rockTarget; attempt += 1) {
     const { x, z } = perimeterPoint(random, 1.8, 3.8);

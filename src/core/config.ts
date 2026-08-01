@@ -7,21 +7,24 @@ export const PORTRAIT_LAYOUT = {
     resizeDebounceMs: 90,
   },
   arena: {
-    // Gameplay coordinates below retain their authored spacing. Only the visual stage envelope is
-    // wider, giving the lanes and castles more breathing room without changing unit navigation.
+    // Gameplay coordinates retain their authored spacing. The visual stage envelope grows farther
+    // in both axes (especially Z), filling the portrait frame without changing traversal or combat.
     halfWidth: 13.4,
     halfLength: 31.5,
-    groundWidth: 31.8,
-    groundLength: 65,
-    foundationWidth: 33.2,
-    foundationLength: 66.2,
+    groundWidth: 35.6,
+    groundLength: 75.2,
+    foundationWidth: 37,
+    foundationLength: 76.6,
     laneOffset: 6.25,
     laneBoundary: 2.7,
-    sideRoadWidth: 3.25,
-    centerRoadWidth: 3.8,
-    roadLength: 52.5,
-    riverZ: 8.6,
-    riverWidth: 30,
+    sideRoadWidth: 3.55,
+    centerRoadWidth: 4.15,
+    roadLength: 61.2,
+    riverZ: 9.75,
+    riverWidth: 33.8,
+    riverDepth: 2.8,
+    bridgeDepth: 4.55,
+    bridgeShoulder: 0.75,
     deploymentCenterZ: 17,
     deploymentDepth: 7.4,
     deploymentWidth: 22.4,
@@ -67,12 +70,11 @@ export const PORTRAIT_LAYOUT = {
     maxPitchDegrees: 65,
     minTargetZ: -10.5,
     maxTargetZ: -5,
-    // A tiny horizontal overscan on the narrowest shells lets the widened foundation fill the
-    // viewport; the camera lift below brings almost all of that edge back into view. Vertical
-    // limits still reserve the existing HUD and safe-area bands for both castle silhouettes.
-    horizontalScreenCoverage: 1.04,
+    // The enlarged near edge may crop naturally behind the HUD instead of forcing the camera back.
+    // These limits keep the existing aim, pitch and FOV while leaving only a narrow outer border.
+    horizontalScreenCoverage: 1.21,
     topScreenLimit: 0.8,
-    bottomScreenLimit: 0.7,
+    bottomScreenLimit: 0.84,
     minDistance: 60,
     // Conservative visual extrema used only for camera framing. They include both
     // castle silhouettes, a fully raised gate, and the flag at the tower top.

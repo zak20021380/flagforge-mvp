@@ -6,7 +6,14 @@ import {
   TransformNode,
   Vector3,
 } from '@babylonjs/core';
-import { ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
+import {
+  BLUE_CASTLE_VISUAL_OFFSET_X,
+  BLUE_CASTLE_VISUAL_OFFSET_Z,
+  ENEMY_CASTLE_ASSAULT,
+  PORTRAIT_LAYOUT,
+  RED_CASTLE_VISUAL_OFFSET_X,
+  RED_CASTLE_VISUAL_OFFSET_Z,
+} from '../core/config';
 import type { Team } from '../core/types';
 import { MaterialLibrary } from './materials';
 
@@ -20,15 +27,19 @@ export class CastleVisual {
   readonly breachGlow: Mesh;
   private gateProgress = 0;
   private gateTarget = 0;
+  private readonly baseX: number;
   private readonly baseZ: number;
   private readonly facing: number;
 
   constructor(scene: Scene, materials: MaterialLibrary, team: Team) {
     this.team = team;
-    this.baseZ = team === 'blue' ? -PORTRAIT_LAYOUT.arena.castleZ : PORTRAIT_LAYOUT.arena.castleZ;
+    this.baseX = team === 'blue' ? BLUE_CASTLE_VISUAL_OFFSET_X : RED_CASTLE_VISUAL_OFFSET_X;
+    this.baseZ = team === 'blue'
+      ? -PORTRAIT_LAYOUT.arena.castleZ + BLUE_CASTLE_VISUAL_OFFSET_Z
+      : PORTRAIT_LAYOUT.arena.castleZ + RED_CASTLE_VISUAL_OFFSET_Z;
     this.facing = team === 'blue' ? 1 : -1;
     this.root = new TransformNode(`${team}-castle-root`, scene);
-    this.root.position.z = this.baseZ;
+    this.root.position.set(this.baseX, 0, this.baseZ);
     this.root.scaling.x = PORTRAIT_LAYOUT.arena.castleWidthScale;
     this.root.rotationQuaternion = Quaternion.Identity();
 
@@ -84,8 +95,8 @@ export class CastleVisual {
     // Only the portrait-facing red castle is the enemy assault objective. Two
     // authored ladders sit on its left/right wall faces and match the AI paths.
     if (team === 'red') {
-      createAssaultLadder(scene, this.root, materials, 'left', this.baseZ);
-      createAssaultLadder(scene, this.root, materials, 'right', this.baseZ);
+      createAssaultLadder(scene, this.root, materials, 'left', this.baseX, this.baseZ);
+      createAssaultLadder(scene, this.root, materials, 'right', this.baseX, this.baseZ);
     }
 
     this.breachGlow = MeshBuilder.CreateTorus(`${team}-breach-glow`, { diameter: 5.4, thickness: 0.18, tessellation: 40 }, scene);
@@ -95,9 +106,9 @@ export class CastleVisual {
     this.breachGlow.material = materials.teamGlow(team);
     this.breachGlow.setEnabled(false);
 
-    this.interiorPoint = new Vector3(0, 0.2, this.baseZ - PORTRAIT_LAYOUT.arena.interiorOffset * this.facing);
-    this.deliveryPoint = new Vector3(0, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.deliveryOffset * this.facing);
-    this.gatePoint = new Vector3(0, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.gateOffset * this.facing);
+    this.interiorPoint = new Vector3(this.baseX, 0.2, this.baseZ - PORTRAIT_LAYOUT.arena.interiorOffset * this.facing);
+    this.deliveryPoint = new Vector3(this.baseX, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.deliveryOffset * this.facing);
+    this.gatePoint = new Vector3(this.baseX, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.gateOffset * this.facing);
   }
 
   setGateOpen(open: boolean): void {
@@ -125,11 +136,12 @@ function createAssaultLadder(
   parent: TransformNode,
   materials: MaterialLibrary,
   id: keyof typeof ENEMY_CASTLE_ASSAULT.ladders,
+  castleBaseX: number,
   castleBaseZ: number,
 ): void {
   const ladder = ENEMY_CASTLE_ASSAULT.ladders[id];
   const widthScale = PORTRAIT_LAYOUT.arena.castleWidthScale;
-  const localX = ladder.groundAlign.x / widthScale;
+  const localX = (ladder.groundAlign.x - castleBaseX) / widthScale;
   const bottomY = ladder.groundAlign.y;
   const bottomZ = ladder.groundAlign.z - castleBaseZ;
   const topY = ladder.climbTop.y;

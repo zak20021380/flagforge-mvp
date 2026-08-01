@@ -444,8 +444,14 @@ export class UnitManager {
     unit.position.x += dx * step;
     unit.position.z += dz * step;
     if (unit.navigationArea === 'towerTop') {
-      unit.position.x = Math.max(-CENTRAL_TOWER.topWalkHalfWidth, Math.min(CENTRAL_TOWER.topWalkHalfWidth, unit.position.x));
-      unit.position.z = Math.max(-CENTRAL_TOWER.topWalkHalfDepth, Math.min(CENTRAL_TOWER.topWalkHalfDepth, unit.position.z));
+      unit.position.x = Math.max(
+        CENTRAL_TOWER.centerX - CENTRAL_TOWER.topWalkHalfWidth,
+        Math.min(CENTRAL_TOWER.centerX + CENTRAL_TOWER.topWalkHalfWidth, unit.position.x),
+      );
+      unit.position.z = Math.max(
+        CENTRAL_TOWER.centerZ - CENTRAL_TOWER.topWalkHalfDepth,
+        Math.min(CENTRAL_TOWER.centerZ + CENTRAL_TOWER.topWalkHalfDepth, unit.position.z),
+      );
       unit.position.y = CENTRAL_TOWER.topUnitY;
     } else if (unit.navigationArea === 'enemyWallTop') {
       unit.position.x = Math.max(ENEMY_CASTLE_ASSAULT.wallBounds.minX, Math.min(ENEMY_CASTLE_ASSAULT.wallBounds.maxX, unit.position.x));
@@ -514,11 +520,12 @@ export class UnitManager {
     const clearanceX = CENTRAL_TOWER.baseWidth / 2 + 0.82;
     const clearanceZ = CENTRAL_TOWER.baseDepth / 2 + 0.78;
     const side = unit.lane === 'left' ? -1 : unit.lane === 'right' ? 1 : unit.id % 2 === 0 ? -1 : 1;
-    const sideX = side * clearanceX;
-    const goalSideZ = (goal.z < 0 ? -1 : 1) * clearanceZ;
+    const sideX = CENTRAL_TOWER.centerX + side * clearanceX;
+    const goalSideZ = CENTRAL_TOWER.centerZ + (goal.z < CENTRAL_TOWER.centerZ ? -1 : 1) * clearanceZ;
 
-    if (Math.abs(unit.position.x) < clearanceX - 0.16) {
-      const currentSideZ = (unit.position.z < 0 ? -1 : 1) * clearanceZ;
+    if (Math.abs(unit.position.x - CENTRAL_TOWER.centerX) < clearanceX - 0.16) {
+      const currentSideZ = CENTRAL_TOWER.centerZ
+        + (unit.position.z < CENTRAL_TOWER.centerZ ? -1 : 1) * clearanceZ;
       this.movementScratch.set(sideX, unit.position.y, currentSideZ);
     } else {
       this.movementScratch.set(sideX, unit.position.y, goalSideZ);
@@ -527,10 +534,10 @@ export class UnitManager {
   }
 
   private segmentCrossesTower(start: Vector3, end: Vector3, padding: number): boolean {
-    const minX = -CENTRAL_TOWER.baseWidth / 2 - padding;
-    const maxX = CENTRAL_TOWER.baseWidth / 2 + padding;
-    const minZ = -CENTRAL_TOWER.baseDepth / 2 - padding;
-    const maxZ = CENTRAL_TOWER.baseDepth / 2 + padding;
+    const minX = CENTRAL_TOWER.centerX - CENTRAL_TOWER.baseWidth / 2 - padding;
+    const maxX = CENTRAL_TOWER.centerX + CENTRAL_TOWER.baseWidth / 2 + padding;
+    const minZ = CENTRAL_TOWER.centerZ - CENTRAL_TOWER.baseDepth / 2 - padding;
+    const maxZ = CENTRAL_TOWER.centerZ + CENTRAL_TOWER.baseDepth / 2 + padding;
     let startT = 0;
     let endT = 1;
     const dx = end.x - start.x;

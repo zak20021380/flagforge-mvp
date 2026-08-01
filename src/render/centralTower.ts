@@ -18,6 +18,7 @@ type LadderId = keyof typeof CENTRAL_TOWER.ladders;
 
 export function createCentralTower(scene: Scene, materials: MaterialLibrary): CentralTowerVisual {
   const root = new TransformNode('central-flag-tower-root', scene);
+  root.position.set(CENTRAL_TOWER.centerX, 0, CENTRAL_TOWER.centerZ);
 
   const addOctagonalLayer = (
     name: string,
@@ -78,11 +79,10 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
   createSideLadder(scene, root, materials, 'enemy');
   createSideBanners(scene, root, materials);
   createHeraldry(scene, root, materials);
-  createPlazaConnections(scene, root, materials);
 
   return {
     root,
-    topCenter: new Vector3(0, CENTRAL_TOWER.topUnitY, 0),
+    topCenter: new Vector3(CENTRAL_TOWER.centerX, CENTRAL_TOWER.topUnitY, CENTRAL_TOWER.centerZ),
   };
 }
 
@@ -201,8 +201,16 @@ function createSideLadder(
   id: LadderId,
 ): void {
   const ladder = CENTRAL_TOWER.ladders[id];
-  const bottom = new Vector3(ladder.groundAlign.x, ladder.groundAlign.y, ladder.groundAlign.z);
-  const top = new Vector3(ladder.climbTop.x, ladder.climbTop.y, ladder.climbTop.z);
+  const bottom = new Vector3(
+    ladder.groundAlign.x - CENTRAL_TOWER.centerX,
+    ladder.groundAlign.y,
+    ladder.groundAlign.z - CENTRAL_TOWER.centerZ,
+  );
+  const top = new Vector3(
+    ladder.climbTop.x - CENTRAL_TOWER.centerX,
+    ladder.climbTop.y,
+    ladder.climbTop.z - CENTRAL_TOWER.centerZ,
+  );
   const shaft = top.subtract(bottom);
   const length = shaft.length();
   const shaftDirection = shaft.scale(1 / length);
@@ -270,23 +278,5 @@ function createHeraldry(scene: Scene, root: TransformNode, materials: MaterialLi
     const boss = MeshBuilder.CreateSphere(`tower-arcade-shield-boss-${side}`, { diameter: 0.25, segments: 5 }, scene);
     configureStatic(boss, root, materials.gold);
     boss.position.set(2.2 * side, 4.8, -1.98);
-  }
-}
-
-function createPlazaConnections(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const id of ['player', 'enemy'] as const) {
-    const ladder = CENTRAL_TOWER.ladders[id];
-    const start = ladder.groundEntry;
-    const end = ladder.groundAlign;
-    const dx = end.x - start.x;
-    const dz = end.z - start.z;
-    const length = Math.hypot(dx, dz);
-    const yaw = Math.atan2(dx, dz);
-    // One paving slab per ladder approach and nothing else: the edge markers that used to line
-    // these paths were pure clutter at the busiest point on the map.
-    const path = MeshBuilder.CreateBox(`tower-${ladder.side}-plaza-path`, { width: 1.72, height: 0.1, depth: length + 0.72 }, scene);
-    configureStatic(path, root, materials.paving);
-    path.position.set((start.x + end.x) / 2, 0.11, (start.z + end.z) / 2);
-    path.rotation.y = yaw;
   }
 }

@@ -1,5 +1,21 @@
 import type { QualityTier, UnitKind, UnitStats } from './types';
 
+// Authored forest-arena alignment. These are intentionally centralized because the render roots
+// and their linked gameplay coordinates must move together when the artwork is tuned.
+export const ARENA_TEXTURE_ROTATION = 0;
+export const ARENA_TEXTURE_U_SCALE = 1;
+export const ARENA_TEXTURE_V_SCALE = 1;
+export const ARENA_TEXTURE_U_OFFSET = 0;
+export const ARENA_TEXTURE_V_OFFSET = 0;
+
+export const RED_CASTLE_VISUAL_OFFSET_X = 0;
+export const RED_CASTLE_VISUAL_OFFSET_Z = -10.9;
+export const BLUE_CASTLE_VISUAL_OFFSET_X = 0;
+export const BLUE_CASTLE_VISUAL_OFFSET_Z = 10.9;
+
+export const CENTRAL_OBJECTIVE_OFFSET_X = 0;
+export const CENTRAL_OBJECTIVE_OFFSET_Z = 3.4;
+
 const ARENA_FOUNDATION_LENGTH = 76.6;
 // The tower caps are the castle geometry nearest the battlefield. Positioning the roots by this
 // exact extent leaves only that front edge on the foundation boundary and every other part behind it.
@@ -100,9 +116,17 @@ export const PORTRAIT_LAYOUT = {
   },
 } as const;
 
+const centralObjectivePoint = (x: number, y: number, z: number) => ({
+  x: x + CENTRAL_OBJECTIVE_OFFSET_X,
+  y,
+  z: z + CENTRAL_OBJECTIVE_OFFSET_Z,
+});
+
 // All tower gameplay coordinates live here so the procedural art and deterministic
 // traversal remain in sync without collision queries or runtime pathfinding.
 export const CENTRAL_TOWER = {
+  centerX: CENTRAL_OBJECTIVE_OFFSET_X,
+  centerZ: CENTRAL_OBJECTIVE_OFFSET_Z,
   baseWidth: 7.3,
   baseDepth: 6.6,
   shaftHeight: 7.3,
@@ -128,43 +152,49 @@ export const CENTRAL_TOWER = {
       id: 'player',
       side: 'left',
       facingYaw: 1.18,
-      groundEntry: { x: -4.15, y: 0.16, z: -2.65 },
-      groundAlign: { x: -3.4, y: 0.16, z: -1.4 },
-      climbTop: { x: -2.65, y: 9.32, z: -1.1 },
-      topExit: { x: -2.02, y: 9.32, z: -0.78 },
-      groundQueueOrigin: { x: -4.15, y: 0.16, z: -3.25 },
+      groundEntry: centralObjectivePoint(-4.15, 0.16, -2.65),
+      groundAlign: centralObjectivePoint(-3.4, 0.16, -1.4),
+      climbTop: centralObjectivePoint(-2.65, 9.32, -1.1),
+      topExit: centralObjectivePoint(-2.02, 9.32, -0.78),
+      groundQueueOrigin: centralObjectivePoint(-4.15, 0.16, -3.25),
       groundQueueStep: { x: 0, y: 0, z: -0.95 },
       topQueuePositions: [
-        { x: -1.9, y: 9.32, z: -0.72 },
-        { x: -0.85, y: 9.32, z: -1.35 },
-        { x: -0.75, y: 9.32, z: 0.2 },
+        centralObjectivePoint(-1.9, 9.32, -0.72),
+        centralObjectivePoint(-0.85, 9.32, -1.35),
+        centralObjectivePoint(-0.75, 9.32, 0.2),
       ],
     },
     enemy: {
       id: 'enemy',
       side: 'right',
       facingYaw: -1.96,
-      groundEntry: { x: 4.15, y: 0.16, z: 2.65 },
-      groundAlign: { x: 3.4, y: 0.16, z: 1.4 },
-      climbTop: { x: 2.65, y: 9.32, z: 1.1 },
-      topExit: { x: 2.02, y: 9.32, z: 0.78 },
-      groundQueueOrigin: { x: 4.15, y: 0.16, z: 3.25 },
+      groundEntry: centralObjectivePoint(4.15, 0.16, 2.65),
+      groundAlign: centralObjectivePoint(3.4, 0.16, 1.4),
+      climbTop: centralObjectivePoint(2.65, 9.32, 1.1),
+      topExit: centralObjectivePoint(2.02, 9.32, 0.78),
+      groundQueueOrigin: centralObjectivePoint(4.15, 0.16, 3.25),
       groundQueueStep: { x: 0, y: 0, z: 0.95 },
       topQueuePositions: [
-        { x: 1.9, y: 9.32, z: 0.72 },
-        { x: 0.85, y: 9.32, z: 1.35 },
-        { x: 0.75, y: 9.32, z: -0.2 },
+        centralObjectivePoint(1.9, 9.32, 0.72),
+        centralObjectivePoint(0.85, 9.32, 1.35),
+        centralObjectivePoint(0.75, 9.32, -0.2),
       ],
     },
   },
   safeFlagDrops: {
-    towerTop: { x: 0, y: 9.19, z: 0 },
-    playerBase: { x: -4.15, y: 0.12, z: -2.65 },
-    enemyBase: { x: 4.15, y: 0.12, z: 2.65 },
+    towerTop: centralObjectivePoint(0, 9.19, 0),
+    playerBase: centralObjectivePoint(-4.15, 0.12, -2.65),
+    enemyBase: centralObjectivePoint(4.15, 0.12, 2.65),
   },
 } as const;
 
-const ENEMY_CASTLE_Z = PORTRAIT_LAYOUT.arena.castleZ;
+const ENEMY_CASTLE_X = RED_CASTLE_VISUAL_OFFSET_X;
+const ENEMY_CASTLE_Z = PORTRAIT_LAYOUT.arena.castleZ + RED_CASTLE_VISUAL_OFFSET_Z;
+const enemyCastlePoint = (x: number, y: number, z: number) => ({
+  x: x + ENEMY_CASTLE_X,
+  y,
+  z,
+});
 
 // The red castle is the portrait-facing enemy objective. Its assault routes retain their authored
 // offsets from the castle root so its queues, access points and collision bounds move as one group.
@@ -178,41 +208,41 @@ export const ENEMY_CASTLE_ASSAULT = {
   attackableClimberMinY: 2.25,
   fallDuration: 0.68,
   wallBounds: {
-    minX: -6.65,
-    maxX: 6.65,
+    minX: ENEMY_CASTLE_X - 6.65,
+    maxX: ENEMY_CASTLE_X + 6.65,
     minZ: ENEMY_CASTLE_Z - 2.3,
     maxZ: ENEMY_CASTLE_Z - 0.85,
   },
   rangerSupport: {
-    left: { x: -5.25, y: 0.16, z: ENEMY_CASTLE_Z - 5.15 },
-    right: { x: 5.25, y: 0.16, z: ENEMY_CASTLE_Z - 5.15 },
+    left: enemyCastlePoint(-5.25, 0.16, ENEMY_CASTLE_Z - 5.15),
+    right: enemyCastlePoint(5.25, 0.16, ENEMY_CASTLE_Z - 5.15),
   },
   ladders: {
     left: {
       id: 'left',
-      groundEntry: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 3.9 },
-      groundAlign: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 2.93 },
-      climbTop: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 2.39 },
-      topExit: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.65 },
-      groundQueueOrigin: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z - 4.45 },
+      groundEntry: enemyCastlePoint(-5.3, 0.16, ENEMY_CASTLE_Z - 3.9),
+      groundAlign: enemyCastlePoint(-5.3, 0.16, ENEMY_CASTLE_Z - 2.93),
+      climbTop: enemyCastlePoint(-5.3, 4.78, ENEMY_CASTLE_Z - 2.39),
+      topExit: enemyCastlePoint(-5.3, 4.78, ENEMY_CASTLE_Z - 1.65),
+      groundQueueOrigin: enemyCastlePoint(-5.3, 0.16, ENEMY_CASTLE_Z - 4.45),
       groundQueueStep: { x: -0.08, y: 0, z: -1.08 },
-      defenderGroundEntry: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.8 },
-      defenderTopEntry: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.01 },
-      defenderGuard: { x: -5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.53 },
-      breachGroundExit: { x: -5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.4 },
+      defenderGroundEntry: enemyCastlePoint(-5.3, 0.16, ENEMY_CASTLE_Z + 0.8),
+      defenderTopEntry: enemyCastlePoint(-5.3, 4.78, ENEMY_CASTLE_Z - 1.01),
+      defenderGuard: enemyCastlePoint(-5.3, 4.78, ENEMY_CASTLE_Z - 1.53),
+      breachGroundExit: enemyCastlePoint(-5.3, 0.16, ENEMY_CASTLE_Z + 0.4),
     },
     right: {
       id: 'right',
-      groundEntry: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 3.9 },
-      groundAlign: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 2.93 },
-      climbTop: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 2.39 },
-      topExit: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.65 },
-      groundQueueOrigin: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z - 4.45 },
+      groundEntry: enemyCastlePoint(5.3, 0.16, ENEMY_CASTLE_Z - 3.9),
+      groundAlign: enemyCastlePoint(5.3, 0.16, ENEMY_CASTLE_Z - 2.93),
+      climbTop: enemyCastlePoint(5.3, 4.78, ENEMY_CASTLE_Z - 2.39),
+      topExit: enemyCastlePoint(5.3, 4.78, ENEMY_CASTLE_Z - 1.65),
+      groundQueueOrigin: enemyCastlePoint(5.3, 0.16, ENEMY_CASTLE_Z - 4.45),
       groundQueueStep: { x: 0.08, y: 0, z: -1.08 },
-      defenderGroundEntry: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.8 },
-      defenderTopEntry: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.01 },
-      defenderGuard: { x: 5.3, y: 4.78, z: ENEMY_CASTLE_Z - 1.53 },
-      breachGroundExit: { x: 5.3, y: 0.16, z: ENEMY_CASTLE_Z + 0.4 },
+      defenderGroundEntry: enemyCastlePoint(5.3, 0.16, ENEMY_CASTLE_Z + 0.8),
+      defenderTopEntry: enemyCastlePoint(5.3, 4.78, ENEMY_CASTLE_Z - 1.01),
+      defenderGuard: enemyCastlePoint(5.3, 4.78, ENEMY_CASTLE_Z - 1.53),
+      breachGroundExit: enemyCastlePoint(5.3, 0.16, ENEMY_CASTLE_Z + 0.4),
     },
   },
 } as const;
@@ -226,8 +256,8 @@ export const CONFIG = {
     redDeployMinZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ - PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
     redDeployMaxZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ + PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
     flagPickupRadius: 1.05,
-    flagDeliveryZ: PORTRAIT_LAYOUT.arena.castleZ - PORTRAIT_LAYOUT.arena.deliveryOffset,
-    castleInteriorZ: PORTRAIT_LAYOUT.arena.castleZ + PORTRAIT_LAYOUT.arena.interiorOffset,
+    flagDeliveryZ: ENEMY_CASTLE_Z - PORTRAIT_LAYOUT.arena.deliveryOffset,
+    castleInteriorZ: ENEMY_CASTLE_Z + PORTRAIT_LAYOUT.arena.interiorOffset,
   },
   match: {
     durationSeconds: 180,

@@ -16,6 +16,7 @@ import { clamp } from '../core/math';
 import type { QualityTier } from '../core/types';
 import { CastleVisual } from './castle';
 import { createCentralTower, type CentralTowerVisual } from './centralTower';
+import { createEnvironment } from './environment';
 import { MaterialLibrary } from './materials';
 
 export interface ArenaScene {
@@ -60,9 +61,8 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
   shadowGenerator.normalBias = 0.03;
 
   const materials = new MaterialLibrary(scene);
-  createGroundAndPaths(scene, materials);
+  createEnvironment(scene, materials, quality);
   const centralTower = createCentralTower(scene, materials);
-  createArenaDecor(scene, materials, QUALITY_SETTINGS[quality].decorations);
 
   const blueCastle = new CastleVisual(scene, materials, 'blue');
   const redCastle = new CastleVisual(scene, materials, 'red');
@@ -160,112 +160,4 @@ export function framePortraitCamera(
   const target = new Vector3(cameraConfig.targetX, cameraConfig.targetY, targetZ);
   camera.setTarget(target);
   forward?.copyFrom(target.subtract(restingPosition).normalize());
-}
-
-function createGroundAndPaths(scene: Scene, materials: MaterialLibrary): void {
-  const layout = PORTRAIT_LAYOUT.arena;
-  const surroundings = MeshBuilder.CreateGround('arena-surroundings', { width: 110, height: 180, subdivisions: 1 }, scene);
-  surroundings.position.y = -0.84;
-  surroundings.material = materials.foliageDark;
-  surroundings.isPickable = false;
-
-  const ground = MeshBuilder.CreateGround('arena-ground', { width: layout.groundWidth, height: layout.groundLength, subdivisions: 1 }, scene);
-  ground.material = materials.grass;
-  ground.receiveShadows = true;
-
-  const border = MeshBuilder.CreateBox('arena-foundation', { width: layout.foundationWidth, height: 0.75, depth: layout.foundationLength }, scene);
-  border.position.y = -0.43;
-  border.material = materials.stoneDark;
-
-  for (const x of [-layout.laneOffset, 0, layout.laneOffset]) {
-    const road = MeshBuilder.CreateBox(`stone-road-${x}`, {
-      width: x === 0 ? layout.centerRoadWidth : layout.sideRoadWidth,
-      height: 0.12,
-      depth: layout.roadLength,
-    }, scene);
-    road.position.set(x, 0.05, 0);
-    road.material = materials.road;
-    road.receiveShadows = true;
-  }
-
-  for (const z of [-layout.riverZ, layout.riverZ]) {
-    const stream = MeshBuilder.CreateBox(`stream-${z}`, { width: layout.riverWidth, height: 0.09, depth: 2.5 }, scene);
-    stream.position.set(0, 0.02, z);
-    stream.material = materials.water;
-    stream.receiveShadows = true;
-    for (const x of [-layout.laneOffset, 0, layout.laneOffset]) {
-      const bridge = MeshBuilder.CreateBox(`bridge-${x}-${z}`, { width: 4.1, height: 0.24, depth: 4.1 }, scene);
-      bridge.position.set(x, 0.15, z);
-      bridge.material = materials.road;
-      bridge.receiveShadows = true;
-    }
-  }
-
-  for (const teamZ of [-layout.deploymentCenterZ, layout.deploymentCenterZ]) {
-    const zone = MeshBuilder.CreateBox(`deployment-zone-${teamZ}`, {
-      width: layout.deploymentWidth,
-      height: 0.035,
-      depth: layout.deploymentDepth,
-    }, scene);
-    zone.position.set(0, 0.125, teamZ);
-    zone.material = teamZ < 0 ? materials.glowBlue : materials.glowRed;
-    zone.isPickable = true;
-  }
-
-  for (const x of [-layout.sideWallX, layout.sideWallX]) {
-    const wall = MeshBuilder.CreateBox(`side-wall-${x}`, { width: 0.9, height: 1.25, depth: layout.sideWallLength }, scene);
-    wall.position.set(x, 0.65, 0);
-    wall.material = materials.stoneDark;
-  }
-}
-
-function createArenaDecor(scene: Scene, materials: MaterialLibrary, density: number): void {
-  const treeCount = Math.round(24 * density);
-  const trunkSource = MeshBuilder.CreateCylinder('tree-trunk-source', { height: 2.4, diameterTop: 0.34, diameterBottom: 0.56, tessellation: 7 }, scene);
-  trunkSource.material = materials.trunk;
-  trunkSource.position.set(-11.2, 1.2, -13.5);
-  const crownSource = MeshBuilder.CreateCylinder('tree-crown-source', { height: 3.6, diameterTop: 0, diameterBottom: 2.6, tessellation: 8 }, scene);
-  crownSource.material = materials.foliageDark;
-  crownSource.position.set(-11.2, 3.8, -13.5);
-
-  const positions: Vector3[] = [];
-  for (let i = 0; i < treeCount; i += 1) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const x = side * (10.6 + (i % 3) * 0.48);
-    const z = -12.5 + ((i * 7.9) % 51);
-    if (Math.abs(z) < 5.5 && i % 3 === 0) continue;
-    positions.push(new Vector3(x, 0, z));
-  }
-  positions.forEach((position, index) => {
-    if (index === 0) return;
-    const trunk = trunkSource.createInstance(`tree-trunk-${index}`);
-    trunk.position.set(position.x, 1.2, position.z);
-    const crown = crownSource.createInstance(`tree-crown-${index}`);
-    crown.position.set(position.x, 3.8, position.z);
-    const scale = 0.8 + (index % 4) * 0.08;
-    crown.scaling.set(scale, 0.92 + (index % 3) * 0.08, scale);
-  });
-
-  const rockSource = MeshBuilder.CreatePolyhedron('rock-source', { type: 1, size: 1.1 }, scene);
-  rockSource.material = materials.stoneDark;
-  rockSource.position.set(-10.3, 0.6, -5.8);
-  const rockCount = Math.round(16 * density);
-  for (let i = 1; i < rockCount; i += 1) {
-    const rock = rockSource.createInstance(`rock-${i}`);
-    const side = i % 2 === 0 ? -1 : 1;
-    rock.position.set(side * (9.65 + (i % 4) * 0.52), 0.42, -25 + ((i * 6.8) % 50));
-    rock.rotation.y = i * 0.73;
-    rock.scaling.set(0.7 + (i % 3) * 0.22, 0.55 + (i % 2) * 0.18, 0.85 + (i % 4) * 0.12);
-  }
-
-  const bushSource = MeshBuilder.CreateSphere('bush-source', { diameter: 1.35, segments: 6 }, scene);
-  bushSource.material = materials.foliage;
-  bushSource.position.set(-9.4, 0.55, -19.3);
-  const bushCount = Math.round(22 * density);
-  for (let i = 1; i < bushCount; i += 1) {
-    const bush = bushSource.createInstance(`bush-${i}`);
-    const side = i % 2 === 0 ? -1 : 1;
-    bush.position.set(side * (8.9 + (i % 5) * 0.46), 0.48, -27 + ((i * 5.3) % 54));
-    bush.scaling.set(0.75 + (i % 3) * 0.16, 0.55 + (i % 2) * 0.1, 0.85 + (i % 4) * 0.09);
-  }
 }

@@ -35,9 +35,9 @@ export interface ArenaScene {
 
 export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, quality: QualityTier): ArenaScene {
   const scene = new Scene(engine);
-  // Muted daylight preserves colour separation without bleaching the grass or pale stonework.
-  scene.clearColor = new Color4(0.25, 0.43, 0.5, 1);
-  scene.ambientColor = new Color3(0.18, 0.21, 0.19);
+  // A deeper sky and restrained ambient floor keep silhouettes crisp without crushing shadows.
+  scene.clearColor = new Color4(0.12, 0.24, 0.29, 1);
+  scene.ambientColor = new Color3(0.07, 0.09, 0.08);
   scene.skipPointerMovePicking = true;
 
   const cameraRestingPosition = Vector3.Zero();
@@ -48,12 +48,12 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
   camera.inputs.clear();
 
   const hemispheric = new HemisphericLight('ambient-light', new Vector3(0, 1, -0.15), scene);
-  hemispheric.intensity = 0.68;
-  hemispheric.groundColor = new Color3(0.16, 0.23, 0.16);
+  hemispheric.intensity = 0.48;
+  hemispheric.groundColor = new Color3(0.08, 0.11, 0.07);
 
   const sun = new DirectionalLight('sun-light', new Vector3(-0.42, -1, 0.38), scene);
   sun.position = new Vector3(26, 38, -32);
-  sun.intensity = 1.25;
+  sun.intensity = 1.05;
 
   const shadowGenerator = new ShadowGenerator(QUALITY_SETTINGS[quality].shadowMapSize, sun);
   shadowGenerator.usePercentageCloserFiltering = true;

@@ -147,13 +147,13 @@ function createPlayfieldGround(scene: Scene, materials: MaterialLibrary): void {
     const x = positions[i];
     const z = positions[i + 2];
     const broad = valueNoise(x * 0.052 + 3.4, z * 0.044 - 1.9);
-    const tint = 0.965 + broad * 0.075;
+    const tint = 0.94 + broad * 0.1;
     const falloff = 1
-      - 0.09 * smoothStep(10.2, GROUND_HALF_WIDTH, Math.abs(x))
-      - 0.07 * smoothStep(25, GROUND_HALF_LENGTH, Math.abs(z));
-    colors[c] = tint * 0.975 * falloff;
+      - 0.12 * smoothStep(10.2, GROUND_HALF_WIDTH, Math.abs(x))
+      - 0.09 * smoothStep(25, GROUND_HALF_LENGTH, Math.abs(z));
+    colors[c] = tint * 0.94 * falloff;
     colors[c + 1] = tint * 1.02 * falloff;
-    colors[c + 2] = tint * 0.94 * falloff;
+    colors[c + 2] = tint * 0.89 * falloff;
     colors[c + 3] = 1;
   }
   ground.setVerticesData(VertexBuffer.ColorKind, colors, false);

@@ -42,22 +42,22 @@ export class MaterialLibrary {
       material.albedoColor = color;
       material.roughness = roughness;
       material.metallic = metallic;
-      material.environmentIntensity = 0.62;
+      material.environmentIntensity = 0.42;
       return material;
     };
 
-    // Rich grass and restrained stone keep the battlefield readable without pale, minty fills.
-    this.grass = pbr('mat-grass', Color3.FromHexString('#3d7739'));
-    this.paving = pbr('mat-paving', Color3.FromHexString('#777166'), 0.95);
-    this.stoneMoss = pbr('mat-stone-moss', Color3.FromHexString('#465744'), 0.95);
-    this.stone = pbr('mat-stone', Color3.FromHexString('#717b7a'), 0.92);
-    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#85877d'), 0.94);
-    this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#625e56'), 0.96);
-    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#3f494c'), 0.94);
-    this.road = pbr('mat-road', Color3.FromHexString('#817862'), 0.96);
+    // Saturated ground and a wider stone-value range keep every arena layer distinct in daylight.
+    this.grass = pbr('mat-grass', Color3.FromHexString('#337a3a'));
+    this.paving = pbr('mat-paving', Color3.FromHexString('#6c5f50'), 0.95);
+    this.stoneMoss = pbr('mat-stone-moss', Color3.FromHexString('#3e5040'), 0.95);
+    this.stone = pbr('mat-stone', Color3.FromHexString('#687170'), 0.92);
+    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#8b887a'), 0.94);
+    this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#5f5144'), 0.96);
+    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#333d42'), 0.94);
+    this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
     this.metal = pbr('mat-metal', Color3.FromHexString('#687478'), 0.34, 0.72);
-    this.gold = pbr('mat-gold', Color3.FromHexString('#d8a845'), 0.28, 0.8);
+    this.gold = pbr('mat-gold', Color3.FromHexString('#dca83c'), 0.28, 0.8);
     this.water = pbr('mat-water', Color3.FromHexString('#2a7185'), 0.25, 0.05);
     this.water.alpha = 0.92;
     this.waterDeep = pbr('mat-water-deep', Color3.FromHexString('#154453'), 0.3, 0.05);
@@ -66,10 +66,10 @@ export class MaterialLibrary {
     this.foliageDeep = pbr('mat-foliage-deep', Color3.FromHexString('#193c2a'));
     this.foliageDark = pbr('mat-foliage-dark', Color3.FromHexString('#20452f'));
     this.trunk = pbr('mat-trunk', Color3.FromHexString('#59402f'));
-    this.blue = pbr('mat-blue', Color3.FromHexString('#3c8df0'), 0.52, 0.08);
-    this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#174783'), 0.58, 0.12);
-    this.red = pbr('mat-red', Color3.FromHexString('#e84f55'), 0.52, 0.08);
-    this.redDark = pbr('mat-red-dark', Color3.FromHexString('#79212c'), 0.58, 0.12);
+    this.blue = pbr('mat-blue', Color3.FromHexString('#1f86f2'), 0.52, 0.08);
+    this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#0e438f'), 0.58, 0.12);
+    this.red = pbr('mat-red', Color3.FromHexString('#ee3f4b'), 0.52, 0.08);
+    this.redDark = pbr('mat-red-dark', Color3.FromHexString('#8a1b29'), 0.58, 0.12);
     this.skin = pbr('mat-skin', Color3.FromHexString('#d69a72'));
     this.leather = pbr('mat-leather', Color3.FromHexString('#563321'), 0.93);
     this.cloth = pbr('mat-cloth', Color3.FromHexString('#d7c5a3'), 0.95);
@@ -77,14 +77,14 @@ export class MaterialLibrary {
     this.white = pbr('mat-white', Color3.FromHexString('#dfe8e5'), 0.9);
 
     this.glowBlue = new StandardMaterial('mat-glow-blue', scene);
-    this.glowBlue.diffuseColor = Color3.FromHexString('#3aa7ff');
-    this.glowBlue.emissiveColor = Color3.FromHexString('#1368bf');
-    this.glowBlue.alpha = 0.64;
+    this.glowBlue.diffuseColor = Color3.FromHexString('#239cff');
+    this.glowBlue.emissiveColor = Color3.FromHexString('#0755b8');
+    this.glowBlue.alpha = 0.74;
 
     this.glowRed = new StandardMaterial('mat-glow-red', scene);
-    this.glowRed.diffuseColor = Color3.FromHexString('#ff4f58');
-    this.glowRed.emissiveColor = Color3.FromHexString('#a71c2c');
-    this.glowRed.alpha = 0.64;
+    this.glowRed.diffuseColor = Color3.FromHexString('#ff3948');
+    this.glowRed.emissiveColor = Color3.FromHexString('#aa1024');
+    this.glowRed.alpha = 0.74;
 
     this.torchGlow = new StandardMaterial('mat-torch-glow', scene);
     this.torchGlow.diffuseColor = Color3.FromHexString('#ff9b3d');
@@ -96,7 +96,7 @@ export class MaterialLibrary {
     this.torchGlowWarm.diffuseColor = Color3.FromHexString('#ffb457');
     this.torchGlowWarm.emissiveColor = Color3.FromHexString('#ff7d24');
 
-    this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#c89b43'), 0.7, 0.08);
+    this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#d09a32'), 0.7, 0.08);
 
     this.blobShadow = new StandardMaterial('mat-blob-shadow', scene);
     this.blobShadow.diffuseColor = Color3.Black();

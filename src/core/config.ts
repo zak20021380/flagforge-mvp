@@ -35,8 +35,8 @@ export const PORTRAIT_LAYOUT = {
     aiSpawnMinZ: 14.5,
     aiSpawnMaxZ: 19.7,
     route: {
-      flagApproachZ: 3.7,
-      flagApproachThresholdZ: 4.2,
+      flagApproachZ: 5,
+      flagApproachThresholdZ: 5.15,
       returnMergeZ: 13.4,
       returnMergeThresholdZ: 12.9,
       returnLaneScale: 0.58,
@@ -94,6 +94,67 @@ export const PORTRAIT_LAYOUT = {
     maxBackDistance: 58,
     // Brief, subtle dolly-in used for flag capture / gate opening / breach (world units).
     emphasisPush: 1.5,
+  },
+} as const;
+
+// All tower gameplay coordinates live here so the procedural art and deterministic
+// traversal remain in sync without collision queries or runtime pathfinding.
+export const CENTRAL_TOWER = {
+  baseWidth: 8.4,
+  baseDepth: 7.6,
+  shaftHeight: 4.15,
+  topSurfaceY: 5.35,
+  topUnitY: 5.51,
+  topWalkHalfWidth: 2.45,
+  topWalkHalfDepth: 1.92,
+  flagRootOffsetY: 0.03,
+  flagPickupHeightTolerance: 0.9,
+  ladderBaseDropRadius: 1.65,
+  climbSpeed: 3.45,
+  queueMoveScale: 0.82,
+  queueArrivalRadius: 0.18,
+  ladders: {
+    player: {
+      id: 'player',
+      facingYaw: 0,
+      groundEntry: { x: 0, y: 0.16, z: -4.55 },
+      groundAlign: { x: 0, y: 0.16, z: -4.08 },
+      climbTop: { x: 0, y: 5.51, z: -3.14 },
+      topExit: { x: 0, y: 5.51, z: -1.92 },
+      groundQueueOrigin: { x: 0, y: 0.16, z: -4.92 },
+      groundQueueStep: { x: 0, y: 0, z: -1.18 },
+      topQueuePositions: [
+        { x: 0, y: 5.51, z: -1.82 },
+        { x: -1.35, y: 5.51, z: -1.05 },
+        { x: 1.35, y: 5.51, z: -1.05 },
+        { x: -1.35, y: 5.51, z: 0.2 },
+        { x: 1.35, y: 5.51, z: 0.2 },
+        { x: 0, y: 5.51, z: 1.25 },
+      ],
+    },
+    enemy: {
+      id: 'enemy',
+      facingYaw: Math.PI,
+      groundEntry: { x: 0, y: 0.16, z: 4.55 },
+      groundAlign: { x: 0, y: 0.16, z: 4.08 },
+      climbTop: { x: 0, y: 5.51, z: 3.14 },
+      topExit: { x: 0, y: 5.51, z: 1.92 },
+      groundQueueOrigin: { x: 0, y: 0.16, z: 4.92 },
+      groundQueueStep: { x: 0, y: 0, z: 1.18 },
+      topQueuePositions: [
+        { x: 0, y: 5.51, z: 1.82 },
+        { x: 1.35, y: 5.51, z: 1.05 },
+        { x: -1.35, y: 5.51, z: 1.05 },
+        { x: 1.35, y: 5.51, z: -0.2 },
+        { x: -1.35, y: 5.51, z: -0.2 },
+        { x: 0, y: 5.51, z: -1.25 },
+      ],
+    },
+  },
+  safeFlagDrops: {
+    towerTop: { x: 0, y: 5.38, z: 0 },
+    playerBase: { x: 0, y: 0.12, z: -4.55 },
+    enemyBase: { x: 0, y: 0.12, z: 4.55 },
   },
 } as const;
 

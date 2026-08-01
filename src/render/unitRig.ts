@@ -128,15 +128,17 @@ export class UnitRig {
     this.torso.position.y = 1.35 + idleBob;
     this.head.rotation.y = Math.sin(elapsed * 1.5) * 0.04;
 
-    if (state === 'moving') {
+    if (state === 'moving' || state === 'climbing') {
       const speed = this.kind === 'raider' ? 10.5 : this.kind === 'ironGuard' ? 6.8 : 8.5;
       const swing = Math.sin(elapsed * speed);
-      this.leftLeg.rotation.x = swing * 0.66;
-      this.rightLeg.rotation.x = -swing * 0.66;
-      this.leftArm.rotation.x = -swing * 0.46;
-      this.rightArm.rotation.x = swing * 0.46;
-      this.visualRoot.position.y = Math.abs(Math.sin(elapsed * speed)) * 0.07;
-      this.torso.rotation.z = Math.sin(elapsed * speed * 0.5) * 0.035;
+      const legArc = state === 'climbing' ? 0.48 : 0.66;
+      const armArc = state === 'climbing' ? 0.72 : 0.46;
+      this.leftLeg.rotation.x = swing * legArc;
+      this.rightLeg.rotation.x = -swing * legArc;
+      this.leftArm.rotation.x = -swing * armArc;
+      this.rightArm.rotation.x = swing * armArc;
+      this.visualRoot.position.y = Math.abs(Math.sin(elapsed * speed)) * (state === 'climbing' ? 0.035 : 0.07);
+      this.torso.rotation.z = Math.sin(elapsed * speed * 0.5) * (state === 'climbing' ? 0.018 : 0.035);
     } else {
       this.leftLeg.rotation.x *= 0.75;
       this.rightLeg.rotation.x *= 0.75;

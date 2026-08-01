@@ -8,7 +8,6 @@ import {
   MeshBuilder,
   Scene,
   ShadowGenerator,
-  TransformNode,
   UniversalCamera,
   Vector3,
 } from '@babylonjs/core';
@@ -16,6 +15,7 @@ import { PORTRAIT_LAYOUT, QUALITY_SETTINGS } from '../core/config';
 import { clamp } from '../core/math';
 import type { QualityTier } from '../core/types';
 import { CastleVisual } from './castle';
+import { createCentralTower, type CentralTowerVisual } from './centralTower';
 import { MaterialLibrary } from './materials';
 
 export interface ArenaScene {
@@ -26,7 +26,7 @@ export interface ArenaScene {
   readonly redCastle: CastleVisual;
   readonly shadowGenerator: ShadowGenerator;
   readonly deployMarker: Mesh;
-  readonly flagPlatform: TransformNode;
+  readonly centralTower: CentralTowerVisual;
   readonly cameraRestingPosition: Vector3;
   readonly cameraForward: Vector3;
   resizeCamera(): void;
@@ -61,7 +61,7 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
 
   const materials = new MaterialLibrary(scene);
   createGroundAndPaths(scene, materials);
-  const flagPlatform = createFlagPlatform(scene, materials);
+  const centralTower = createCentralTower(scene, materials);
   createArenaDecor(scene, materials, QUALITY_SETTINGS[quality].decorations);
 
   const blueCastle = new CastleVisual(scene, materials, 'blue');
@@ -87,7 +87,7 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
     redCastle,
     shadowGenerator,
     deployMarker,
-    flagPlatform,
+    centralTower,
     cameraRestingPosition,
     cameraForward,
     resizeCamera,
@@ -213,32 +213,6 @@ function createGroundAndPaths(scene: Scene, materials: MaterialLibrary): void {
     wall.position.set(x, 0.65, 0);
     wall.material = materials.stoneDark;
   }
-}
-
-function createFlagPlatform(scene: Scene, materials: MaterialLibrary): TransformNode {
-  const root = new TransformNode('flag-platform-root', scene);
-  const base = MeshBuilder.CreateCylinder('flag-platform-base', { height: 0.55, diameter: 7.1, tessellation: 12 }, scene);
-  base.parent = root;
-  base.position.y = 0.25;
-  base.material = materials.stoneDark;
-  base.receiveShadows = true;
-  const top = MeshBuilder.CreateCylinder('flag-platform-top', { height: 0.28, diameter: 5.9, tessellation: 12 }, scene);
-  top.parent = root;
-  top.position.y = 0.65;
-  top.material = materials.road;
-  top.receiveShadows = true;
-  for (let i = 0; i < 8; i += 1) {
-    const angle = (i / 8) * Math.PI * 2;
-    const torch = MeshBuilder.CreateCylinder(`center-torch-${i}`, { height: 1.8, diameter: 0.16, tessellation: 8 }, scene);
-    torch.parent = root;
-    torch.position = new Vector3(Math.sin(angle) * 3.15, 1.2, Math.cos(angle) * 3.15);
-    torch.material = materials.metal;
-    const flame = MeshBuilder.CreateSphere(`center-flame-${i}`, { diameter: 0.35, segments: 6 }, scene);
-    flame.parent = root;
-    flame.position = new Vector3(Math.sin(angle) * 3.15, 2.15, Math.cos(angle) * 3.15);
-    flame.material = materials.gold;
-  }
-  return root;
 }
 
 function createArenaDecor(scene: Scene, materials: MaterialLibrary, density: number): void {

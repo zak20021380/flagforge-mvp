@@ -4,6 +4,8 @@ import type { Team } from '../core/types';
 export class MaterialLibrary {
   readonly grass: PBRMaterial;
   readonly stone: PBRMaterial;
+  readonly stoneLight: PBRMaterial;
+  readonly stoneWarm: PBRMaterial;
   readonly stoneDark: PBRMaterial;
   readonly road: PBRMaterial;
   readonly wood: PBRMaterial;
@@ -24,6 +26,8 @@ export class MaterialLibrary {
   readonly white: PBRMaterial;
   readonly glowBlue: StandardMaterial;
   readonly glowRed: StandardMaterial;
+  readonly torchGlow: StandardMaterial;
+  readonly objectiveCloth: PBRMaterial;
   readonly blobShadow: StandardMaterial;
 
   constructor(scene: Scene) {
@@ -38,6 +42,8 @@ export class MaterialLibrary {
 
     this.grass = pbr('mat-grass', Color3.FromHexString('#4d7d3e'));
     this.stone = pbr('mat-stone', Color3.FromHexString('#8d99a1'), 0.92);
+    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#a9a99d'), 0.94);
+    this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#777064'), 0.96);
     this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#4f5a65'), 0.94);
     this.road = pbr('mat-road', Color3.FromHexString('#a69b82'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
@@ -67,6 +73,12 @@ export class MaterialLibrary {
     this.glowRed.diffuseColor = Color3.FromHexString('#ff4f58');
     this.glowRed.emissiveColor = Color3.FromHexString('#a71c2c');
     this.glowRed.alpha = 0.64;
+
+    this.torchGlow = new StandardMaterial('mat-torch-glow', scene);
+    this.torchGlow.diffuseColor = Color3.FromHexString('#ff9b3d');
+    this.torchGlow.emissiveColor = Color3.FromHexString('#ff6a1a');
+
+    this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#c89b43'), 0.7, 0.08);
 
     this.blobShadow = new StandardMaterial('mat-blob-shadow', scene);
     this.blobShadow.diffuseColor = Color3.Black();

@@ -1,18 +1,22 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
-import { CONFIG, PORTRAIT_LAYOUT } from '../core/config';
+import { CENTRAL_TOWER, CONFIG, PORTRAIT_LAYOUT } from '../core/config';
 import { laneX, randomRange, squaredDistanceXZ } from '../core/math';
-import type { Lane, Team, UnitKind } from '../core/types';
+import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
 import { CastleLogic } from './castleLogic';
 import { EffectPool } from './effects';
 import { FlagController } from './flag';
+import { LadderSystem } from './ladderSystem';
 import { ProjectilePool } from './projectiles';
 import { UnitEntity } from './unit';
 
 export class UnitManager {
   private readonly units: UnitEntity[] = [];
+  private readonly ladders = new LadderSystem();
+  private readonly movementScratch = Vector3.Zero();
+  private readonly facingScratch = Vector3.Zero();
   private nextId = 1;
 
   constructor(
@@ -43,6 +47,7 @@ export class UnitManager {
   }
 
   update(deltaSeconds: number, elapsed: number): void {
+    this.ladders.beginFrame();
     for (const unit of this.units) {
       if (!unit.active) continue;
       unit.age += deltaSeconds;
@@ -58,6 +63,12 @@ export class UnitManager {
         unit.hitClock = Math.max(0, unit.hitClock - deltaSeconds);
         unit.state = 'hit';
         unit.rig.updateAnimation('hit', elapsed, 0, 1 - unit.hitClock / 0.24, 0, unit.carryingFlag);
+        continue;
+      }
+
+      if (this.ladders.isRegistered(unit)) {
+        this.ladders.updateUnit(unit, deltaSeconds);
+        unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
         continue;
       }
 
@@ -124,7 +135,7 @@ export class UnitManager {
 
   private updateAliveUnit(unit: UnitEntity, deltaSeconds: number, elapsed: number): void {
     const target = unit.target;
-    if (target && target.active && target.state !== 'dead' && !unit.carryingFlag) {
+    if (target && target.active && target.state !== 'dead' && !unit.carryingFlag && this.canAttackTarget(unit, target)) {
       const distanceSquared = squaredDistanceXZ(unit.position, target.position);
       const attackRangeSquared = unit.stats.attackRange * unit.stats.attackRange;
       if (distanceSquared <= attackRangeSquared) {
@@ -136,6 +147,11 @@ export class UnitManager {
     unit.attackClock = 0;
     unit.attackHitApplied = false;
     const goal = this.getStrategicGoal(unit);
+    if (this.ladders.requestIfNeeded(unit, goal)) {
+      this.ladders.updateUnit(unit, deltaSeconds);
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
     const moved = this.moveUnit(unit, goal, deltaSeconds);
     unit.state = moved ? 'moving' : 'idle';
 
@@ -186,7 +202,7 @@ export class UnitManager {
       return;
     }
 
-    if (unit.lastAttacker?.active && unit.lastAttacker.state !== 'dead') {
+    if (unit.lastAttacker?.active && unit.lastAttacker.state !== 'dead' && unit.lastAttacker.state !== 'climbing') {
       const retaliationRange = unit.stats.aggroRange * 1.6;
       if (squaredDistanceXZ(unit.position, unit.lastAttacker.position) <= retaliationRange * retaliationRange) {
         unit.target = unit.lastAttacker;
@@ -195,7 +211,7 @@ export class UnitManager {
     }
 
     const enemyCarrier = this.flag.currentCarrier?.team !== unit.team ? this.flag.currentCarrier : null;
-    if (enemyCarrier?.active) {
+    if (enemyCarrier?.active && enemyCarrier.state !== 'climbing') {
       const carrierPressureRange = Math.max(unit.stats.aggroRange, unit.kind === 'ranger' ? 13 : 10.5);
       if (squaredDistanceXZ(unit.position, enemyCarrier.position) <= carrierPressureRange * carrierPressureRange) {
         unit.target = enemyCarrier;
@@ -205,7 +221,7 @@ export class UnitManager {
 
     const friendlyCarrier = this.flag.currentCarrier?.team === unit.team ? this.flag.currentCarrier : null;
     if (friendlyCarrier) {
-      const threat = this.findNearestEnemy(friendlyCarrier.position, unit.team, 6.5);
+      const threat = this.findNearestEnemy(friendlyCarrier.position, unit.team, 6.5, friendlyCarrier.navigationArea);
       if (threat && squaredDistanceXZ(unit.position, threat.position) <= 12 * 12) {
         unit.target = threat;
         return;
@@ -215,14 +231,19 @@ export class UnitManager {
     const aggro = unit.kind === 'raider' && this.flag.canBePickedUp()
       ? Math.min(3.2, unit.stats.aggroRange)
       : unit.stats.aggroRange;
-    unit.target = this.findNearestEnemy(unit.position, unit.team, aggro);
+    unit.target = this.findNearestEnemy(unit.position, unit.team, aggro, unit.navigationArea);
   }
 
-  private findNearestEnemy(position: Vector3, team: Team, range: number): UnitEntity | null {
+  private findNearestEnemy(position: Vector3, team: Team, range: number, area: NavigationArea): UnitEntity | null {
     let nearest: UnitEntity | null = null;
     let bestDistance = range * range;
     for (const candidate of this.units) {
-      if (!candidate.active || candidate.state === 'dead' || candidate.team === team) continue;
+      if (
+        !candidate.active
+        || candidate.state === 'dead'
+        || candidate.team === team
+        || candidate.navigationArea !== area
+      ) continue;
       const distance = squaredDistanceXZ(position, candidate.position);
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -242,7 +263,7 @@ export class UnitManager {
       const behind = unit.team === 'blue' ? -1 : 1;
       return new Vector3(
         friendlyCarrier.position.x + side * (unit.kind === 'ironGuard' ? 1.45 : 1.95),
-        unit.position.y,
+        friendlyCarrier.state === 'climbing' ? 0.16 : friendlyCarrier.position.y,
         friendlyCarrier.position.z + behind * (unit.kind === 'ironGuard' ? 1.25 : 2.05),
       );
     }
@@ -252,6 +273,15 @@ export class UnitManager {
   }
 
   private getFlagRoutePoint(unit: UnitEntity): Vector3 {
+    const carrier = this.flag.currentCarrier;
+    if (carrier?.navigationArea === 'playerLadder') {
+      const safe = CENTRAL_TOWER.safeFlagDrops.playerBase;
+      return new Vector3(safe.x, 0.16, safe.z);
+    }
+    if (carrier?.navigationArea === 'enemyLadder') {
+      const safe = CENTRAL_TOWER.safeFlagDrops.enemyBase;
+      return new Vector3(safe.x, 0.16, safe.z);
+    }
     const flagPosition = this.flag.position;
     const lanePosition = laneX(unit.lane);
     const route = PORTRAIT_LAYOUT.arena.route;
@@ -261,17 +291,17 @@ export class UnitManager {
     if (unit.team === 'red' && unit.position.z > route.flagApproachThresholdZ) {
       return new Vector3(lanePosition, unit.position.y, route.flagApproachZ);
     }
-    return new Vector3(flagPosition.x, unit.position.y, flagPosition.z);
+    return new Vector3(flagPosition.x, flagPosition.y, flagPosition.z);
   }
 
   private getReturnRoutePoint(unit: UnitEntity): Vector3 {
     const delivery = this.castles.getCastle(unit.team).deliveryPoint;
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue' && unit.position.z > -route.returnMergeThresholdZ) {
-      return new Vector3(laneX(unit.lane) * route.returnLaneScale, unit.position.y, -route.returnMergeZ);
+      return new Vector3(laneX(unit.lane) * route.returnLaneScale, delivery.y, -route.returnMergeZ);
     }
     if (unit.team === 'red' && unit.position.z < route.returnMergeThresholdZ) {
-      return new Vector3(laneX(unit.lane) * route.returnLaneScale, unit.position.y, route.returnMergeZ);
+      return new Vector3(laneX(unit.lane) * route.returnLaneScale, delivery.y, route.returnMergeZ);
     }
     return new Vector3(delivery.x, unit.position.y, delivery.z);
   }
@@ -281,26 +311,27 @@ export class UnitManager {
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue') {
       if (unit.position.z < route.attackMergeThresholdZ) {
-        return new Vector3(laneX(unit.lane) * route.attackLaneScale, unit.position.y, route.attackMergeZ);
+        return new Vector3(laneX(unit.lane) * route.attackLaneScale, enemyCastle.gatePoint.y, route.attackMergeZ);
       }
       if (unit.position.z < enemyCastle.gatePoint.z - 0.12) {
-        return new Vector3(enemyCastle.gatePoint.x, unit.position.y, enemyCastle.gatePoint.z);
+        return new Vector3(enemyCastle.gatePoint.x, enemyCastle.gatePoint.y, enemyCastle.gatePoint.z);
       }
     } else {
       if (unit.position.z > -route.attackMergeThresholdZ) {
-        return new Vector3(laneX(unit.lane) * route.attackLaneScale, unit.position.y, -route.attackMergeZ);
+        return new Vector3(laneX(unit.lane) * route.attackLaneScale, enemyCastle.gatePoint.y, -route.attackMergeZ);
       }
       if (unit.position.z > enemyCastle.gatePoint.z + 0.12) {
-        return new Vector3(enemyCastle.gatePoint.x, unit.position.y, enemyCastle.gatePoint.z);
+        return new Vector3(enemyCastle.gatePoint.x, enemyCastle.gatePoint.y, enemyCastle.gatePoint.z);
       }
     }
     const infiltrationZ = enemyCastle.interiorPoint.z + (unit.team === 'blue' ? route.infiltrationDepth : -route.infiltrationDepth);
-    return new Vector3(enemyCastle.interiorPoint.x, unit.position.y, infiltrationZ);
+    return new Vector3(enemyCastle.interiorPoint.x, enemyCastle.interiorPoint.y, infiltrationZ);
   }
 
   private moveUnit(unit: UnitEntity, goal: Vector3, deltaSeconds: number): boolean {
-    let dx = goal.x - unit.position.x;
-    let dz = goal.z - unit.position.z;
+    const movementGoal = unit.navigationArea === 'ground' ? this.resolveGroundGoal(unit, goal) : goal;
+    let dx = movementGoal.x - unit.position.x;
+    let dz = movementGoal.z - unit.position.z;
     let distance = Math.hypot(dx, dz);
     if (distance < 0.12) return false;
 
@@ -311,7 +342,13 @@ export class UnitManager {
     let separationZ = 0;
     const separationRadiusSquared = CONFIG.unit.separationRadius ** 2;
     for (const neighbor of this.units) {
-      if (neighbor === unit || !neighbor.active || neighbor.state === 'dead' || neighbor.team !== unit.team) continue;
+      if (
+        neighbor === unit
+        || !neighbor.active
+        || neighbor.state === 'dead'
+        || neighbor.team !== unit.team
+        || neighbor.navigationArea !== unit.navigationArea
+      ) continue;
       const offsetX = unit.position.x - neighbor.position.x;
       const offsetZ = unit.position.z - neighbor.position.z;
       const distanceSquared = offsetX * offsetX + offsetZ * offsetZ;
@@ -335,9 +372,16 @@ export class UnitManager {
     const step = speed * deltaSeconds;
     unit.position.x += dx * step;
     unit.position.z += dz * step;
-    unit.position.x = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsX, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsX, unit.position.x));
-    unit.position.z = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsZ, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsZ, unit.position.z));
-    this.faceUnit(unit, new Vector3(unit.position.x + dx, unit.position.y, unit.position.z + dz), deltaSeconds);
+    if (unit.navigationArea === 'towerTop') {
+      unit.position.x = Math.max(-CENTRAL_TOWER.topWalkHalfWidth, Math.min(CENTRAL_TOWER.topWalkHalfWidth, unit.position.x));
+      unit.position.z = Math.max(-CENTRAL_TOWER.topWalkHalfDepth, Math.min(CENTRAL_TOWER.topWalkHalfDepth, unit.position.z));
+      unit.position.y = CENTRAL_TOWER.topUnitY;
+    } else {
+      unit.position.x = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsX, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsX, unit.position.x));
+      unit.position.z = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsZ, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsZ, unit.position.z));
+    }
+    this.facingScratch.set(unit.position.x + dx, unit.position.y, unit.position.z + dz);
+    this.faceUnit(unit, this.facingScratch, deltaSeconds);
     return true;
   }
 
@@ -356,7 +400,13 @@ export class UnitManager {
     let nearest: UnitEntity | null = null;
     let best = 2.8 * 2.8;
     for (const candidate of this.units) {
-      if (!candidate.active || candidate.state === 'dead' || candidate.team !== target.team || candidate.kind !== 'ironGuard') continue;
+      if (
+        !candidate.active
+        || candidate.state === 'dead'
+        || candidate.team !== target.team
+        || candidate.kind !== 'ironGuard'
+        || candidate.navigationArea !== target.navigationArea
+      ) continue;
       const distance = squaredDistanceXZ(target.position, candidate.position);
       if (distance <= best) {
         best = distance;
@@ -372,6 +422,54 @@ export class UnitManager {
     unit.deathClock = 0;
     unit.target = null;
     if (unit.carryingFlag) this.flag.dropFrom(unit);
+    this.ladders.remove(unit, true);
     this.audio.play('death');
+  }
+
+  private canAttackTarget(unit: UnitEntity, target: UnitEntity): boolean {
+    if (unit.navigationArea !== target.navigationArea) return false;
+    if (unit.navigationArea !== 'ground' && unit.navigationArea !== 'towerTop') return false;
+    return unit.navigationArea === 'towerTop' || !this.segmentCrossesTower(unit.position, target.position, 0.18);
+  }
+
+  private resolveGroundGoal(unit: UnitEntity, goal: Vector3): Vector3 {
+    if (!this.segmentCrossesTower(unit.position, goal, 0.72)) return goal;
+    const clearanceX = CENTRAL_TOWER.baseWidth / 2 + 0.82;
+    const clearanceZ = CENTRAL_TOWER.baseDepth / 2 + 0.78;
+    const side = unit.lane === 'left' ? -1 : unit.lane === 'right' ? 1 : unit.id % 2 === 0 ? -1 : 1;
+    const sideX = side * clearanceX;
+    const goalSideZ = (goal.z < 0 ? -1 : 1) * clearanceZ;
+
+    if (Math.abs(unit.position.x) < clearanceX - 0.16) {
+      const currentSideZ = (unit.position.z < 0 ? -1 : 1) * clearanceZ;
+      this.movementScratch.set(sideX, unit.position.y, currentSideZ);
+    } else {
+      this.movementScratch.set(sideX, unit.position.y, goalSideZ);
+    }
+    return this.movementScratch;
+  }
+
+  private segmentCrossesTower(start: Vector3, end: Vector3, padding: number): boolean {
+    const minX = -CENTRAL_TOWER.baseWidth / 2 - padding;
+    const maxX = CENTRAL_TOWER.baseWidth / 2 + padding;
+    const minZ = -CENTRAL_TOWER.baseDepth / 2 - padding;
+    const maxZ = CENTRAL_TOWER.baseDepth / 2 + padding;
+    let startT = 0;
+    let endT = 1;
+    const dx = end.x - start.x;
+    const dz = end.z - start.z;
+
+    const clip = (direction: number, offset: number): boolean => {
+      if (Math.abs(direction) < 0.00001) return offset >= 0;
+      const ratio = offset / direction;
+      if (direction > 0) endT = Math.min(endT, ratio);
+      else startT = Math.max(startT, ratio);
+      return startT <= endT;
+    };
+
+    return clip(-dx, start.x - minX)
+      && clip(dx, maxX - start.x)
+      && clip(-dz, start.z - minZ)
+      && clip(dz, maxZ - start.z);
   }
 }

@@ -2,7 +2,8 @@ import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 export type Team = 'blue' | 'red';
 export type UnitKind = 'vanguard' | 'ranger' | 'raider' | 'ironGuard';
-export type UnitState = 'idle' | 'moving' | 'attacking' | 'hit' | 'dead';
+export type UnitState = 'idle' | 'moving' | 'queued' | 'climbing' | 'attacking' | 'hit' | 'dead';
+export type NavigationArea = 'ground' | 'towerTop' | 'playerLadder' | 'enemyLadder';
 export type Lane = 'left' | 'center' | 'right';
 export type QualityTier = 'low' | 'standard' | 'high';
 

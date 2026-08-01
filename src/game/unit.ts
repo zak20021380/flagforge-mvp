@@ -1,6 +1,6 @@
 import { Vector3 } from '@babylonjs/core';
 import { UNIT_STATS } from '../core/config';
-import type { Lane, Team, UnitKind, UnitState } from '../core/types';
+import type { Lane, NavigationArea, Team, UnitKind, UnitState } from '../core/types';
 import { UnitRig } from '../render/unitRig';
 
 export class UnitEntity {
@@ -8,6 +8,7 @@ export class UnitEntity {
   active = false;
   health = 1;
   state: UnitState = 'idle';
+  navigationArea: NavigationArea = 'ground';
   lane: Lane = 'center';
   target: UnitEntity | null = null;
   lastAttacker: UnitEntity | null = null;
@@ -36,6 +37,7 @@ export class UnitEntity {
     this.active = true;
     this.health = this.stats.maxHealth;
     this.state = 'idle';
+    this.navigationArea = 'ground';
     this.lane = lane;
     this.target = null;
     this.lastAttacker = null;
@@ -57,6 +59,7 @@ export class UnitEntity {
     this.target = null;
     this.lastAttacker = null;
     this.carryingFlag = false;
+    this.navigationArea = 'ground';
     this.rig.setEnabled(false);
   }
 }

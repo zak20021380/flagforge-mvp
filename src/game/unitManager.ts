@@ -1,11 +1,12 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
-import { CENTRAL_TOWER, CONFIG, PORTRAIT_LAYOUT } from '../core/config';
+import { CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
 import { laneX, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
 import { CastleLogic } from './castleLogic';
+import { CastleLadderSystem } from './castleLadderSystem';
 import { EffectPool } from './effects';
 import { FlagController } from './flag';
 import { LadderSystem } from './ladderSystem';
@@ -15,6 +16,7 @@ import { UnitEntity } from './unit';
 export class UnitManager {
   private readonly units: UnitEntity[] = [];
   private readonly ladders = new LadderSystem();
+  private readonly castleLadders = new CastleLadderSystem();
   private readonly movementScratch = Vector3.Zero();
   private readonly facingScratch = Vector3.Zero();
   private nextId = 1;
@@ -48,6 +50,7 @@ export class UnitManager {
 
   update(deltaSeconds: number, elapsed: number): void {
     this.ladders.beginFrame();
+    this.castleLadders.beginFrame();
     for (const unit of this.units) {
       if (!unit.active) continue;
       unit.age += deltaSeconds;
@@ -56,6 +59,17 @@ export class UnitManager {
         unit.deathClock += deltaSeconds;
         unit.rig.updateAnimation('dead', elapsed, 0, 0, Math.min(1, unit.deathClock / 0.82), false);
         if (unit.deathClock >= 1.18) unit.deactivate();
+        continue;
+      }
+
+      if (this.castleLadders.isRegistered(unit)) {
+        this.castleLadders.updateUnit(unit, deltaSeconds);
+        if (
+          !this.castleLadders.isRegistered(unit)
+          && unit.navigationArea === 'ground'
+          && this.castles.isAttackWindow(unit.team)
+        ) this.castles.tryInfiltrate(unit);
+        unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
         continue;
       }
 
@@ -102,6 +116,7 @@ export class UnitManager {
     target.hitClock = 0.24;
     target.attackClock = 0;
     target.attackHitApplied = false;
+    this.castleLadders.tryKnockDown(target, attacker);
   }
 
   countActive(team?: Team): number {
@@ -134,6 +149,41 @@ export class UnitManager {
   }
 
   private updateAliveUnit(unit: UnitEntity, deltaSeconds: number, elapsed: number): void {
+    if (this.castles.isAttackWindow(unit.team) && this.castles.tryInfiltrate(unit)) {
+      unit.state = 'idle';
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
+
+    const enemyCastleUnderAttack = this.castles.isAttackWindow('blue');
+    if (
+      enemyCastleUnderAttack
+      && unit.team === 'red'
+      && unit.navigationArea === 'ground'
+      && unit.position.z > PORTRAIT_LAYOUT.arena.route.attackMergeThresholdZ
+      && this.castleLadders.requestDefense(unit)
+    ) {
+      this.castleLadders.updateUnit(unit, deltaSeconds);
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
+    if (enemyCastleUnderAttack && unit.team === 'blue' && this.castleLadders.requestAssault(unit)) {
+      this.castleLadders.updateUnit(unit, deltaSeconds);
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
+    if (
+      unit.team === 'red'
+      && unit.navigationArea === 'enemyWallTop'
+      && !enemyCastleUnderAttack
+      && !this.castleLadders.hasAssaultInProgress()
+      && this.castleLadders.requestDefenseReturn(unit)
+    ) {
+      this.castleLadders.updateUnit(unit, deltaSeconds);
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
+
     const target = unit.target;
     if (target && target.active && target.state !== 'dead' && !unit.carryingFlag && this.canAttackTarget(unit, target)) {
       const distanceSquared = squaredDistanceXZ(unit.position, target.position);
@@ -142,6 +192,17 @@ export class UnitManager {
         this.updateAttack(unit, target, deltaSeconds, elapsed);
         return;
       }
+    }
+
+    if (
+      unit.team === 'blue'
+      && unit.navigationArea === 'enemyWallTop'
+      && (!target || !target.active || target.state === 'dead')
+      && this.castleLadders.requestWallExit(unit)
+    ) {
+      this.castleLadders.updateUnit(unit, deltaSeconds);
+      unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
     }
 
     unit.attackClock = 0;
@@ -202,6 +263,12 @@ export class UnitManager {
       return;
     }
 
+    const castleTarget = this.castleLadders.findPriorityTarget(unit, this.units);
+    if (castleTarget) {
+      unit.target = castleTarget;
+      return;
+    }
+
     if (unit.lastAttacker?.active && unit.lastAttacker.state !== 'dead' && unit.lastAttacker.state !== 'climbing') {
       const retaliationRange = unit.stats.aggroRange * 1.6;
       if (squaredDistanceXZ(unit.position, unit.lastAttacker.position) <= retaliationRange * retaliationRange) {
@@ -257,6 +324,9 @@ export class UnitManager {
     if (unit.carryingFlag) return this.getReturnRoutePoint(unit);
     if (unit.target?.active && unit.target.state !== 'dead') return unit.target.position;
 
+    const guardPoint = this.castleLadders.getGuardPoint(unit);
+    if (guardPoint) return guardPoint;
+
     const friendlyCarrier = this.flag.currentCarrier?.team === unit.team ? this.flag.currentCarrier : null;
     if (friendlyCarrier) {
       const side = unit.id % 2 === 0 ? -1 : 1;
@@ -310,6 +380,7 @@ export class UnitManager {
     const enemyCastle = this.castles.getCastle(unit.team === 'blue' ? 'red' : 'blue');
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue') {
+      if (unit.kind === 'ranger') return this.castleLadders.getRangerSupportPoint(unit);
       if (unit.position.z < route.attackMergeThresholdZ) {
         return new Vector3(laneX(unit.lane) * route.attackLaneScale, enemyCastle.gatePoint.y, route.attackMergeZ);
       }
@@ -376,6 +447,10 @@ export class UnitManager {
       unit.position.x = Math.max(-CENTRAL_TOWER.topWalkHalfWidth, Math.min(CENTRAL_TOWER.topWalkHalfWidth, unit.position.x));
       unit.position.z = Math.max(-CENTRAL_TOWER.topWalkHalfDepth, Math.min(CENTRAL_TOWER.topWalkHalfDepth, unit.position.z));
       unit.position.y = CENTRAL_TOWER.topUnitY;
+    } else if (unit.navigationArea === 'enemyWallTop') {
+      unit.position.x = Math.max(ENEMY_CASTLE_ASSAULT.wallBounds.minX, Math.min(ENEMY_CASTLE_ASSAULT.wallBounds.maxX, unit.position.x));
+      unit.position.z = Math.max(ENEMY_CASTLE_ASSAULT.wallBounds.minZ, Math.min(ENEMY_CASTLE_ASSAULT.wallBounds.maxZ, unit.position.z));
+      unit.position.y = ENEMY_CASTLE_ASSAULT.wallTopY;
     } else {
       unit.position.x = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsX, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsX, unit.position.x));
       unit.position.z = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsZ, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsZ, unit.position.z));
@@ -423,10 +498,12 @@ export class UnitManager {
     unit.target = null;
     if (unit.carryingFlag) this.flag.dropFrom(unit);
     this.ladders.remove(unit, true);
+    this.castleLadders.remove(unit, true);
     this.audio.play('death');
   }
 
   private canAttackTarget(unit: UnitEntity, target: UnitEntity): boolean {
+    if (this.castleLadders.canEngage(unit, target)) return true;
     if (unit.navigationArea !== target.navigationArea) return false;
     if (unit.navigationArea !== 'ground' && unit.navigationArea !== 'towerTop') return false;
     return unit.navigationArea === 'towerTop' || !this.segmentCrossesTower(unit.position, target.position, 0.18);

@@ -54,7 +54,7 @@ export class CastleLogic {
   }
 
   tryInfiltrate(unit: UnitEntity): boolean {
-    if (this.breachedTeam || this.winner || !this.isAttackWindow(unit.team)) return false;
+    if (unit.navigationArea !== 'ground' || this.breachedTeam || this.winner || !this.isAttackWindow(unit.team)) return false;
     const defender = oppositeTeam(unit.team);
     const interior = this.getCastle(defender).interiorPoint;
     const insideX = Math.abs(unit.position.x - interior.x) <= 3.1;

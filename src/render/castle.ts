@@ -6,7 +6,7 @@ import {
   TransformNode,
   Vector3,
 } from '@babylonjs/core';
-import { PORTRAIT_LAYOUT } from '../core/config';
+import { ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
 import type { Team } from '../core/types';
 import { MaterialLibrary } from './materials';
 
@@ -81,6 +81,13 @@ export class CastleVisual {
     createBanner(scene, this.root, materials, team, new Vector3(-4.4, 5.7, 3.0 * this.facing));
     createBanner(scene, this.root, materials, team, new Vector3(4.4, 5.7, 3.0 * this.facing));
 
+    // Only the portrait-facing red castle is the enemy assault objective. Two
+    // authored ladders sit on its left/right wall faces and match the AI paths.
+    if (team === 'red') {
+      createAssaultLadder(scene, this.root, materials, 'left', this.baseZ);
+      createAssaultLadder(scene, this.root, materials, 'right', this.baseZ);
+    }
+
     this.breachGlow = MeshBuilder.CreateTorus(`${team}-breach-glow`, { diameter: 5.4, thickness: 0.18, tessellation: 40 }, scene);
     this.breachGlow.parent = this.root;
     this.breachGlow.position = new Vector3(0, 0.16, -1.1 * this.facing);
@@ -110,6 +117,82 @@ export class CastleVisual {
       this.breachGlow.scaling.setAll(1 + Math.sin(elapsed * 5) * 0.05);
       this.breachGlow.rotation.z += deltaSeconds * 0.65;
     }
+  }
+}
+
+function createAssaultLadder(
+  scene: Scene,
+  parent: TransformNode,
+  materials: MaterialLibrary,
+  id: keyof typeof ENEMY_CASTLE_ASSAULT.ladders,
+  castleBaseZ: number,
+): void {
+  const ladder = ENEMY_CASTLE_ASSAULT.ladders[id];
+  const widthScale = PORTRAIT_LAYOUT.arena.castleWidthScale;
+  const localX = ladder.groundAlign.x / widthScale;
+  const bottomY = ladder.groundAlign.y;
+  const bottomZ = ladder.groundAlign.z - castleBaseZ;
+  const topY = ladder.climbTop.y;
+  const topZ = ladder.climbTop.z - castleBaseZ;
+  const deltaY = topY - bottomY;
+  const deltaZ = topZ - bottomZ;
+  const length = Math.hypot(deltaY, deltaZ);
+  const pitch = Math.atan2(deltaZ, deltaY);
+
+  for (const [index, xOffset] of [-0.72, 0.72].entries()) {
+    const rail = MeshBuilder.CreateCylinder(`red-castle-ladder-${id}-rail-${index}`, {
+      height: length,
+      diameter: 0.21,
+      tessellation: 7,
+    }, scene);
+    rail.parent = parent;
+    rail.position.set(localX + xOffset / widthScale, (bottomY + topY) / 2, (bottomZ + topZ) / 2);
+    rail.rotation.x = pitch;
+    rail.material = materials.wood;
+    rail.isPickable = false;
+  }
+
+  const rungCount = 12;
+  const rungSource = MeshBuilder.CreateBox(`red-castle-ladder-${id}-rung-source`, {
+    width: 1.62 / widthScale,
+    height: 0.15,
+    depth: 0.2,
+  }, scene);
+  rungSource.parent = parent;
+  rungSource.material = materials.stoneLight;
+  rungSource.isPickable = false;
+  for (let index = 0; index < rungCount; index += 1) {
+    const progress = (index + 0.5) / rungCount;
+    const rung = index === 0 ? rungSource : rungSource.createInstance(`red-castle-ladder-${id}-rung-${index}`);
+    rung.parent = parent;
+    rung.position.set(localX, bottomY + deltaY * progress, bottomZ + deltaZ * progress);
+    rung.rotation.x = pitch;
+    rung.isPickable = false;
+  }
+
+  const landing = MeshBuilder.CreateBox(`red-castle-ladder-${id}-queue-landing`, {
+    width: 2.25 / widthScale,
+    height: 0.16,
+    depth: 1.18,
+  }, scene);
+  landing.parent = parent;
+  landing.position.set(localX, 0.1, ladder.groundEntry.z - castleBaseZ - 0.12);
+  landing.material = materials.road;
+  landing.receiveShadows = true;
+  landing.isPickable = false;
+
+  for (const [index, y] of [0.42, topY - 0.2].entries()) {
+    const brace = MeshBuilder.CreateBox(`red-castle-ladder-${id}-brace-${index}`, {
+      width: 1.9 / widthScale,
+      height: 0.18,
+      depth: 0.28,
+    }, scene);
+    brace.parent = parent;
+    const progress = (y - bottomY) / Math.max(0.001, deltaY);
+    brace.position.set(localX, y, bottomZ + deltaZ * progress);
+    brace.rotation.x = pitch;
+    brace.material = materials.gold;
+    brace.isPickable = false;
   }
 }
 

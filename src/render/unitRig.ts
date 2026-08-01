@@ -169,6 +169,15 @@ export class UnitRig {
       this.head.rotation.x = Math.sin(hitProgress * Math.PI) * 0.22;
     }
 
+    if (state === 'falling') {
+      this.leftArm.rotation.x = -1.05;
+      this.rightArm.rotation.x = -0.82;
+      this.leftLeg.rotation.x = 0.58;
+      this.rightLeg.rotation.x = -0.42;
+      this.torso.rotation.x = -0.3;
+      this.head.rotation.z = Math.sin(elapsed * 13) * 0.12;
+    }
+
     if (state === 'dead') {
       this.deathRotation = Math.min(Math.PI * 0.47, deathProgress * Math.PI * 0.47);
       this.visualRoot.rotation.z = (this.team === 'blue' ? -1 : 1) * this.deathRotation;

@@ -26,8 +26,6 @@ const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
 const ARENA_TEXTURE_URL = '/assets/textures/arena/flagforge-arena-forest.png';
-const ARENA_VISUAL_SURFACE_LENGTH = ARENA.groundLength;
-export const ARENA_VISUAL_SURFACE_WIDTH = ARENA_VISUAL_SURFACE_LENGTH * 0.5;
 
 const laneHalfWidth = (lane: number): number => (lane === 0 ? ARENA.centerRoadWidth : ARENA.sideRoadWidth) / 2;
 
@@ -186,11 +184,11 @@ function createArenaArtworkSurface(scene: Scene): void {
   material.freeze();
 
   const surface = MeshBuilder.CreateGround('arena-artwork-surface', {
-    width: ARENA_VISUAL_SURFACE_WIDTH,
-    height: ARENA_VISUAL_SURFACE_LENGTH,
+    width: 95.617149,
+    height: 148.329763,
     subdivisions: 1,
   }, scene);
-  surface.position.set(0, 0, 0);
+  surface.position.set(0, 0, 20.7720465);
   surface.material = material;
   surface.isPickable = false;
   surface.checkCollisions = false;

@@ -1,23 +1,12 @@
 import type { QualityTier, UnitKind, UnitStats } from './types';
 
-// Render-only arena layering. The main dimensions retain the established artwork composition;
-// the outer dimensions and center are the measured, padded camera-ground footprint.
-export const MAIN_ARENA_VISUAL_WIDTH = 37.6;
-export const MAIN_ARENA_VISUAL_LENGTH = 75.2;
-export const OUTER_FILLER_WIDTH = 95.617149;
-export const OUTER_FILLER_LENGTH = 148.329763;
-export const OUTER_FILLER_CENTER_X = 0;
-export const OUTER_FILLER_CENTER_Z = 20.7720465;
-export const MAIN_ARENA_Y = 0;
-export const OUTER_FILLER_Y = -0.12;
-
-// Authored forest-arena texture alignment. These tune only the visible main artwork surface and
-// never alter gameplay coordinates, camera framing, or the invisible picking ground.
-export const MAIN_ARENA_TEXTURE_ROTATION = 0;
+// Authored forest-arena alignment. These are intentionally centralized because the render roots
+// and their linked gameplay coordinates must move together when the artwork is tuned.
+export const ARENA_TEXTURE_ROTATION = 0;
 export const ARENA_TEXTURE_U_SCALE = 1;
 export const ARENA_TEXTURE_V_SCALE = 1;
-export const MAIN_ARENA_TEXTURE_U_OFFSET = 0;
-export const MAIN_ARENA_TEXTURE_V_OFFSET = 0;
+export const ARENA_TEXTURE_U_OFFSET = 0;
+export const ARENA_TEXTURE_V_OFFSET = 0;
 
 export const RED_CASTLE_VISUAL_OFFSET_X = 0;
 export const RED_CASTLE_VISUAL_OFFSET_Z = -10.9;

@@ -1,6 +1,5 @@
 import {
   Color3,
-  DynamicTexture,
   MeshBuilder,
   Scene,
   StandardMaterial,
@@ -9,19 +8,11 @@ import {
   VertexData,
 } from '@babylonjs/core';
 import {
+  ARENA_TEXTURE_ROTATION,
+  ARENA_TEXTURE_U_OFFSET,
   ARENA_TEXTURE_U_SCALE,
+  ARENA_TEXTURE_V_OFFSET,
   ARENA_TEXTURE_V_SCALE,
-  MAIN_ARENA_TEXTURE_ROTATION,
-  MAIN_ARENA_TEXTURE_U_OFFSET,
-  MAIN_ARENA_TEXTURE_V_OFFSET,
-  MAIN_ARENA_VISUAL_LENGTH,
-  MAIN_ARENA_VISUAL_WIDTH,
-  MAIN_ARENA_Y,
-  OUTER_FILLER_CENTER_X,
-  OUTER_FILLER_CENTER_Z,
-  OUTER_FILLER_LENGTH,
-  OUTER_FILLER_WIDTH,
-  OUTER_FILLER_Y,
   PORTRAIT_LAYOUT,
 } from '../core/config';
 import { clamp } from '../core/math';
@@ -35,10 +26,8 @@ const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
 const ARENA_TEXTURE_URL = '/assets/textures/arena/flagforge-arena-forest.png';
-const OUTER_FILLER_TEXTURE_WIDTH = 512;
-const OUTER_FILLER_TEXTURE_HEIGHT = 800;
-const OUTER_FILLER_TILE_COLUMNS = 4;
-const OUTER_FILLER_TILE_ROWS = 8;
+const ARENA_VISUAL_SURFACE_LENGTH = ARENA.groundLength;
+export const ARENA_VISUAL_SURFACE_WIDTH = ARENA_VISUAL_SURFACE_LENGTH * 0.5;
 
 const laneHalfWidth = (lane: number): number => (lane === 0 ? ARENA.centerRoadWidth : ARENA.sideRoadWidth) / 2;
 
@@ -80,7 +69,6 @@ export function createTerrain(scene: Scene, materials: MaterialLibrary): void {
   createSurroundingTerrain(scene, materials);
   createArenaPlatform(scene, materials);
   createPlayfieldGround(scene, materials);
-  createOuterForestFiller(scene);
   createArenaArtworkSurface(scene);
 }
 
@@ -172,104 +160,7 @@ function createPlayfieldGround(scene: Scene, materials: MaterialLibrary): void {
   ground.freezeWorldMatrix();
 }
 
-/**
- * Builds a small mobile-friendly texture once from forest-only corner patches in the existing
- * arena artwork. Mirrored placement varies the canopy pattern without ever copying the authored
- * lanes, rivers, bridges, castles, or central objective into the outer surroundings.
- */
-function createOuterForestTexture(scene: Scene): DynamicTexture {
-  const texture = new DynamicTexture('outer-forest-filler-texture', {
-    width: OUTER_FILLER_TEXTURE_WIDTH,
-    height: OUTER_FILLER_TEXTURE_HEIGHT,
-  }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
-  texture.wrapU = Texture.CLAMP_ADDRESSMODE;
-  texture.wrapV = Texture.CLAMP_ADDRESSMODE;
-  texture.anisotropicFilteringLevel = Math.max(1, Math.min(2, scene.getEngine().getCaps().maxAnisotropy));
-
-  const context = texture.getContext();
-  context.fillStyle = '#193c2a';
-  context.fillRect(0, 0, OUTER_FILLER_TEXTURE_WIDTH, OUTER_FILLER_TEXTURE_HEIGHT);
-  texture.update(false);
-
-  const source = new Image();
-  source.decoding = 'async';
-  source.onload = (): void => {
-    const patchSize = Math.floor(Math.min(source.naturalWidth * 0.16, source.naturalHeight * 0.1));
-    const inset = Math.max(2, Math.floor(patchSize * 0.025));
-    const patches = [
-      { x: inset, y: inset },
-      { x: source.naturalWidth - patchSize - inset, y: inset },
-      { x: inset, y: source.naturalHeight - patchSize - inset },
-      {
-        x: source.naturalWidth - patchSize - inset,
-        y: source.naturalHeight - patchSize - inset,
-      },
-    ];
-    const tileWidth = OUTER_FILLER_TEXTURE_WIDTH / OUTER_FILLER_TILE_COLUMNS;
-    const tileHeight = OUTER_FILLER_TEXTURE_HEIGHT / OUTER_FILLER_TILE_ROWS;
-
-    for (let row = 0; row < OUTER_FILLER_TILE_ROWS; row += 1) {
-      for (let column = 0; column < OUTER_FILLER_TILE_COLUMNS; column += 1) {
-        const patch = patches[(row * 3 + column * 5 + row * column) % patches.length];
-        const flipX = (row + column) % 2 === 1;
-        const flipY = (row * 2 + column) % 3 === 1;
-        const destinationX = column * tileWidth;
-        const destinationY = row * tileHeight;
-
-        context.save();
-        context.translate(destinationX + tileWidth / 2, destinationY + tileHeight / 2);
-        context.scale(flipX ? -1 : 1, flipY ? -1 : 1);
-        context.drawImage(
-          source,
-          patch.x,
-          patch.y,
-          patchSize,
-          patchSize,
-          -tileWidth / 2 - 1,
-          -tileHeight / 2 - 1,
-          tileWidth + 2,
-          tileHeight + 2,
-        );
-        context.restore();
-      }
-    }
-
-    texture.update(false);
-    source.onload = null;
-    source.onerror = null;
-  };
-  source.onerror = (): void => {
-    source.onload = null;
-    source.onerror = null;
-  };
-  source.src = ARENA_TEXTURE_URL;
-
-  return texture;
-}
-
-/** A render-only underlay fills the complete measured camera footprint beneath the main art. */
-function createOuterForestFiller(scene: Scene): void {
-  const material = new StandardMaterial('mat-outer-forest-filler', scene);
-  material.diffuseTexture = createOuterForestTexture(scene);
-  material.diffuseColor = Color3.White();
-  material.specularColor = Color3.Black();
-  material.disableLighting = false;
-  material.freeze();
-
-  const surface = MeshBuilder.CreateGround('outer-forest-filler', {
-    width: OUTER_FILLER_WIDTH,
-    height: OUTER_FILLER_LENGTH,
-    subdivisions: 1,
-  }, scene);
-  surface.position.set(OUTER_FILLER_CENTER_X, OUTER_FILLER_Y, OUTER_FILLER_CENTER_Z);
-  surface.material = material;
-  surface.isPickable = false;
-  surface.checkCollisions = false;
-  surface.receiveShadows = false;
-  surface.freezeWorldMatrix();
-}
-
-/** One render-only mesh carries the complete authored main arena surface unchanged. */
+/** One render-only mesh carries the complete authored arena surface. */
 function createArenaArtworkSurface(scene: Scene): void {
   const texture = new Texture(ARENA_TEXTURE_URL, scene, {
     noMipmap: false,
@@ -281,11 +172,11 @@ function createArenaArtworkSurface(scene: Scene): void {
   texture.anisotropicFilteringLevel = Math.max(1, Math.min(4, scene.getEngine().getCaps().maxAnisotropy));
   texture.uScale = ARENA_TEXTURE_U_SCALE;
   texture.vScale = ARENA_TEXTURE_V_SCALE;
-  texture.uOffset = MAIN_ARENA_TEXTURE_U_OFFSET;
-  texture.vOffset = MAIN_ARENA_TEXTURE_V_OFFSET;
+  texture.uOffset = ARENA_TEXTURE_U_OFFSET;
+  texture.vOffset = ARENA_TEXTURE_V_OFFSET;
   texture.uRotationCenter = 0.5;
   texture.vRotationCenter = 0.5;
-  texture.wAng = MAIN_ARENA_TEXTURE_ROTATION;
+  texture.wAng = ARENA_TEXTURE_ROTATION;
 
   const material = new StandardMaterial('mat-arena-artwork-surface', scene);
   material.diffuseTexture = texture;
@@ -295,11 +186,11 @@ function createArenaArtworkSurface(scene: Scene): void {
   material.freeze();
 
   const surface = MeshBuilder.CreateGround('arena-artwork-surface', {
-    width: MAIN_ARENA_VISUAL_WIDTH,
-    height: MAIN_ARENA_VISUAL_LENGTH,
+    width: ARENA_VISUAL_SURFACE_WIDTH,
+    height: ARENA_VISUAL_SURFACE_LENGTH,
     subdivisions: 1,
   }, scene);
-  surface.position.set(0, MAIN_ARENA_Y, 0);
+  surface.position.set(0, 0, 0);
   surface.material = material;
   surface.isPickable = false;
   surface.checkCollisions = false;

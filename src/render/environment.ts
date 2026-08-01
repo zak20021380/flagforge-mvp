@@ -13,9 +13,9 @@ import { createTerrain } from './terrain';
 export function createEnvironment(scene: Scene, materials: MaterialLibrary, quality: QualityTier): void {
   configureDepthFog(scene);
   const density = QUALITY_SETTINGS[quality].decorations;
-  createTerrain(scene, materials, density);
-  const banners = createProps(scene, materials, density);
-  startEnvironmentLife(scene, materials, banners);
+  createTerrain(scene, materials);
+  createProps(scene, materials, density);
+  startEnvironmentLife(scene, materials);
   materials.freezeEnvironmentMaterials();
 }
 
@@ -26,8 +26,8 @@ export function createEnvironment(scene: Scene, materials: MaterialLibrary, qual
  */
 function configureDepthFog(scene: Scene): void {
   scene.fogMode = Scene.FOGMODE_LINEAR;
-  // Pale haze matched to the daylight sky so the treeline dissolves into it.
-  scene.fogColor = new Color3(0.66, 0.79, 0.86);
+  // Muted blue-green haze keeps the distance soft without washing the arena toward white.
+  scene.fogColor = new Color3(0.31, 0.46, 0.49);
   scene.fogStart = 74;
   scene.fogEnd = 150;
 }

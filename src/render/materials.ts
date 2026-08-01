@@ -1,9 +1,8 @@
-import { Color3, Constants, PBRMaterial, Scene, StandardMaterial } from '@babylonjs/core';
+import { Color3, PBRMaterial, Scene, StandardMaterial } from '@babylonjs/core';
 import type { Team } from '../core/types';
 
 export class MaterialLibrary {
   readonly grass: PBRMaterial;
-  readonly grassLush: PBRMaterial;
   readonly paving: PBRMaterial;
   readonly stoneMoss: PBRMaterial;
   readonly stone: PBRMaterial;
@@ -18,11 +17,9 @@ export class MaterialLibrary {
   readonly waterDeep: PBRMaterial;
   readonly foliage: PBRMaterial;
   readonly foliageMid: PBRMaterial;
-  readonly foliageWarm: PBRMaterial;
   readonly foliageDeep: PBRMaterial;
   readonly foliageDark: PBRMaterial;
   readonly trunk: PBRMaterial;
-  readonly trunkPale: PBRMaterial;
   readonly blue: PBRMaterial;
   readonly blueDark: PBRMaterial;
   readonly red: PBRMaterial;
@@ -36,7 +33,6 @@ export class MaterialLibrary {
   readonly glowRed: StandardMaterial;
   readonly torchGlow: StandardMaterial;
   readonly torchGlowWarm: StandardMaterial;
-  readonly lightPool: StandardMaterial;
   readonly objectiveCloth: PBRMaterial;
   readonly blobShadow: StandardMaterial;
 
@@ -46,36 +42,30 @@ export class MaterialLibrary {
       material.albedoColor = color;
       material.roughness = roughness;
       material.metallic = metallic;
-      material.environmentIntensity = 0.72;
+      material.environmentIntensity = 0.62;
       return material;
     };
 
-    // Ground and planting are tuned as one set: fresh mid-green grass, a slightly deeper lush
-    // green for the meadow patches, and foliage that stays a shade darker than both so trees
-    // always read as silhouettes against the field.
-    this.grass = pbr('mat-grass', Color3.FromHexString('#5f9e46'));
-    this.grassLush = pbr('mat-grass-lush', Color3.FromHexString('#4c8a3c'));
-    this.paving = pbr('mat-paving', Color3.FromHexString('#a29a83'), 0.95);
-    this.stoneMoss = pbr('mat-stone-moss', Color3.FromHexString('#5c6b4d'), 0.95);
-    this.stone = pbr('mat-stone', Color3.FromHexString('#8d99a1'), 0.92);
-    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#a9a99d'), 0.94);
-    this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#777064'), 0.96);
-    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#4f5a65'), 0.94);
-    // Pale warm road stone: the lanes have to separate hard from the brighter grass.
-    this.road = pbr('mat-road', Color3.FromHexString('#b5a98c'), 0.96);
+    // Rich grass and restrained stone keep the battlefield readable without pale, minty fills.
+    this.grass = pbr('mat-grass', Color3.FromHexString('#3d7739'));
+    this.paving = pbr('mat-paving', Color3.FromHexString('#777166'), 0.95);
+    this.stoneMoss = pbr('mat-stone-moss', Color3.FromHexString('#465744'), 0.95);
+    this.stone = pbr('mat-stone', Color3.FromHexString('#717b7a'), 0.92);
+    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#85877d'), 0.94);
+    this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#625e56'), 0.96);
+    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#3f494c'), 0.94);
+    this.road = pbr('mat-road', Color3.FromHexString('#817862'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
-    this.metal = pbr('mat-metal', Color3.FromHexString('#798692'), 0.34, 0.72);
+    this.metal = pbr('mat-metal', Color3.FromHexString('#687478'), 0.34, 0.72);
     this.gold = pbr('mat-gold', Color3.FromHexString('#d8a845'), 0.28, 0.8);
     this.water = pbr('mat-water', Color3.FromHexString('#2a7185'), 0.25, 0.05);
     this.water.alpha = 0.92;
     this.waterDeep = pbr('mat-water-deep', Color3.FromHexString('#154453'), 0.3, 0.05);
-    this.foliage = pbr('mat-foliage', Color3.FromHexString('#47804a'));
-    this.foliageMid = pbr('mat-foliage-mid', Color3.FromHexString('#3e7449'));
-    this.foliageWarm = pbr('mat-foliage-warm', Color3.FromHexString('#8a8137'));
-    this.foliageDeep = pbr('mat-foliage-deep', Color3.FromHexString('#274d38'));
-    this.foliageDark = pbr('mat-foliage-dark', Color3.FromHexString('#30573e'));
+    this.foliage = pbr('mat-foliage', Color3.FromHexString('#2f6538'));
+    this.foliageMid = pbr('mat-foliage-mid', Color3.FromHexString('#295b35'));
+    this.foliageDeep = pbr('mat-foliage-deep', Color3.FromHexString('#193c2a'));
+    this.foliageDark = pbr('mat-foliage-dark', Color3.FromHexString('#20452f'));
     this.trunk = pbr('mat-trunk', Color3.FromHexString('#59402f'));
-    this.trunkPale = pbr('mat-trunk-pale', Color3.FromHexString('#6f5c46'));
     this.blue = pbr('mat-blue', Color3.FromHexString('#3c8df0'), 0.52, 0.08);
     this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#174783'), 0.58, 0.12);
     this.red = pbr('mat-red', Color3.FromHexString('#e84f55'), 0.52, 0.08);
@@ -106,16 +96,6 @@ export class MaterialLibrary {
     this.torchGlowWarm.diffuseColor = Color3.FromHexString('#ffb457');
     this.torchGlowWarm.emissiveColor = Color3.FromHexString('#ff7d24');
 
-    // Flat additive discs fake the warm pool of light under a torch or brazier.
-    this.lightPool = new StandardMaterial('mat-light-pool', scene);
-    this.lightPool.diffuseColor = Color3.Black();
-    this.lightPool.emissiveColor = Color3.FromHexString('#ff8a3a');
-    this.lightPool.alpha = 0.3;
-    this.lightPool.alphaMode = Constants.ALPHA_ADD;
-    this.lightPool.disableLighting = true;
-    this.lightPool.disableDepthWrite = true;
-    this.lightPool.backFaceCulling = false;
-
     this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#c89b43'), 0.7, 0.08);
 
     this.blobShadow = new StandardMaterial('mat-blob-shadow', scene);
@@ -134,9 +114,8 @@ export class MaterialLibrary {
    */
   freezeEnvironmentMaterials(): void {
     for (const material of [
-      this.grass, this.grassLush, this.paving, this.stoneMoss, this.waterDeep,
-      this.foliage, this.foliageMid, this.foliageWarm, this.foliageDeep, this.foliageDark,
-      this.trunk, this.trunkPale,
+      this.grass, this.paving, this.stoneMoss, this.waterDeep,
+      this.foliage, this.foliageMid, this.foliageDeep, this.foliageDark, this.trunk,
     ]) {
       material.freeze();
     }

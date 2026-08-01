@@ -7,12 +7,12 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import {
-  BLUE_CASTLE_VISUAL_OFFSET_X,
-  BLUE_CASTLE_VISUAL_OFFSET_Z,
+  BLUE_CASTLE_ROOT_X,
+  BLUE_CASTLE_ROOT_Z,
   ENEMY_CASTLE_ASSAULT,
   PORTRAIT_LAYOUT,
-  RED_CASTLE_VISUAL_OFFSET_X,
-  RED_CASTLE_VISUAL_OFFSET_Z,
+  RED_CASTLE_ROOT_X,
+  RED_CASTLE_ROOT_Z,
 } from '../core/config';
 import type { Team } from '../core/types';
 import { MaterialLibrary } from './materials';
@@ -33,10 +33,8 @@ export class CastleVisual {
 
   constructor(scene: Scene, materials: MaterialLibrary, team: Team) {
     this.team = team;
-    this.baseX = team === 'blue' ? BLUE_CASTLE_VISUAL_OFFSET_X : RED_CASTLE_VISUAL_OFFSET_X;
-    this.baseZ = team === 'blue'
-      ? -PORTRAIT_LAYOUT.arena.castleZ + BLUE_CASTLE_VISUAL_OFFSET_Z
-      : PORTRAIT_LAYOUT.arena.castleZ + RED_CASTLE_VISUAL_OFFSET_Z;
+    this.baseX = team === 'blue' ? BLUE_CASTLE_ROOT_X : RED_CASTLE_ROOT_X;
+    this.baseZ = team === 'blue' ? BLUE_CASTLE_ROOT_Z : RED_CASTLE_ROOT_Z;
     this.facing = team === 'blue' ? 1 : -1;
     this.root = new TransformNode(`${team}-castle-root`, scene);
     this.root.position.set(this.baseX, 0, this.baseZ);

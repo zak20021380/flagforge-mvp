@@ -8,13 +8,30 @@ export const ARENA_TEXTURE_V_SCALE = 1;
 export const ARENA_TEXTURE_U_OFFSET = 0;
 export const ARENA_TEXTURE_V_OFFSET = 0;
 
-export const RED_CASTLE_VISUAL_OFFSET_X = 0;
-export const RED_CASTLE_VISUAL_OFFSET_Z = -10.9;
-export const BLUE_CASTLE_VISUAL_OFFSET_X = 0;
-export const BLUE_CASTLE_VISUAL_OFFSET_Z = 10.9;
+/**
+ * Measured against flagforge-arena-forest.png (1248 x 1936) on the unchanged
+ * 95.617149 x 148.329763 artwork surface centered at world (0, 20.7720465).
+ * Pixel Y is top-origin; the existing ground UVs plus invertY map the PNG top to +Z.
+ *
+ * Landmark                 pixel (x, y)   UV (u, v)                    world (x, z)
+ * Red boundary             (624, 375)     (0.5, 0.193698347107438)     (0, 66.205698080)
+ * Blue boundary            (624, 1510)    (0.5, 0.779958677685950)     (0, -20.754157811)
+ * Central octagon center   (622.25, 912)  (0.498597756410256, 0.471074380165289)
+ *                                                                        (-0.134078534, 25.062576835)
+ *
+ * The complete castle bounds put the front tower-cap face 4.2 world units from
+ * the root: -Z for red and +Z for blue. Roots therefore sit behind the painted
+ * boundary while the real front face lands on it.
+ */
+export const RED_CASTLE_FRONT_FACE_OFFSET_Z = -4.2;
+export const BLUE_CASTLE_FRONT_FACE_OFFSET_Z = 4.2;
 
-export const CENTRAL_OBJECTIVE_OFFSET_X = 0;
-export const CENTRAL_OBJECTIVE_OFFSET_Z = 3.4;
+export const RED_CASTLE_ROOT_X = 0;
+export const RED_CASTLE_ROOT_Z = 70.405698080;
+export const BLUE_CASTLE_ROOT_X = 0;
+export const BLUE_CASTLE_ROOT_Z = -24.954157811;
+export const CENTRAL_TOWER_ROOT_X = -0.134078534;
+export const CENTRAL_TOWER_ROOT_Z = 25.062576835;
 
 const ARENA_FOUNDATION_LENGTH = 76.6;
 // The tower caps are the castle geometry nearest the battlefield. Positioning the roots by this
@@ -117,16 +134,16 @@ export const PORTRAIT_LAYOUT = {
 } as const;
 
 const centralObjectivePoint = (x: number, y: number, z: number) => ({
-  x: x + CENTRAL_OBJECTIVE_OFFSET_X,
+  x: x + CENTRAL_TOWER_ROOT_X,
   y,
-  z: z + CENTRAL_OBJECTIVE_OFFSET_Z,
+  z: z + CENTRAL_TOWER_ROOT_Z,
 });
 
 // All tower gameplay coordinates live here so the procedural art and deterministic
 // traversal remain in sync without collision queries or runtime pathfinding.
 export const CENTRAL_TOWER = {
-  centerX: CENTRAL_OBJECTIVE_OFFSET_X,
-  centerZ: CENTRAL_OBJECTIVE_OFFSET_Z,
+  centerX: CENTRAL_TOWER_ROOT_X,
+  centerZ: CENTRAL_TOWER_ROOT_Z,
   baseWidth: 7.3,
   baseDepth: 6.6,
   shaftHeight: 7.3,
@@ -188,8 +205,8 @@ export const CENTRAL_TOWER = {
   },
 } as const;
 
-const ENEMY_CASTLE_X = RED_CASTLE_VISUAL_OFFSET_X;
-const ENEMY_CASTLE_Z = PORTRAIT_LAYOUT.arena.castleZ + RED_CASTLE_VISUAL_OFFSET_Z;
+const ENEMY_CASTLE_X = RED_CASTLE_ROOT_X;
+const ENEMY_CASTLE_Z = RED_CASTLE_ROOT_Z;
 const enemyCastlePoint = (x: number, y: number, z: number) => ({
   x: x + ENEMY_CASTLE_X,
   y,

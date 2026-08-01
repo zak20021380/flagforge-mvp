@@ -33,9 +33,6 @@ export class GameUI {
   private readonly progressFill: HTMLElement;
   private readonly loadingLabel: HTMLElement;
   private readonly timer: HTMLElement;
-  private readonly flagStatus: HTMLElement;
-  private readonly gateStatus: HTMLElement;
-  private readonly alertBanner: HTMLElement;
   private readonly energyFill: HTMLElement;
   private readonly energyText: HTMLElement;
   private readonly enemyEnergyFill: HTMLElement;
@@ -43,7 +40,6 @@ export class GameUI {
   private readonly endOverlay: HTMLElement;
   private readonly endTitle: HTMLElement;
   private readonly endSubtitle: HTMLElement;
-  private hideBannerTimer = 0;
 
   onPrepare: (quality: QualityTier) => void = () => undefined;
   onStart: () => void = () => undefined;
@@ -60,9 +56,6 @@ export class GameUI {
     this.progressFill = this.query('#loading-progress-fill');
     this.loadingLabel = this.query('#loading-label');
     this.timer = this.query('#match-timer');
-    this.flagStatus = this.query('#flag-status');
-    this.gateStatus = this.query('#gate-status');
-    this.alertBanner = this.query('#alert-banner');
     this.energyFill = this.query('#energy-fill');
     this.energyText = this.query('#energy-text');
     this.enemyEnergyFill = this.query('#enemy-energy-fill');
@@ -116,41 +109,6 @@ export class GameUI {
     this.energyText.textContent = `${Math.floor(state.playerEnergy)} / ${CONFIG.energy.maximum}`;
     this.enemyEnergyFill.style.width = `${(state.enemyEnergy / CONFIG.energy.maximum) * 100}%`;
 
-    if (state.flagStatus === 'carried') {
-      this.flagStatus.textContent = state.flagCarrier === 'blue' ? 'BLUE CARRYING FLAG' : 'RED CARRYING FLAG';
-      this.flagStatus.dataset.team = state.flagCarrier ?? '';
-    } else if (state.flagStatus === 'dropped') {
-      this.flagStatus.textContent = 'FLAG DROPPED';
-      this.flagStatus.dataset.team = '';
-    } else if (state.flagStatus === 'resetting') {
-      this.flagStatus.textContent = 'FLAG RESETTING';
-      this.flagStatus.dataset.team = '';
-    } else {
-      this.flagStatus.textContent = 'FLAG AT CENTER';
-      this.flagStatus.dataset.team = '';
-    }
-
-    if (state.blueGateTime > 0) {
-      this.gateStatus.textContent = `RED GATE OPEN • ${Math.ceil(state.blueGateTime)}s`;
-      this.gateStatus.dataset.team = 'blue';
-    } else if (state.redGateTime > 0) {
-      this.gateStatus.textContent = `BLUE GATE OPEN • ${Math.ceil(state.redGateTime)}s`;
-      this.gateStatus.dataset.team = 'red';
-    } else {
-      this.gateStatus.textContent = 'CAPTURE FLAG TO OPEN ENEMY GATE';
-      this.gateStatus.dataset.team = '';
-    }
-
-    if (state.breachedTeam) {
-      const enemyBreached = state.breachedTeam === 'red';
-      this.alertBanner.textContent = `${enemyBreached ? 'ENEMY' : 'YOUR'} CASTLE BREACHED • ${Math.ceil(state.breachCountdown)}`;
-      this.alertBanner.classList.add('persistent', enemyBreached ? 'success' : 'danger');
-      this.alertBanner.classList.remove(enemyBreached ? 'danger' : 'success');
-    }
-
-    this.gateStatus.textContent = normalizeDisplayText(this.gateStatus.textContent ?? '');
-    this.alertBanner.textContent = normalizeDisplayText(this.alertBanner.textContent ?? '');
-
     for (const [kind, button] of this.cardButtons) {
       const unaffordable = state.playerEnergy + 0.001 < UNIT_STATS[kind].cost;
       button.classList.toggle('selected', state.selectedKind === kind);
@@ -161,15 +119,7 @@ export class GameUI {
     }
   }
 
-  showBanner(message: string, tone: 'neutral' | 'success' | 'danger' = 'neutral', seconds = 1.8): void {
-    if (this.alertBanner.classList.contains('persistent')) return;
-    this.alertBanner.textContent = normalizeDisplayText(message);
-    this.alertBanner.className = `alert-banner visible ${tone}`;
-    window.clearTimeout(this.hideBannerTimer);
-    this.hideBannerTimer = window.setTimeout(() => {
-      if (!this.alertBanner.classList.contains('persistent')) this.alertBanner.className = 'alert-banner';
-    }, seconds * 1000);
-  }
+  showBanner(_message: string, _tone: 'neutral' | 'success' | 'danger' = 'neutral', _seconds = 1.8): void {}
 
   showDeployFeedback(message: string, valid: boolean): void {
     this.showBanner(message, valid ? 'success' : 'danger', 1.15);
@@ -224,13 +174,7 @@ export class GameUI {
           <div id="match-timer" class="match-timer">3:00</div>
         </div>
         <div class="identity identity-red"><b>RIVAL</b><span>RED CITADEL</span><i><em id="enemy-energy-fill"></em></i></div>
-        <div class="objective-status">
-          <div id="flag-status" class="flag-status">FLAG AT CENTER</div>
-          <div id="gate-status" class="gate-status">CAPTURE FLAG TO OPEN ENEMY GATE</div>
-        </div>
       </header>
-
-      <div id="alert-banner" class="alert-banner"></div>
 
       <footer class="bottom-hud">
         <div class="energy-panel"><span>ENERGY</span><div class="energy-track"><i id="energy-fill"></i></div><b id="energy-text">5 / 10</b></div>

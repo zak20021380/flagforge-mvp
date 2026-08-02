@@ -170,11 +170,28 @@ export class GameUI {
 
       <div id="hud-top-strip"></div>
 
-      <div class="hud-floating">
-        <div class="hud-panel hud-panel-blue"><b>YOU</b><span>BLUE CITADEL</span></div>
-        <div class="hud-panel hud-panel-red"><b>RIVAL</b><span>RED CITADEL</span><i><em id="enemy-energy-fill"></em></i></div>
-        <div id="match-timer" class="hud-timer">3:00</div>
-      </div>
+      <header class="match-hud">
+        <div class="match-hud-chrome" aria-hidden="true">
+          <span class="match-hud-edge"></span>
+          <span class="match-hud-plate"></span>
+        </div>
+
+        <div class="hud-wing hud-wing-blue">
+          <span class="hud-crest"></span>
+          <span class="hud-ident"><b>YOU</b><span>BLUE CITADEL</span></span>
+          <span class="hud-trace"></span>
+        </div>
+
+        <div class="hud-core">
+          <div id="match-timer" class="hud-timer">3:00</div>
+        </div>
+
+        <div class="hud-wing hud-wing-red">
+          <span class="hud-trace"></span>
+          <span class="hud-ident"><b>RIVAL</b><span>RED CITADEL</span><i class="hud-threat"><em id="enemy-energy-fill"></em></i></span>
+          <span class="hud-crest"></span>
+        </div>
+      </header>
 
       <footer class="bottom-hud">
         <div class="energy-panel"><span>ENERGY</span><div class="energy-track"><i id="energy-fill"></i></div><b id="energy-text">5 / 10</b></div>

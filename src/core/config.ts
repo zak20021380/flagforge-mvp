@@ -39,6 +39,14 @@ const ARENA_FOUNDATION_LENGTH = 76.6;
 const CASTLE_FRONT_EDGE_FROM_ROOT = 4.2;
 const CASTLE_CENTER_Z = ARENA_FOUNDATION_LENGTH / 2 + CASTLE_FRONT_EDGE_FROM_ROOT;
 
+// Authoritative portrait framing bias, applied to the aim point inside the aspect-aware fit solve
+// (src/render/arena.ts). Because the solve then re-derives distance, pitch and the resting pose
+// from the corrected center, every downstream system (first frame, reset, resize, shake, emphasis
+// dolly) inherits the same framing. These replace the previous post-solve position/target pan,
+// which translated the already-solved camera and left the red castle clipped at the top.
+export const CAMERA_FRAMING_CENTER_Z_OFFSET = 10.0;
+export const CAMERA_FRAMING_HEIGHT_OFFSET = 1.0;
+
 export const PORTRAIT_LAYOUT = {
   viewport: {
     desktopMaxWidth: 520,

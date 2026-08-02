@@ -177,40 +177,137 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .primary-button.pulse { animation: pulse-button 1.25s ease-in-out infinite alternate; }
 @keyframes pulse-button { to { filter: brightness(1.15); box-shadow: inset 0 1px #fff4c9, 0 7px 0 #875716, 0 0 28px rgba(255, 202, 83, .42); } }
 
-.top-hud {
+:root {
+  --top-hud-offset: calc(env(safe-area-inset-top, 0px) + 6px);
+  --top-hud-side-margin: clamp(8px, 3vw, 16px);
+  --top-hud-panel-height: clamp(42px, 7vh, 54px);
+  --top-hud-side-width: clamp(120px, 34vw, 158px);
+  --top-hud-timer-width: clamp(64px, 18vw, 82px);
+  --top-hud-panel-radius: 12px;
+}
+
+/* Subtle top-edge contrast. Transparent well before reaching the castle. */
+#hud-top-strip {
+  position: absolute;
+  z-index: 9;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(3, 8, 15, .42), rgba(3, 8, 15, 0));
+}
+
+/* Three INDEPENDENT floating cards. No shared container, no full-width band. */
+.hud-floating {
   position: absolute;
   z-index: 10;
-  inset: var(--safe-top) var(--safe-right) auto var(--safe-left);
-  display: grid;
-  grid-template-columns: minmax(72px, 1fr) auto minmax(72px, 1fr);
-  grid-template-areas: "blue timer red";
-  gap: 3px 5px;
-  align-items: start;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  pointer-events: none;
+}
+
+.hud-panel,
+.hud-timer {
+  position: absolute;
+  top: var(--top-hud-offset);
   pointer-events: auto;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .48));
+  background: rgba(8, 16, 28, .86);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: var(--top-hud-panel-radius);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .34), inset 0 1px rgba(255, 255, 255, .06);
 }
 
-.identity {
-  min-width: 0;
-  height: 37px;
-  padding: 5px 8px;
-  background: rgba(7, 15, 27, .82);
-  border: 1px solid rgba(255, 255, 255, .13);
-  border-radius: 11px;
-  backdrop-filter: blur(6px);
+.hud-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: var(--top-hud-side-width);
+  height: var(--top-hud-panel-height);
+  padding: 6px 10px;
+  overflow: hidden;
 }
 
-.identity b { display: block; font-size: 10px; letter-spacing: .1em; }
-.identity span { display: block; margin-top: 1px; overflow: hidden; color: #a4b2c2; font-size: 8px; font-weight: 800; letter-spacing: .045em; text-overflow: ellipsis; white-space: nowrap; }
-.identity-blue { grid-area: blue; border-left: 3px solid #3b9dff; }
-.identity-red { grid-area: red; justify-self: stretch; text-align: right; border-right: 3px solid #ff5861; }
-.identity-red i { display: block; width: 54px; height: 3px; margin: 3px 0 0 auto; overflow: hidden; background: #321820; border-radius: 4px; }
-.identity-red em { display: block; width: 50%; height: 100%; background: #ff5e65; transition: width .2s linear; }
+.hud-panel b {
+  display: block;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
 
-.match-center { grid-area: timer; text-align: center; }
-.match-timer { display: grid; place-items: center; min-width: 66px; height: 37px; padding: 4px 9px; color: #f7fbff; font-size: 18px; line-height: 1; font-weight: 950; letter-spacing: .04em; background: rgba(5, 12, 22, .9); border: 1px solid rgba(255, 255, 255, .18); border-radius: 10px; }
-.match-timer.overtime { color: #ffd56d; font-size: 10px; animation: overtime .55s ease-in-out infinite alternate; }
-@keyframes overtime { to { transform: scale(1.04); } }
+.hud-panel span {
+  display: block;
+  overflow: hidden;
+  color: #a4b2c2;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Player panel — anchored top-left, blue accent, left aligned */
+.hud-panel-blue {
+  left: var(--top-hud-side-margin);
+  align-items: flex-start;
+  text-align: left;
+  border-left: 2px solid #3b9dff;
+}
+
+/* Rival panel — anchored top-right, red accent, right aligned */
+.hud-panel-red {
+  right: var(--top-hud-side-margin);
+  align-items: flex-end;
+  text-align: right;
+  border-right: 2px solid #ff5861;
+}
+
+.hud-panel-red i {
+  display: block;
+  width: 54px;
+  height: 3px;
+  margin-top: 3px;
+  overflow: hidden;
+  background: #321820;
+  border-radius: 4px;
+}
+
+.hud-panel-red em {
+  display: block;
+  width: 50%;
+  height: 100%;
+  background: #ff5e65;
+  transition: width .2s linear;
+}
+
+/* Independent centered timer capsule */
+.hud-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  left: 50%;
+  width: var(--top-hud-timer-width);
+  height: var(--top-hud-panel-height);
+  padding: 0;
+  color: #f7fbff;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: .03em;
+  background: rgba(7, 14, 24, .88);
+  transform: translateX(-50%);
+}
+
+.hud-timer.overtime {
+  color: #ffd56d;
+  font-size: 9px;
+  animation: overtime .55s ease-in-out infinite alternate;
+}
+
+@keyframes overtime { to { transform: translateX(-50%) scale(1.04); } }
 
 .bottom-hud {
   position: absolute;
@@ -314,11 +411,10 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .end-card span { display: block; max-width: 300px; margin: 0 auto 20px; color: #aab8c7; font-size: 12px; line-height: 1.5; }
 
 @media (min-width: 440px) {
-  .top-hud { grid-template-columns: minmax(90px, 1fr) auto minmax(90px, 1fr); }
-  .identity { height: 40px; padding: 6px 10px; }
-  .identity b { font-size: 11px; }
-  .identity span { font-size: 8px; }
-  .match-timer { min-width: 72px; height: 40px; font-size: 19px; }
+  .hud-panel { padding: 7px 12px; gap: 2px; }
+  .hud-panel b { font-size: 12px; }
+  .hud-panel span { font-size: 9px; }
+  .hud-timer { font-size: 17px; }
   .card-row { gap: 7px; }
   .unit-card { grid-template-rows: 48px minmax(17px, auto); min-height: 76px; }
   .card-portrait { width: 48px; height: 48px; }
@@ -330,8 +426,6 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .loading-card { padding-block: 16px 19px; }
   .game-mark { width: 48px; height: 48px; margin-bottom: 5px; font-size: 26px; }
   .loading-copy { margin-block: 6px 10px; }
-  .top-hud { gap-block: 2px; }
-  .identity, .match-timer { height: 34px; }
   .bottom-hud { gap: 4px; }
   .energy-panel { min-height: 28px; padding-block: 4px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }
@@ -341,8 +435,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 }
 
 @media (max-width: 319px) {
-  .top-hud { grid-template-columns: minmax(65px, 1fr) auto minmax(65px, 1fr); }
-  .identity span { display: none; }
+  .hud-panel span { display: none; }
   .card-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unit-card { grid-template-columns: 42px 1fr; grid-template-rows: 1fr; min-height: 56px; padding: 5px 10px 5px 6px; text-align: left; }
   .card-portrait { width: 42px; height: 42px; }

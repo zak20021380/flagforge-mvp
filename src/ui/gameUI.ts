@@ -168,13 +168,13 @@ export class GameUI {
         </div>
       </section>
 
-      <header class="top-hud">
-        <div class="identity identity-blue"><b>YOU</b><span>BLUE CITADEL</span></div>
-        <div class="match-center">
-          <div id="match-timer" class="match-timer">3:00</div>
-        </div>
-        <div class="identity identity-red"><b>RIVAL</b><span>RED CITADEL</span><i><em id="enemy-energy-fill"></em></i></div>
-      </header>
+      <div id="hud-top-strip"></div>
+
+      <div class="hud-floating">
+        <div class="hud-panel hud-panel-blue"><b>YOU</b><span>BLUE CITADEL</span></div>
+        <div class="hud-panel hud-panel-red"><b>RIVAL</b><span>RED CITADEL</span><i><em id="enemy-energy-fill"></em></i></div>
+        <div id="match-timer" class="hud-timer">3:00</div>
+      </div>
 
       <footer class="bottom-hud">
         <div class="energy-panel"><span>ENERGY</span><div class="energy-track"><i id="energy-fill"></i></div><b id="energy-text">5 / 10</b></div>

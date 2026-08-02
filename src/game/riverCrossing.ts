@@ -1,6 +1,6 @@
 import { Vector3 } from '@babylonjs/core';
 import { ARENA_RIVERS, PORTRAIT_LAYOUT } from '../core/config';
-import type { ArenaRiverChannel } from '../core/types';
+import type { ArenaRiverChannel, BridgeState } from '../core/types';
 
 /**
  * River crossing rules for ground movement.
@@ -20,6 +20,13 @@ const APPROACH_ARRIVAL = 0.42;
 const PROGRESS_EPSILON = 0.02;
 /** How long a unit may fail to progress toward a bridge before it tries the other one. */
 const STUCK_SECONDS = 1.5;
+/** Exit run-out: after leaving the deck a unit keeps walking this many body radii past the far edge. */
+export const EXIT_CLEAR_RADII = 3.5;
+
+/** Shared with the bridge traffic system so queue slots line up with the same entrance geometry. */
+export const BRIDGE_BANK_MARGIN = BANK_MARGIN;
+/** Shared with the bridge traffic system; also the queue arrival radius at the entrance. */
+export const BRIDGE_QUEUE_ARRIVAL = APPROACH_ARRIVAL;
 
 const goalScratch = Vector3.Zero();
 
@@ -41,6 +48,7 @@ export interface RiverRoute {
 export interface RiverTraveller {
   readonly position: Vector3;
   readonly bodyRadius: number;
+  readonly bridgeState: BridgeState;
   riverRoute: RiverRoute | null;
 }
 
@@ -238,19 +246,29 @@ const followRoute = (
   const entranceZ = route.fromSide < 0
     ? channel.minZ - BANK_MARGIN - radius
     : channel.maxZ + BANK_MARGIN + radius;
+  // The exit stands several body radii past the far bank edge so a crossing unit keeps moving
+  // clear of the bridge mouth before it may stop, retarget or spread sideways.
   const exitZ = route.fromSide < 0
-    ? channel.maxZ + BANK_MARGIN + radius
-    : channel.minZ - BANK_MARGIN - radius;
+    ? channel.maxZ + BANK_MARGIN + radius + EXIT_CLEAR_RADII * radius
+    : channel.minZ - BANK_MARGIN - radius - EXIT_CLEAR_RADII * radius;
   const onDeck = touchesWater(channel, position.z, radius)
     && deckAt(channel, position.x, radius) === route.bridgeIndex;
+  // A unit registered with the bridge traffic system may not advance into the deck on its own:
+  // the traffic system hands it the queue slot and only lets the queue head step in when the
+  // bridge has capacity. A unit already standing on the deck still advances, never reversing.
+  const gated = traveller.bridgeState === 'approaching' || traveller.bridgeState === 'queued';
 
   if (route.stage === 0) {
     const offsetX = channel.bridges[route.bridgeIndex].centerX - position.x;
     const offsetZ = entranceZ - position.z;
     const distanceSquared = offsetX * offsetX + offsetZ * offsetZ;
-    if (onDeck || distanceSquared <= APPROACH_ARRIVAL * APPROACH_ARRIVAL) {
+    if (onDeck || (!gated && distanceSquared <= APPROACH_ARRIVAL * APPROACH_ARRIVAL)) {
       restartStage(route, 1);
     } else {
+      if (gated) {
+        goalScratch.set(channel.bridges[route.bridgeIndex].centerX, position.y, entranceZ);
+        return goalScratch;
+      }
       if (distanceSquared < route.bestDistanceSquared - PROGRESS_EPSILON) {
         route.bestDistanceSquared = distanceSquared;
         route.stuckClock = 0;

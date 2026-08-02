@@ -3,6 +3,8 @@ import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 export type Team = 'blue' | 'red';
 export type UnitKind = 'vanguard' | 'ranger' | 'raider' | 'ironGuard';
 export type UnitState = 'idle' | 'moving' | 'queued' | 'climbing' | 'falling' | 'attacking' | 'hit' | 'dead';
+/** Bridge traffic state, shared by every team and unit type (see src/game/bridgeTraffic.ts). */
+export type BridgeState = 'none' | 'approaching' | 'queued' | 'entering' | 'crossing' | 'exiting' | 'cleared';
 export type NavigationArea =
   | 'ground'
   | 'towerTop'

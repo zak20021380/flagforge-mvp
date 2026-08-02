@@ -1,8 +1,9 @@
 import { Vector3 } from '@babylonjs/core';
 import { CONFIG, UNIT_STATS } from '../core/config';
-import type { Lane, NavigationArea, Team, UnitKind, UnitState } from '../core/types';
+import type { BridgeState, Lane, NavigationArea, Team, UnitKind, UnitState } from '../core/types';
 import { UnitRig } from '../render/unitRig';
 import type { RiverRoute } from './riverCrossing';
+import type { BridgeQueue } from './bridgeTraffic';
 
 export class UnitEntity {
   readonly stats;
@@ -24,6 +25,10 @@ export class UnitEntity {
   age = 0;
   /** Cached bridge crossing plan while a river separates this unit from its goal. */
   riverRoute: RiverRoute | null = null;
+  /** Bridge traffic state: none | approaching | queued | entering | crossing | exiting | cleared. */
+  bridgeState: BridgeState = 'none';
+  /** The bridge queue this unit is committed to, when registered with the traffic system. */
+  bridgeQueue: BridgeQueue | null = null;
 
   constructor(
     readonly id: number,
@@ -55,6 +60,8 @@ export class UnitEntity {
     this.targetRefreshClock = Math.random() * 0.16;
     this.age = 0;
     this.riverRoute = null;
+    this.bridgeState = 'none';
+    this.bridgeQueue = null;
     this.rig.root.position.copyFrom(position);
     this.rig.root.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
     this.rig.resetVisual();
@@ -68,6 +75,8 @@ export class UnitEntity {
     this.carryingFlag = false;
     this.navigationArea = 'ground';
     this.riverRoute = null;
+    this.bridgeState = 'none';
+    this.bridgeQueue = null;
     this.rig.setEnabled(false);
   }
 }

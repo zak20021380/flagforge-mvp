@@ -1,10 +1,11 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
-import { CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
+import { ARENA_RIVERS, CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
 import { clamp, laneX, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
+import { BridgeTraffic } from './bridgeTraffic';
 import { CastleLogic } from './castleLogic';
 import { CastleLadderSystem } from './castleLadderSystem';
 import { EffectPool } from './effects';
@@ -16,6 +17,7 @@ import { UnitEntity } from './unit';
 
 export class UnitManager {
   private readonly units: UnitEntity[] = [];
+  private readonly bridges = new BridgeTraffic();
   private readonly ladders = new LadderSystem();
   private readonly castleLadders = new CastleLadderSystem();
   private readonly movementScratch = Vector3.Zero();
@@ -50,6 +52,7 @@ export class UnitManager {
   }
 
   update(deltaSeconds: number, elapsed: number): void {
+    this.bridges.beginFrame();
     this.ladders.beginFrame();
     this.castleLadders.beginFrame();
     for (const unit of this.units) {
@@ -187,7 +190,9 @@ export class UnitManager {
       return;
     }
 
-    const target = unit.target;
+    // On a contested bridge the combat target is the nearest enemy on the same deck, computed fresh
+    // every frame; the preserved strategic target is only a fallback while it exists.
+    const target = this.bridges.contestedTarget(unit) ?? unit.target;
     if (target && target.active && target.state !== 'dead' && !unit.carryingFlag && this.canAttackTarget(unit, target)) {
       const distanceSquared = squaredDistanceXZ(unit.position, target.position);
       const attackRangeSquared = unit.stats.attackRange * unit.stats.attackRange;
@@ -266,6 +271,16 @@ export class UnitManager {
   private refreshTarget(unit: UnitEntity): void {
     if (unit.carryingFlag) {
       unit.target = null;
+      return;
+    }
+
+    // While the unit's bridge is contested its pursuit pauses: keep the strategic target and let the
+    // bridge system pick the nearest enemy on the deck. Without a target yet, adopt the bridge one so
+    // the unit fights instead of standing idle at the frontline.
+    if (this.bridges.isInCombat(unit)) {
+      if (!unit.target || !unit.target.active || unit.target.state === 'dead') {
+        unit.target = this.bridges.contestedTarget(unit);
+      }
       return;
     }
 
@@ -410,7 +425,9 @@ export class UnitManager {
     if (unit.navigationArea === 'ground') {
       // Bridge waypoint first, then tower avoidance around it. Both return their own scratch vector,
       // and no bridge waypoint sits inside the tower footprint, so the two never fight each other.
-      movementGoal = this.resolveGroundGoal(unit, resolveCrossingGoal(unit, goal, deltaSeconds));
+      this.bridges.syncRegistration(unit);
+      movementGoal = this.bridges.applyQueueGoal(unit, resolveCrossingGoal(unit, goal, deltaSeconds));
+      movementGoal = this.resolveGroundGoal(unit, movementGoal);
     }
     let dx = movementGoal.x - unit.position.x;
     let dz = movementGoal.z - unit.position.z;
@@ -441,6 +458,10 @@ export class UnitManager {
       separationZ += offsetZ * inverse * strength;
     }
 
+    // On or near a bridge, separation works mainly along the bridge axis: sideways push is killed on
+    // the deck and nearly killed inside the queue zone, so waiting units line up instead of fanning
+    // out into horizontal walls at the bridge mouth.
+    separationX *= this.bridges.separationScaleX(unit);
     dx += separationX * 0.38;
     dz += separationZ * 0.38;
     distance = Math.hypot(dx, dz);
@@ -470,9 +491,18 @@ export class UnitManager {
       unit.position.z = clamp(unit.position.z + dz * step, ENEMY_CASTLE_ASSAULT.wallBounds.minZ, ENEMY_CASTLE_ASSAULT.wallBounds.maxZ);
       unit.position.y = ENEMY_CASTLE_ASSAULT.wallTopY;
     } else {
-      const nextX = clamp(unit.position.x + dx * step, -PORTRAIT_LAYOUT.arena.unitBoundsX, PORTRAIT_LAYOUT.arena.unitBoundsX);
-      const nextZ = clamp(unit.position.z + dz * step, -PORTRAIT_LAYOUT.arena.unitBoundsZ, PORTRAIT_LAYOUT.arena.unitBoundsZ);
+      let nextX = clamp(unit.position.x + dx * step, -PORTRAIT_LAYOUT.arena.unitBoundsX, PORTRAIT_LAYOUT.arena.unitBoundsX);
+      let nextZ = clamp(unit.position.z + dz * step, -PORTRAIT_LAYOUT.arena.unitBoundsZ, PORTRAIT_LAYOUT.arena.unitBoundsZ);
       if (unit.navigationArea === 'ground') {
+        // A unit on a bridge deck stays inside its own deck's walkable span until it has cleared
+        // the exit, so separation or goal seeking can never push it over a railing into the water.
+        if (unit.bridgeState === 'entering' || unit.bridgeState === 'crossing' || unit.bridgeState === 'exiting') {
+          const route = unit.riverRoute;
+          if (route) {
+            const bridge = ARENA_RIVERS[route.channelIndex].bridges[route.bridgeIndex];
+            nextX = clamp(nextX, bridge.walkMinX + unit.bodyRadius, bridge.walkMaxX - unit.bodyRadius);
+          }
+        }
         // Goal seeking, separation and the arena clamp are all already folded into this one step, so
         // rejecting it here is enough to keep every one of them out of the water.
         moved = applyGroundStep(unit, nextX, nextZ);
@@ -522,6 +552,7 @@ export class UnitManager {
     unit.state = 'dead';
     unit.deathClock = 0;
     unit.target = null;
+    this.bridges.release(unit);
     if (unit.carryingFlag) this.flag.dropFrom(unit);
     this.ladders.remove(unit, true);
     this.castleLadders.remove(unit, true);

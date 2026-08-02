@@ -8,6 +8,7 @@ import {
   VertexData,
 } from '@babylonjs/core';
 import {
+  ARENA_ARTWORK_SURFACE,
   ARENA_TEXTURE_ROTATION,
   ARENA_TEXTURE_U_OFFSET,
   ARENA_TEXTURE_U_SCALE,
@@ -25,18 +26,18 @@ const RIVER_HALF_DEPTH = ARENA.riverDepth / 2;
 const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
-// Expanded-top authored arena PNG (1248 x 2256). The original 1936px arena content stays anchored
-// at the bottom of the image; the extra 320px band above it is pure forest that now covers the
-// formerly empty/dark region beyond the red side.
+// Expanded-top authored arena PNG (1248 x 2256). The canvas grew symmetrically around the original
+// 1936px content — 160px of extra forest above the red side and 160px below the blue side — so the
+// formerly empty/dark region beyond the red castle is now painted out to z = 107.196.
 const ARENA_TEXTURE_URL = '/assets/textures/arena/flagforge-arena-forest.png';
 
-// The visible artwork quad grows only along +Z. Its near (blue-side) edge stays at z = -53.3928345,
-// which is what keeps every painted landmark — and therefore both castles and the central tower —
-// on exactly the world coordinates they already occupy.
-const VISUAL_SURFACE_WIDTH = 95.617149;
-const VISUAL_SURFACE_LENGTH = 172.847079;
-const VISUAL_SURFACE_CENTER_X = 0;
-const VISUAL_SURFACE_CENTER_Z = 33.030705;
+// Geometry and the pixel -> world mapping both live in src/core/config.ts, next to the landmark
+// measurements and the castle/tower roots derived from them, so the painting and the objects
+// standing on it can never drift apart again.
+const VISUAL_SURFACE_WIDTH = ARENA_ARTWORK_SURFACE.width;
+const VISUAL_SURFACE_LENGTH = ARENA_ARTWORK_SURFACE.length;
+const VISUAL_SURFACE_CENTER_X = ARENA_ARTWORK_SURFACE.centerX;
+const VISUAL_SURFACE_CENTER_Z = ARENA_ARTWORK_SURFACE.centerZ;
 
 const laneHalfWidth = (lane: number): number => (lane === 0 ? ARENA.centerRoadWidth : ARENA.sideRoadWidth) / 2;
 

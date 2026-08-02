@@ -174,22 +174,22 @@ export class GameUI {
         <div class="match-hud-chrome" aria-hidden="true">
           <span class="match-hud-edge"></span>
           <span class="match-hud-plate"></span>
+          <span class="match-hud-accents"></span>
+          <span class="match-hud-trim"></span>
         </div>
 
-        <div class="hud-wing hud-wing-blue">
-          <span class="hud-crest"></span>
+        <div class="hud-plaque hud-plaque-blue">
+          <span class="hud-sigil" aria-hidden="true"></span>
           <span class="hud-ident"><b>YOU</b><span>BLUE CITADEL</span></span>
-          <span class="hud-trace"></span>
         </div>
 
         <div class="hud-core">
           <div id="match-timer" class="hud-timer">3:00</div>
         </div>
 
-        <div class="hud-wing hud-wing-red">
-          <span class="hud-trace"></span>
+        <div class="hud-plaque hud-plaque-red">
           <span class="hud-ident"><b>RIVAL</b><span>RED CITADEL</span><i class="hud-threat"><em id="enemy-energy-fill"></em></i></span>
-          <span class="hud-crest"></span>
+          <span class="hud-sigil" aria-hidden="true"></span>
         </div>
       </header>
 

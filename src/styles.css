@@ -177,45 +177,60 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .primary-button.pulse { animation: pulse-button 1.25s ease-in-out infinite alternate; }
 @keyframes pulse-button { to { filter: brightness(1.15); box-shadow: inset 0 1px #fff4c9, 0 7px 0 #875716, 0 0 28px rgba(255, 202, 83, .42); } }
 
-/* ===== TOP MATCH HUD: one wide, slim, continuous war bar ===== */
+/* ===== TOP MATCH HUD: a forged war banner — two faction plaques around a keystone timer ===== */
 :root {
   --top-hud-top-offset: calc(env(safe-area-inset-top, 0px) + 4px);
   --top-hud-side-padding: max(6px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
   --top-hud-width: calc(100% - 2 * var(--top-hud-side-padding));
   --top-hud-max-width: 620px;
   --top-hud-height: clamp(34px, 5.2vh, 40px);
-  --top-hud-panel-radius: 13px;
+  --top-hud-panel-radius: 4px;
   --top-hud-timer-width: clamp(62px, 17vw, 76px);
+
+  /* Forged plate: the corners are cut, not uniformly rounded like an app bar. */
+  --top-hud-chamfer: 9px;
   --top-hud-notch-depth: 10px;
   --top-hud-notch-run: clamp(12px, 4vw, 20px);
   --top-hud-notch-half: calc(var(--top-hud-timer-width) / 2 + clamp(10px, 3vw, 18px));
 
-  /* Lower silhouette: full-depth side wings, shallow center plate so the enemy castle stays visible. */
+  /* Trim and faction tuning: the whole banner retunes from these four values. */
+  --top-hud-border-color: rgba(203, 226, 255, .4);
+  --top-hud-trim-color: rgba(240, 202, 122, .5);
+  --top-hud-accent-opacity: .34;
+  --top-hud-timer-color: #f8e7bd;
+
+  /* Cut ends, and a raised keystone bay so the enemy gate stays readable under the banner. */
   --top-hud-silhouette: polygon(
-    0 0,
-    100% 0,
-    100% 100%,
+    var(--top-hud-chamfer) 0,
+    calc(100% - var(--top-hud-chamfer)) 0,
+    100% var(--top-hud-chamfer),
+    100% calc(100% - var(--top-hud-chamfer)),
+    calc(100% - var(--top-hud-chamfer)) 100%,
     calc(50% + var(--top-hud-notch-half) + var(--top-hud-notch-run)) 100%,
     calc(50% + var(--top-hud-notch-half)) calc(100% - var(--top-hud-notch-depth)),
     calc(50% - var(--top-hud-notch-half)) calc(100% - var(--top-hud-notch-depth)),
     calc(50% - var(--top-hud-notch-half) - var(--top-hud-notch-run)) 100%,
-    0 100%
+    var(--top-hud-chamfer) 100%,
+    0 calc(100% - var(--top-hud-chamfer)),
+    0 var(--top-hud-chamfer)
   );
 }
 
-/* Whisper-thin top-edge contrast. Fully transparent well above the castle. */
+/* Screen-edge valance: the banner reads as hung from the top and the very first rows of pixels stay
+   covered on notched phones. Fully faded well above the enemy castle, so nothing is dimmed. */
 #hud-top-strip {
   position: absolute;
   z-index: 9;
   top: 0;
   left: 0;
   right: 0;
-  height: 22px;
+  height: min(30px, calc(var(--top-hud-top-offset) + 14px));
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(3, 8, 15, .38), rgba(3, 8, 15, 0));
+  background: linear-gradient(180deg, rgba(3, 8, 15, .46), rgba(3, 8, 15, .15) 62%, rgba(3, 8, 15, 0));
 }
 
-/* Near full-width overlay bar: 3 segments, one refined chassis. Never shifts the canvas. */
+/* Full-width overlay banner: two faction plaques and a keystone timer on one chassis.
+   Never shifts the canvas. */
 .match-hud {
   position: absolute;
   z-index: 10;
@@ -232,73 +247,101 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   pointer-events: auto;
 }
 
-/* Layered chassis: 1px lit rim over an obsidian plate, shadow follows the exact silhouette. */
+/* Layered chassis: brass-lit rim, obsidian plate, faction wash, hem trim. Four static layers and one
+   tight shadow that follows the silhouette — no blur filters, nothing that repaints per frame. */
 .match-hud-chrome {
   position: absolute;
   z-index: 0;
   inset: 0;
   pointer-events: none;
-  filter: drop-shadow(0 3px 6px rgba(2, 7, 14, .5));
+  filter: drop-shadow(0 2px 4px rgba(2, 7, 14, .58));
 }
 
 .match-hud-edge,
-.match-hud-plate {
+.match-hud-plate,
+.match-hud-accents,
+.match-hud-trim {
   position: absolute;
   display: block;
   border-radius: var(--top-hud-panel-radius);
   clip-path: var(--top-hud-silhouette);
 }
 
+/* 1px rim: cool steel catching the light along the top, near-black under the bottom lip. */
 .match-hud-edge {
   inset: 0;
-  background: linear-gradient(180deg, rgba(207, 231, 255, .34), rgba(126, 158, 194, .15) 46%, rgba(4, 9, 17, .6));
+  background: linear-gradient(180deg, var(--top-hud-border-color), rgba(122, 154, 191, .16) 44%, rgba(3, 8, 15, .72));
 }
 
+/* Obsidian plate: forged sheen across the top, woven grain, deep base. */
 .match-hud-plate {
   inset: 1px;
   border-radius: calc(var(--top-hud-panel-radius) - 1px);
   background:
-    repeating-linear-gradient(101deg, transparent 0 7px, rgba(226, 240, 255, .022) 7px 8px),
-    linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .018) 32%, transparent 60%),
-    radial-gradient(118% 172% at 0% 4%, rgba(60, 148, 255, .26), transparent 45%),
-    radial-gradient(118% 172% at 100% 4%, rgba(255, 84, 96, .22), transparent 45%),
-    linear-gradient(180deg, #1a2942, #101c30 46%, #080f1c);
-  box-shadow: inset 0 -1px rgba(0, 0, 0, .45);
+    repeating-linear-gradient(104deg, transparent 0 6px, rgba(226, 240, 255, .019) 6px 7px),
+    linear-gradient(180deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .02) 30%, transparent 58%),
+    linear-gradient(180deg, #1b2b45, #111d31 46%, #070d18);
+  box-shadow: inset 0 -1px rgba(0, 0, 0, .5);
 }
 
-/* Side wings: wide, tight padding, content optically lifted off the lower edge. */
-.hud-wing {
+/* Faction light on its own layer, so a single variable balances both sides at once. */
+.match-hud-accents {
+  inset: 1px;
+  opacity: var(--top-hud-accent-opacity);
+  background:
+    radial-gradient(122% 178% at 0% 4%, rgba(74, 155, 255, .82), transparent 46%),
+    radial-gradient(122% 178% at 100% 4%, rgba(255, 92, 100, .74), transparent 46%);
+}
+
+/* Brass trim: a hem hairline through both plaques that parts for the keystone, plus the arch soffit. */
+.match-hud-trim {
+  inset: 1px;
+  background-image:
+    linear-gradient(90deg, transparent 3%, var(--top-hud-trim-color) 13%, rgba(240, 202, 122, .14) 35%, transparent 42%, transparent 58%, rgba(240, 202, 122, .14) 65%, var(--top-hud-trim-color) 87%, transparent 97%),
+    linear-gradient(90deg, transparent, rgba(240, 202, 122, .3) 26%, rgba(240, 202, 122, .3) 74%, transparent);
+  background-repeat: no-repeat;
+  background-size: 100% 1px, calc(2 * var(--top-hud-notch-half)) 1px;
+  background-position: 0 calc(100% - 3px), 50% calc(100% - var(--top-hud-notch-depth) - 1px);
+}
+
+/* Faction plaques: identity pinned to the outer end, content lifted clear of the hem trim. */
+.hud-plaque {
   position: relative;
   z-index: 1;
   display: flex;
-  gap: 9px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
   height: 100%;
   padding-bottom: 4px;
 }
 
-.hud-wing-blue { padding-left: clamp(10px, 3vw, 16px); padding-right: clamp(6px, 2vw, 12px); }
-.hud-wing-red { padding-right: clamp(10px, 3vw, 16px); padding-left: clamp(6px, 2vw, 12px); }
+.hud-plaque-blue { justify-content: flex-start; padding-left: clamp(9px, 3vw, 15px); padding-right: clamp(6px, 2vw, 12px); }
+.hud-plaque-red { justify-content: flex-end; padding-right: clamp(9px, 3vw, 15px); padding-left: clamp(6px, 2vw, 12px); }
 
-/* Team crest: slim lit bar, blue on the left, red on the right. */
-.hud-crest {
+/* Heraldic pennant instead of a colour chip: shield cut, gilt cap, faction gradient. */
+.hud-sigil {
   flex: 0 0 auto;
-  width: 3px;
-  height: 17px;
-  border-radius: 3px;
+  width: 10px;
+  height: 15px;
+  clip-path: polygon(0 0, 100% 0, 100% 58%, 50% 100%, 0 58%);
 }
 
-.hud-wing-blue .hud-crest {
-  background: linear-gradient(180deg, #93d2ff, #2f7fe0);
-  box-shadow: 0 0 8px rgba(74, 168, 255, .55), inset 0 1px rgba(255, 255, 255, .5);
+.hud-plaque-blue .hud-sigil {
+  background:
+    linear-gradient(180deg, rgba(255, 233, 181, .92) 0 2px, transparent 2px),
+    linear-gradient(180deg, #8ecdff, #2c72d4 58%, #123255);
+  box-shadow: inset -1px 0 rgba(2, 8, 16, .45), inset 1px 0 rgba(255, 255, 255, .22);
 }
 
-.hud-wing-red .hud-crest {
-  background: linear-gradient(180deg, #ffb2a8, #d9343f);
-  box-shadow: 0 0 8px rgba(255, 88, 97, .5), inset 0 1px rgba(255, 255, 255, .45);
+.hud-plaque-red .hud-sigil {
+  background:
+    linear-gradient(180deg, rgba(255, 233, 181, .92) 0 2px, transparent 2px),
+    linear-gradient(180deg, #ffb6ab, #d33b44 58%, #5c1620);
+  box-shadow: inset 1px 0 rgba(2, 8, 16, .45), inset -1px 0 rgba(255, 255, 255, .2);
 }
 
+/* Two-tier identity: the role reads first, the citadel name sits under it as a faction-tinted label. */
 .hud-ident {
   display: flex;
   flex: 0 1 auto;
@@ -308,63 +351,52 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 }
 
 .hud-ident b {
-  color: #f0f7ff;
+  color: #f2f8ff;
   font-size: 11.5px;
   font-weight: 950;
   line-height: 1;
-  letter-spacing: .17em;
-  text-shadow: 0 1px 2px rgba(3, 8, 16, .7);
+  letter-spacing: .2em;
+  text-shadow: 0 1px 2px rgba(3, 8, 16, .8);
 }
 
 .hud-ident > span {
   overflow: hidden;
-  color: #8fb4dd;
-  font-size: 7.5px;
+  color: #8bb4e2;
+  font-size: 8px;
   font-weight: 800;
   line-height: 1;
-  letter-spacing: .17em;
+  letter-spacing: .16em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Right wing mirrors the left; negative trailing margin cancels tracking on right-aligned text. */
-.hud-wing-red .hud-ident { align-items: flex-end; text-align: right; }
-.hud-wing-red .hud-ident b,
-.hud-wing-red .hud-ident > span { margin-right: -.17em; }
-.hud-wing-red .hud-ident > span { color: #c69ba3; }
+/* The red plaque mirrors the blue one; negative trailing margins cancel tracking on right-aligned text. */
+.hud-plaque-red .hud-ident { align-items: flex-end; text-align: right; }
+.hud-plaque-red .hud-ident b { margin-right: -.2em; }
+.hud-plaque-red .hud-ident > span { margin-right: -.16em; color: #d7a2a7; }
 
-/* Hairline trace that carries each wing into the center segment. */
-.hud-trace {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 1px;
-}
-
-.hud-wing-blue .hud-trace { background: linear-gradient(90deg, rgba(122, 176, 232, .3), rgba(122, 176, 232, .05) 60%, transparent); }
-.hud-wing-red .hud-trace { background: linear-gradient(270deg, rgba(228, 138, 146, .28), rgba(228, 138, 146, .05) 60%, transparent); }
-
-/* Rival deployment meter (data binding unchanged). */
+/* Rival deployment meter, seated in a dark channel like an inlaid gauge (data binding unchanged). */
 .hud-threat {
   display: block;
   width: clamp(34px, 11vw, 46px);
-  height: 2px;
-  margin-top: 3px;
+  height: 3px;
+  margin-top: 2px;
   overflow: hidden;
-  background: rgba(220, 236, 255, .12);
+  background: rgba(5, 11, 20, .78);
   border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(214, 232, 255, .11);
 }
 
 .hud-threat em {
   display: block;
   width: 50%;
   height: 100%;
-  background: linear-gradient(90deg, #ff5a63, #ff9d72);
+  background: linear-gradient(90deg, #d0343e, #ff8f5f);
   border-radius: inherit;
-  box-shadow: 0 0 7px rgba(255, 96, 96, .55);
   transition: width .2s linear;
 }
 
-/* Center segment: sits inside the shallow plate, so nothing hangs low over the castle. */
+/* Keystone bay: the timer lives in the raised centre, so no chrome hangs over the enemy gate. */
 .hud-core {
   position: relative;
   z-index: 1;
@@ -375,39 +407,31 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   height: calc(var(--top-hud-height) - var(--top-hud-notch-depth));
 }
 
+/* Tapered brass posts flanking the keystone, in place of two plain divider lines. */
 .hud-core::before,
 .hud-core::after {
   position: absolute;
-  top: 6px;
-  bottom: 5px;
-  width: 1px;
+  top: 5px;
+  bottom: 4px;
+  width: 2px;
   content: "";
-  background: linear-gradient(180deg, transparent, rgba(178, 208, 240, .34), transparent);
+  background: linear-gradient(180deg, transparent, rgba(240, 202, 122, .58) 28%, rgba(228, 186, 112, .46) 72%, transparent);
+  clip-path: polygon(0 0, 100% 9%, 100% 91%, 0 100%);
 }
 
-.hud-core::before { left: 0; }
-.hud-core::after { right: 0; }
+.hud-core::before { left: -1px; }
+.hud-core::after { right: -1px; transform: scaleX(-1); }
 
 .hud-timer {
   position: relative;
-  color: #f7e6bb;
-  font-size: 16px;
+  color: var(--top-hud-timer-color);
+  font-size: 16.5px;
   font-weight: 950;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: .04em;
+  letter-spacing: .05em;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(2, 7, 14, .75), 0 0 12px rgba(255, 205, 112, .28);
-}
-
-.hud-timer::after {
-  position: absolute;
-  right: 12%;
-  bottom: -4px;
-  left: 12%;
-  height: 1px;
-  content: "";
-  background: linear-gradient(90deg, transparent, rgba(255, 208, 126, .55), transparent);
+  text-shadow: 0 1px 2px rgba(2, 7, 14, .82), 0 0 9px rgba(255, 205, 112, .16);
 }
 
 .hud-timer.overtime {
@@ -418,7 +442,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 }
 
 @keyframes overtime {
-  to { color: #fff0c4; text-shadow: 0 1px 2px rgba(2, 7, 14, .75), 0 0 14px rgba(255, 205, 112, .6); }
+  to { color: #fff3cd; text-shadow: 0 1px 2px rgba(2, 7, 14, .82), 0 0 11px rgba(255, 205, 112, .5); }
 }
 
 .bottom-hud {
@@ -547,7 +571,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 
 @media (max-width: 319px) {
   .hud-ident > span { display: none; }
-  .hud-trace { display: none; }
+  .hud-plaque { gap: 6px; }
   .card-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unit-card { grid-template-columns: 42px 1fr; grid-template-rows: 1fr; min-height: 56px; padding: 5px 10px 5px 6px; text-align: left; }
   .card-portrait { width: 42px; height: 42px; }

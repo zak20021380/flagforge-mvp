@@ -9,32 +9,82 @@ export const ARENA_TEXTURE_U_OFFSET = 0;
 export const ARENA_TEXTURE_V_OFFSET = 0;
 
 /**
- * Measured against the expanded-top flagforge-arena-forest.png (1248 x 2256) on the
- * 95.617149 x 172.847079 artwork surface centered at world (0, 33.030705).
- * The image grew only upward (320px of extra forest above the red side), so the surface
- * near edge is still z = -53.3928345 and every landmark below keeps its previous world
- * position — pixel rows simply shifted down by 320 inside the taller image.
- * Pixel Y is top-origin; the existing ground UVs plus invertY map the PNG top to +Z.
+ * Authored arena artwork -> world mapping. Single source of truth: the render surface
+ * (src/render/terrain.ts) and every object placed on a painted landmark derive from it.
  *
- * Landmark                 pixel (x, y)   UV (u, v)                    world (x, z)
- * Red boundary             (624, 695)     (0.5, 0.308067375886525)     (0, 66.205698080)
- * Blue boundary            (624, 1830)    (0.5, 0.811170212765957)     (0, -20.754157811)
- * Central octagon center   (622.25, 1232) (0.498597756410256, 0.546099290780142)
- *                                                                        (-0.134078534, 25.062576835)
+ * public/assets/textures/arena/flagforge-arena-forest.png is 1248 x 2256, the expanded-top
+ * revision of the 1248 x 1936 original (archived as flagforge-arena-forest1.png). A row-signature
+ * cross-correlation between the two files puts the original content at row offset +160 with a
+ * column offset of 0: the canvas grew SYMMETRICALLY — 160px of extra forest above the red side and
+ * 160px below the blue side — not 320px on top alone. A symmetric growth leaves the surface center
+ * where it was, so centerZ stays 20.7720465 and only the edges move outward
+ * (far edge z = 107.1955860, near edge z = -65.6514930).
  *
- * The complete castle bounds put the front tower-cap face 4.2 world units from
- * the root: -Z for red and +Z for blue. Roots therefore sit behind the painted
- * boundary while the real front face lands on it.
+ * World units per pixel are unchanged from the original artwork (0.07661631 on X, 0.07661661 on Z),
+ * so the painting is never stretched.
+ *
+ * Ground UVs run v = 0 at the -Z near edge to v = 1 at the +Z far edge and the texture is loaded
+ * with invertY, so PNG row 0 (the top) lands on the +Z far edge and pixel Y grows toward the camera.
+ */
+export const ARENA_ARTWORK_SURFACE = {
+  pixelWidth: 1248,
+  pixelHeight: 2256,
+  width: 95.617149,
+  length: 172.847079,
+  centerX: 0,
+  centerZ: 20.7720465,
+} as const;
+
+const ARTWORK_WORLD_PER_PIXEL_X = ARENA_ARTWORK_SURFACE.width / ARENA_ARTWORK_SURFACE.pixelWidth;
+const ARTWORK_WORLD_PER_PIXEL_Z = ARENA_ARTWORK_SURFACE.length / ARENA_ARTWORK_SURFACE.pixelHeight;
+const ARTWORK_FAR_EDGE_Z = ARENA_ARTWORK_SURFACE.centerZ + ARENA_ARTWORK_SURFACE.length / 2;
+
+/** World X of a texture column; pixel X is left-origin. */
+export const artworkPixelToWorldX = (pixelX: number): number =>
+  ARENA_ARTWORK_SURFACE.centerX - ARENA_ARTWORK_SURFACE.width / 2 + pixelX * ARTWORK_WORLD_PER_PIXEL_X;
+
+/** World Z of a texture row; pixel Y is top-origin and the PNG top edge is the +Z far edge. */
+export const artworkPixelToWorldZ = (pixelY: number): number =>
+  ARTWORK_FAR_EDGE_Z - pixelY * ARTWORK_WORLD_PER_PIXEL_Z;
+
+/**
+ * Landmarks measured on the artwork itself — grass-vs-stone greenness (g - (r + b) / 2) for the two
+ * painted boundary walls, cream-floor luminance for the central platform:
+ *
+ * Landmark                 pixel (x, y)     UV (u, v)                     world (x, z)
+ * Red boundary wall        (624, 535)       (0.5, 0.237150709)            (0, 66.205698)
+ * Blue boundary wall       (624, 1670)      (0.5, 0.740248227)            (0, -20.754158)
+ * Central octagon center   (622.25, 1072)   (0.498597756, 0.475177305)    (-0.134079, 25.062577)
+ *
+ * Lane cross-check: the painted center road stays inside x -0.08..-0.27 over the whole field and the
+ * painted side roads pass ±6.2 at mid-field, which matches arena.laneOffset 6.25.
+ */
+const RED_BOUNDARY_PIXEL_Y = 535;
+const BLUE_BOUNDARY_PIXEL_Y = 1670;
+const OCTAGON_PIXEL_X = 622.25;
+const OCTAGON_PIXEL_Y = 1072;
+
+export const RED_BOUNDARY_Z = artworkPixelToWorldZ(RED_BOUNDARY_PIXEL_Y);
+export const BLUE_BOUNDARY_Z = artworkPixelToWorldZ(BLUE_BOUNDARY_PIXEL_Y);
+
+/**
+ * Each castle root sits behind its painted wall line by the castle's real front-face extent, so the
+ * visible front face — not the pivot — lands on the painting. Measured from the assembled castle in
+ * src/render/castle.ts: the drum-tower plinth (diameter 5.7 at local z 1.3 * facing) reaches 4.15
+ * units ahead of the root and is the closest geometry to the battlefield; the gate hood only reaches
+ * 3.3 and the wall line 2.42. 4.2 therefore lands the tower caps on the wall and keeps the whole
+ * silhouette behind it. Red faces -Z, blue faces +Z.
  */
 export const RED_CASTLE_FRONT_FACE_OFFSET_Z = -4.2;
 export const BLUE_CASTLE_FRONT_FACE_OFFSET_Z = 4.2;
 
+// Both gates are painted on the image's vertical center column (pixel x 624 -> world x 0).
 export const RED_CASTLE_ROOT_X = 0;
-export const RED_CASTLE_ROOT_Z = 70.405698080;
+export const RED_CASTLE_ROOT_Z = RED_BOUNDARY_Z - RED_CASTLE_FRONT_FACE_OFFSET_Z;
 export const BLUE_CASTLE_ROOT_X = 0;
-export const BLUE_CASTLE_ROOT_Z = -24.954157811;
-export const CENTRAL_TOWER_ROOT_X = -0.134078534;
-export const CENTRAL_TOWER_ROOT_Z = 25.062576835;
+export const BLUE_CASTLE_ROOT_Z = BLUE_BOUNDARY_Z - BLUE_CASTLE_FRONT_FACE_OFFSET_Z;
+export const CENTRAL_TOWER_ROOT_X = artworkPixelToWorldX(OCTAGON_PIXEL_X);
+export const CENTRAL_TOWER_ROOT_Z = artworkPixelToWorldZ(OCTAGON_PIXEL_Y);
 
 const ARENA_FOUNDATION_LENGTH = 76.6;
 // The tower caps are the castle geometry nearest the battlefield. Positioning the roots by this

@@ -25,7 +25,18 @@ const RIVER_HALF_DEPTH = ARENA.riverDepth / 2;
 const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
+// Expanded-top authored arena PNG (1248 x 2256). The original 1936px arena content stays anchored
+// at the bottom of the image; the extra 320px band above it is pure forest that now covers the
+// formerly empty/dark region beyond the red side.
 const ARENA_TEXTURE_URL = '/assets/textures/arena/flagforge-arena-forest.png';
+
+// The visible artwork quad grows only along +Z. Its near (blue-side) edge stays at z = -53.3928345,
+// which is what keeps every painted landmark — and therefore both castles and the central tower —
+// on exactly the world coordinates they already occupy.
+const VISUAL_SURFACE_WIDTH = 95.617149;
+const VISUAL_SURFACE_LENGTH = 172.847079;
+const VISUAL_SURFACE_CENTER_X = 0;
+const VISUAL_SURFACE_CENTER_Z = 33.030705;
 
 const laneHalfWidth = (lane: number): number => (lane === 0 ? ARENA.centerRoadWidth : ARENA.sideRoadWidth) / 2;
 
@@ -184,11 +195,11 @@ function createArenaArtworkSurface(scene: Scene): void {
   material.freeze();
 
   const surface = MeshBuilder.CreateGround('arena-artwork-surface', {
-    width: 95.617149,
-    height: 148.329763,
+    width: VISUAL_SURFACE_WIDTH,
+    height: VISUAL_SURFACE_LENGTH,
     subdivisions: 1,
   }, scene);
-  surface.position.set(0, 0, 20.7720465);
+  surface.position.set(VISUAL_SURFACE_CENTER_X, 0, VISUAL_SURFACE_CENTER_Z);
   surface.material = material;
   surface.isPickable = false;
   surface.checkCollisions = false;

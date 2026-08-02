@@ -9,14 +9,17 @@ export const ARENA_TEXTURE_U_OFFSET = 0;
 export const ARENA_TEXTURE_V_OFFSET = 0;
 
 /**
- * Measured against flagforge-arena-forest.png (1248 x 1936) on the unchanged
- * 95.617149 x 148.329763 artwork surface centered at world (0, 20.7720465).
+ * Measured against the expanded-top flagforge-arena-forest.png (1248 x 2256) on the
+ * 95.617149 x 172.847079 artwork surface centered at world (0, 33.030705).
+ * The image grew only upward (320px of extra forest above the red side), so the surface
+ * near edge is still z = -53.3928345 and every landmark below keeps its previous world
+ * position — pixel rows simply shifted down by 320 inside the taller image.
  * Pixel Y is top-origin; the existing ground UVs plus invertY map the PNG top to +Z.
  *
  * Landmark                 pixel (x, y)   UV (u, v)                    world (x, z)
- * Red boundary             (624, 375)     (0.5, 0.193698347107438)     (0, 66.205698080)
- * Blue boundary            (624, 1510)    (0.5, 0.779958677685950)     (0, -20.754157811)
- * Central octagon center   (622.25, 912)  (0.498597756410256, 0.471074380165289)
+ * Red boundary             (624, 695)     (0.5, 0.308067375886525)     (0, 66.205698080)
+ * Blue boundary            (624, 1830)    (0.5, 0.811170212765957)     (0, -20.754157811)
+ * Central octagon center   (622.25, 1232) (0.498597756410256, 0.546099290780142)
  *                                                                        (-0.134078534, 25.062576835)
  *
  * The complete castle bounds put the front tower-cap face 4.2 world units from

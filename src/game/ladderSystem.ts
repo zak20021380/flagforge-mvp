@@ -1,6 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
 import { CENTRAL_TOWER } from '../core/config';
 import type { Team } from '../core/types';
+import { blocksApproach } from './riverCrossing';
 import type { UnitEntity } from './unit';
 
 type LadderId = keyof typeof CENTRAL_TOWER.ladders;
@@ -72,6 +73,10 @@ export class LadderSystem {
     if (unit.navigationArea !== 'ground' && unit.navigationArea !== 'towerTop') return true;
 
     const ladder = this.ladders[this.preferredLadder(unit.team)];
+    // Queueing walks a straight line to the tower base, so a unit with a river still in front of it
+    // keeps normal movement and queues after it has crossed a bridge. Descents are never held back:
+    // the tower top is on no river's bank, and gating it would strand units up there.
+    if (!unitIsTop && blocksApproach(unit, ladder.groundQueue[0].z)) return false;
     // A full queue still owns the height transition for this frame. The unit
     // waits in place and retries next frame instead of walking through the tower.
     if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) {

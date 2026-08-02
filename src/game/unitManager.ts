@@ -1,7 +1,7 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
 import { CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
-import { laneX, randomRange, squaredDistanceXZ } from '../core/math';
+import { clamp, laneX, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
@@ -11,6 +11,7 @@ import { EffectPool } from './effects';
 import { FlagController } from './flag';
 import { LadderSystem } from './ladderSystem';
 import { ProjectilePool } from './projectiles';
+import { applyGroundStep, keepOnLand, resolveCrossingGoal } from './riverCrossing';
 import { UnitEntity } from './unit';
 
 export class UnitManager {
@@ -61,6 +62,10 @@ export class UnitManager {
         if (unit.deathClock >= 1.18) unit.deactivate();
         continue;
       }
+
+      // One-shot rescue: anything that displaced a body into a channel (a spawn, a snap-back, an old
+      // save) is undone before the unit acts. Idempotent, so a unit on land pays two comparisons.
+      if (unit.navigationArea === 'ground') keepOnLand(unit);
 
       if (this.castleLadders.isRegistered(unit)) {
         this.castleLadders.updateUnit(unit, deltaSeconds);
@@ -156,13 +161,11 @@ export class UnitManager {
     }
 
     const enemyCastleUnderAttack = this.castles.isAttackWindow('blue');
-    if (
-      enemyCastleUnderAttack
+    const wantsCastleDefence = enemyCastleUnderAttack
       && unit.team === 'red'
       && unit.navigationArea === 'ground'
-      && unit.position.z > PORTRAIT_LAYOUT.arena.route.attackMergeThresholdZ
-      && this.castleLadders.requestDefense(unit)
-    ) {
+      && unit.position.z > PORTRAIT_LAYOUT.arena.route.attackMergeThresholdZ;
+    if (wantsCastleDefence && this.castleLadders.requestDefense(unit)) {
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -207,7 +210,10 @@ export class UnitManager {
 
     unit.attackClock = 0;
     unit.attackHitApplied = false;
-    const goal = this.getStrategicGoal(unit);
+    // A defender the castle system turned away because a river still lies in the way walks to the
+    // ladder approach on foot instead, so the defensive intent survives the crossing.
+    const defenceApproach = wantsCastleDefence ? this.castleLadders.defenceApproach(unit) : null;
+    const goal = defenceApproach ?? this.getStrategicGoal(unit);
     if (this.ladders.requestIfNeeded(unit, goal)) {
       this.ladders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
@@ -400,7 +406,12 @@ export class UnitManager {
   }
 
   private moveUnit(unit: UnitEntity, goal: Vector3, deltaSeconds: number): boolean {
-    const movementGoal = unit.navigationArea === 'ground' ? this.resolveGroundGoal(unit, goal) : goal;
+    let movementGoal = goal;
+    if (unit.navigationArea === 'ground') {
+      // Bridge waypoint first, then tower avoidance around it. Both return their own scratch vector,
+      // and no bridge waypoint sits inside the tower footprint, so the two never fight each other.
+      movementGoal = this.resolveGroundGoal(unit, resolveCrossingGoal(unit, goal, deltaSeconds));
+    }
     let dx = movementGoal.x - unit.position.x;
     let dz = movementGoal.z - unit.position.z;
     let distance = Math.hypot(dx, dz);
@@ -441,29 +452,38 @@ export class UnitManager {
     let speed = unit.stats.speed;
     if (unit.carryingFlag) speed *= unit.kind === 'raider' ? 1 : 0.9;
     const step = speed * deltaSeconds;
-    unit.position.x += dx * step;
-    unit.position.z += dz * step;
+    let moved = true;
     if (unit.navigationArea === 'towerTop') {
-      unit.position.x = Math.max(
+      unit.position.x = clamp(
+        unit.position.x + dx * step,
         CENTRAL_TOWER.centerX - CENTRAL_TOWER.topWalkHalfWidth,
-        Math.min(CENTRAL_TOWER.centerX + CENTRAL_TOWER.topWalkHalfWidth, unit.position.x),
+        CENTRAL_TOWER.centerX + CENTRAL_TOWER.topWalkHalfWidth,
       );
-      unit.position.z = Math.max(
+      unit.position.z = clamp(
+        unit.position.z + dz * step,
         CENTRAL_TOWER.centerZ - CENTRAL_TOWER.topWalkHalfDepth,
-        Math.min(CENTRAL_TOWER.centerZ + CENTRAL_TOWER.topWalkHalfDepth, unit.position.z),
+        CENTRAL_TOWER.centerZ + CENTRAL_TOWER.topWalkHalfDepth,
       );
       unit.position.y = CENTRAL_TOWER.topUnitY;
     } else if (unit.navigationArea === 'enemyWallTop') {
-      unit.position.x = Math.max(ENEMY_CASTLE_ASSAULT.wallBounds.minX, Math.min(ENEMY_CASTLE_ASSAULT.wallBounds.maxX, unit.position.x));
-      unit.position.z = Math.max(ENEMY_CASTLE_ASSAULT.wallBounds.minZ, Math.min(ENEMY_CASTLE_ASSAULT.wallBounds.maxZ, unit.position.z));
+      unit.position.x = clamp(unit.position.x + dx * step, ENEMY_CASTLE_ASSAULT.wallBounds.minX, ENEMY_CASTLE_ASSAULT.wallBounds.maxX);
+      unit.position.z = clamp(unit.position.z + dz * step, ENEMY_CASTLE_ASSAULT.wallBounds.minZ, ENEMY_CASTLE_ASSAULT.wallBounds.maxZ);
       unit.position.y = ENEMY_CASTLE_ASSAULT.wallTopY;
     } else {
-      unit.position.x = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsX, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsX, unit.position.x));
-      unit.position.z = Math.max(-PORTRAIT_LAYOUT.arena.unitBoundsZ, Math.min(PORTRAIT_LAYOUT.arena.unitBoundsZ, unit.position.z));
+      const nextX = clamp(unit.position.x + dx * step, -PORTRAIT_LAYOUT.arena.unitBoundsX, PORTRAIT_LAYOUT.arena.unitBoundsX);
+      const nextZ = clamp(unit.position.z + dz * step, -PORTRAIT_LAYOUT.arena.unitBoundsZ, PORTRAIT_LAYOUT.arena.unitBoundsZ);
+      if (unit.navigationArea === 'ground') {
+        // Goal seeking, separation and the arena clamp are all already folded into this one step, so
+        // rejecting it here is enough to keep every one of them out of the water.
+        moved = applyGroundStep(unit, nextX, nextZ);
+      } else {
+        unit.position.x = nextX;
+        unit.position.z = nextZ;
+      }
     }
     this.facingScratch.set(unit.position.x + dx, unit.position.y, unit.position.z + dz);
     this.faceUnit(unit, this.facingScratch, deltaSeconds);
-    return true;
+    return moved;
   }
 
   private faceUnit(unit: UnitEntity, target: Vector3, deltaSeconds: number): void {

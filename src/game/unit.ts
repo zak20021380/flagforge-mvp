@@ -1,10 +1,13 @@
 import { Vector3 } from '@babylonjs/core';
-import { UNIT_STATS } from '../core/config';
+import { CONFIG, UNIT_STATS } from '../core/config';
 import type { Lane, NavigationArea, Team, UnitKind, UnitState } from '../core/types';
 import { UnitRig } from '../render/unitRig';
+import type { RiverRoute } from './riverCrossing';
 
 export class UnitEntity {
   readonly stats;
+  /** Half the space this body claims in the separation pass; also its footprint against the water. */
+  readonly bodyRadius: number;
   active = false;
   health = 1;
   state: UnitState = 'idle';
@@ -19,6 +22,8 @@ export class UnitEntity {
   deathClock = 0;
   targetRefreshClock = 0;
   age = 0;
+  /** Cached bridge crossing plan while a river separates this unit from its goal. */
+  riverRoute: RiverRoute | null = null;
 
   constructor(
     readonly id: number,
@@ -27,6 +32,7 @@ export class UnitEntity {
     readonly rig: UnitRig,
   ) {
     this.stats = UNIT_STATS[kind];
+    this.bodyRadius = CONFIG.unit.separationRadius * 0.5 * this.stats.scale;
   }
 
   get position(): Vector3 {
@@ -48,6 +54,7 @@ export class UnitEntity {
     this.deathClock = 0;
     this.targetRefreshClock = Math.random() * 0.16;
     this.age = 0;
+    this.riverRoute = null;
     this.rig.root.position.copyFrom(position);
     this.rig.root.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
     this.rig.resetVisual();
@@ -60,6 +67,7 @@ export class UnitEntity {
     this.lastAttacker = null;
     this.carryingFlag = false;
     this.navigationArea = 'ground';
+    this.riverRoute = null;
     this.rig.setEnabled(false);
   }
 }

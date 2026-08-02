@@ -1,4 +1,4 @@
-import type { QualityTier, UnitKind, UnitStats } from './types';
+import type { ArenaRiverChannel, QualityTier, UnitKind, UnitStats } from './types';
 
 // Authored forest-arena alignment. These are intentionally centralized because the render roots
 // and their linked gameplay coordinates must move together when the artwork is tuned.
@@ -68,6 +68,52 @@ const BLUE_BOUNDARY_PIXEL_Y = 1670;
 
 export const RED_BOUNDARY_Z = artworkPixelToWorldZ(RED_BOUNDARY_PIXEL_Y);
 export const BLUE_BOUNDARY_Z = artworkPixelToWorldZ(BLUE_BOUNDARY_PIXEL_Y);
+
+/**
+ * Painted water channels and their bridge decks — the traversal barrier used by ground movement.
+ *
+ * The rivers and the bridges exist only in the artwork (there is no river or bridge mesh anywhere in
+ * the scene), so their gameplay bounds are measured on the PNG and converted with the same pixel ->
+ * world mapping the boundary walls use. Water pixels were classified as b > r + 18 and b > g + 4
+ * inside the battlefield columns; a "deck" column run is a band of columns that stays dry across the
+ * whole channel, which is exactly the painted bridge:
+ *
+ * channel     water rows    world z             deck columns          world x
+ * red side     858..897     41.459 .. 38.470    522..580 / 664..721   -7.815..-3.371 / 3.065..7.432
+ * blue side   1242..1286    12.038 ..  8.667    508..572 / 669..732   -8.887..-3.984 / 3.448..8.275
+ *
+ * This is the same measurement quoted in the CENTRAL_TOWER_ROOT_Z note below. Each painted deck
+ * carries a two-pixel railing along its edges, so the walkable span is inset by
+ * ARENA_BRIDGE_RAIL_INSET per side and unit bodies are kept inside that inset span.
+ */
+export const ARENA_BRIDGE_RAIL_INSET = 0.25;
+
+const RIVER_CHANNEL_ARTWORK = [
+  { id: 'redSide', waterTopPixelY: 858, waterBottomPixelY: 897, deckPixelColumns: [[522, 580], [664, 721]] },
+  { id: 'blueSide', waterTopPixelY: 1242, waterBottomPixelY: 1286, deckPixelColumns: [[508, 572], [669, 732]] },
+] as const;
+
+export const ARENA_RIVERS: readonly ArenaRiverChannel[] = RIVER_CHANNEL_ARTWORK.map((channel) => {
+  const minZ = artworkPixelToWorldZ(channel.waterBottomPixelY);
+  const maxZ = artworkPixelToWorldZ(channel.waterTopPixelY);
+  return {
+    id: channel.id,
+    minZ,
+    maxZ,
+    centerZ: (minZ + maxZ) / 2,
+    bridges: channel.deckPixelColumns.map(([firstColumn, lastColumn]) => {
+      const deckMinX = artworkPixelToWorldX(firstColumn);
+      const deckMaxX = artworkPixelToWorldX(lastColumn);
+      return {
+        minX: deckMinX,
+        maxX: deckMaxX,
+        walkMinX: deckMinX + ARENA_BRIDGE_RAIL_INSET,
+        walkMaxX: deckMaxX - ARENA_BRIDGE_RAIL_INSET,
+        centerX: (deckMinX + deckMaxX) / 2,
+      };
+    }),
+  };
+});
 
 /**
  * Each castle root sits behind its painted wall line by the castle's real front-face extent, so the
@@ -143,6 +189,9 @@ export const PORTRAIT_LAYOUT = {
     sideRoadWidth: 3.55,
     centerRoadWidth: 4.15,
     roadLength: 61.2,
+    // Legacy symmetric river block from before the arena was painted. Only bridgeShoulder is still
+    // read (as the bank stand-off in src/game/riverCrossing.ts); the traversal bounds live in
+    // ARENA_RIVERS above, measured on the artwork the units actually walk on.
     riverZ: 9.75,
     riverWidth: 33.8,
     riverDepth: 2.8,

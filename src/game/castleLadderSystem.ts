@@ -1,6 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
 import { ENEMY_CASTLE_ASSAULT } from '../core/config';
 import { squaredDistanceXZ } from '../core/math';
+import { blocksApproach } from './riverCrossing';
 import type { UnitEntity } from './unit';
 
 type LadderId = keyof typeof ENEMY_CASTLE_ASSAULT.ladders;
@@ -124,6 +125,9 @@ export class CastleLadderSystem {
         selected = ladder;
       }
     }
+    // The queue walk is a straight line to the castle, so a unit with a river still in front of it
+    // stays under normal movement and joins the queue once it has crossed a bridge.
+    if (blocksApproach(unit, selected.groundQueue[0].z)) return false;
 
     selected.queue.push(unit);
     unit.target = null;
@@ -135,16 +139,12 @@ export class CastleLadderSystem {
 
   requestDefense(unit: UnitEntity): boolean {
     if (this.isRegistered(unit)) return true;
-    if (
-      unit.team !== 'red'
-      || unit.kind === 'ranger'
-      || unit.carryingFlag
-      || unit.navigationArea !== 'ground'
-      || this.isWallDefender(unit)
-    ) return false;
+    if (!this.canDefend(unit)) return false;
 
-    const ladder = this.ladderList.find((candidate) => !candidate.defender);
+    const ladder = this.freeDefenceLadder();
     if (!ladder) return false;
+    // The defender transit is a straight line to the wall: cross any river on a bridge first.
+    if (blocksApproach(unit, ladder.defenderUpPath[0].z)) return false;
     ladder.defender = unit;
     const transit: ActiveTransit = {
       unit,
@@ -158,6 +158,17 @@ export class CastleLadderSystem {
     unit.attackHitApplied = false;
     unit.state = 'queued';
     return true;
+  }
+
+  /**
+   * Ground point a would-be defender should walk to while a river still blocks the transit, so it keeps
+   * heading for the wall under normal (bridge-aware) movement. Null when nothing is waiting on it.
+   */
+  defenceApproach(unit: UnitEntity): Vector3 | null {
+    if (this.isRegistered(unit) || !this.canDefend(unit)) return null;
+    const ladder = this.freeDefenceLadder();
+    if (!ladder || !blocksApproach(unit, ladder.defenderUpPath[0].z)) return null;
+    return ladder.defenderUpPath[0];
   }
 
   requestWallExit(unit: UnitEntity): boolean {
@@ -472,6 +483,18 @@ export class CastleLadderSystem {
     if (unit.kind === 'raider') return true;
     if (unit.kind === 'vanguard') return unit.id % 3 !== 0;
     return unit.kind === 'ironGuard' && unit.id % 2 === 0;
+  }
+
+  private canDefend(unit: UnitEntity): boolean {
+    return unit.team === 'red'
+      && unit.kind !== 'ranger'
+      && !unit.carryingFlag
+      && unit.navigationArea === 'ground'
+      && !this.isWallDefender(unit);
+  }
+
+  private freeDefenceLadder(): LadderRuntime | undefined {
+    return this.ladderList.find((candidate) => !candidate.defender);
   }
 
   private isCastleClimber(unit: UnitEntity): boolean {

@@ -9,6 +9,7 @@ import {
 } from '@babylonjs/core';
 import {
   ARENA_ARTWORK_SURFACE,
+  ARENA_RIVERS,
   ARENA_TEXTURE_ROTATION,
   ARENA_TEXTURE_U_OFFSET,
   ARENA_TEXTURE_U_SCALE,
@@ -22,7 +23,6 @@ import { MaterialLibrary } from './materials';
 
 const ARENA = PORTRAIT_LAYOUT.arena;
 const LANES = [-ARENA.laneOffset, 0, ARENA.laneOffset];
-const RIVER_HALF_DEPTH = ARENA.riverDepth / 2;
 const GROUND_HALF_WIDTH = ARENA.groundWidth / 2;
 const GROUND_HALF_LENGTH = ARENA.groundLength / 2;
 
@@ -52,7 +52,7 @@ export function roadClearance(x: number): number {
 }
 
 export const isNearWater = (z: number, margin = 0.6): boolean =>
-  Math.abs(Math.abs(z) - ARENA.riverZ) < RIVER_HALF_DEPTH + margin;
+  ARENA_RIVERS.some((channel) => z > channel.minZ - margin && z < channel.maxZ + margin);
 
 /** Deployment pads are read as UI, so no decoration is allowed to stand on or overhang one. */
 export const isOnDeploymentPad = (x: number, z: number, margin = 0): boolean =>

@@ -95,6 +95,12 @@ export function createArenaScene(engine: Engine, canvas: HTMLCanvasElement, qual
   };
 }
 
+// Final gameplay framing pan, applied after the fit solve. The solved distance, pitch, FOV and
+// horizontal centring are all left untouched; the whole framing simply slides toward the enemy
+// side by translating the camera position and its aim point by the same +Z amount, so the red
+// castle roofline and both tower tops enter the viewport without zooming out or tilting further.
+const CAMERA_FRAME_PAN_Z = 8.0;
+
 export function framePortraitCamera(
   engine: Engine,
   camera: UniversalCamera,
@@ -167,6 +173,15 @@ export function framePortraitCamera(
   camera.position.copyFrom(restingPosition);
   camera.fov = fov;
   const target = new Vector3(cameraConfig.targetX, cameraConfig.targetY, targetZ);
+  camera.setTarget(target);
+
+  // Equal translation of eye and aim point: the offset between them is unchanged, so distance,
+  // pitch, perspective and FOV survive exactly. The resting pose is what the emphasis dolly and
+  // impact shake return to, so it has to carry the same pan.
+  const cameraFramePan = new Vector3(0, 0, CAMERA_FRAME_PAN_Z);
+  camera.position.addInPlace(cameraFramePan);
+  target.addInPlace(cameraFramePan);
+  restingPosition.copyFrom(camera.position);
   camera.setTarget(target);
   forward?.copyFrom(target.subtract(restingPosition).normalize());
 }

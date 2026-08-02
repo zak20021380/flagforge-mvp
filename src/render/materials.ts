@@ -9,6 +9,13 @@ export class MaterialLibrary {
   readonly stoneLight: PBRMaterial;
   readonly stoneWarm: PBRMaterial;
   readonly stoneDark: PBRMaterial;
+  readonly castleStone: PBRMaterial;
+  readonly castleStoneLight: PBRMaterial;
+  readonly castleStoneDark: PBRMaterial;
+  readonly roofBlue: PBRMaterial;
+  readonly roofRed: PBRMaterial;
+  readonly gateWood: PBRMaterial;
+  readonly gateWoodLight: PBRMaterial;
   readonly road: PBRMaterial;
   readonly wood: PBRMaterial;
   readonly metal: PBRMaterial;
@@ -50,10 +57,19 @@ export class MaterialLibrary {
     this.grass = pbr('mat-grass', Color3.FromHexString('#337a3a'));
     this.paving = pbr('mat-paving', Color3.FromHexString('#6c5f50'), 0.95);
     this.stoneMoss = pbr('mat-stone-moss', Color3.FromHexString('#3e5040'), 0.95);
-    this.stone = pbr('mat-stone', Color3.FromHexString('#687170'), 0.92);
-    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#8b887a'), 0.94);
+    this.stone = pbr('mat-stone', Color3.FromHexString('#6b7572'), 0.9);
+    this.stoneLight = pbr('mat-stone-light', Color3.FromHexString('#98948a'), 0.9);
     this.stoneWarm = pbr('mat-stone-warm', Color3.FromHexString('#5f5144'), 0.96);
-    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#333d42'), 0.94);
+    this.stoneDark = pbr('mat-stone-dark', Color3.FromHexString('#3d4750'), 0.92);
+    // Castle stone family: warmer dressed stone, light trim for courses/crenellations and a
+    // deep shadow tone for recesses and plinths. Matte, never glossy.
+    this.castleStone = pbr('mat-castle-stone', Color3.FromHexString('#6c7573'), 0.93);
+    this.castleStoneLight = pbr('mat-castle-stone-light', Color3.FromHexString('#a9a497'), 0.9);
+    this.castleStoneDark = pbr('mat-castle-stone-dark', Color3.FromHexString('#414b52'), 0.95);
+    this.roofBlue = pbr('mat-roof-blue', Color3.FromHexString('#2d609f'), 0.72, 0.06);
+    this.roofRed = pbr('mat-roof-red', Color3.FromHexString('#91303a'), 0.72, 0.06);
+    this.gateWood = pbr('mat-gate-wood', Color3.FromHexString('#5b3925'), 0.92);
+    this.gateWoodLight = pbr('mat-gate-wood-light', Color3.FromHexString('#6d452a'), 0.9);
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
     this.metal = pbr('mat-metal', Color3.FromHexString('#687478'), 0.34, 0.72);
@@ -123,6 +139,10 @@ export class MaterialLibrary {
 
   teamDark(team: Team): PBRMaterial {
     return team === 'blue' ? this.blueDark : this.redDark;
+  }
+
+  roofTeam(team: Team): PBRMaterial {
+    return team === 'blue' ? this.roofBlue : this.roofRed;
   }
 
   teamGlow(team: Team): StandardMaterial {

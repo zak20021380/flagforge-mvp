@@ -13,6 +13,7 @@ export class MaterialLibrary {
   readonly castleStoneLight: PBRMaterial;
   readonly castleStoneDark: PBRMaterial;
   readonly roofBlue: PBRMaterial;
+  readonly roofBlueLight: PBRMaterial;
   readonly roofRed: PBRMaterial;
   readonly gateWood: PBRMaterial;
   readonly gateWoodLight: PBRMaterial;
@@ -38,8 +39,6 @@ export class MaterialLibrary {
   readonly white: PBRMaterial;
   readonly glowBlue: StandardMaterial;
   readonly glowRed: StandardMaterial;
-  readonly torchGlow: StandardMaterial;
-  readonly torchGlowWarm: StandardMaterial;
   readonly objectiveCloth: PBRMaterial;
   readonly blobShadow: StandardMaterial;
 
@@ -66,7 +65,10 @@ export class MaterialLibrary {
     this.castleStone = pbr('mat-castle-stone', Color3.FromHexString('#6c7573'), 0.93);
     this.castleStoneLight = pbr('mat-castle-stone-light', Color3.FromHexString('#a9a497'), 0.9);
     this.castleStoneDark = pbr('mat-castle-stone-dark', Color3.FromHexString('#414b52'), 0.95);
-    this.roofBlue = pbr('mat-roof-blue', Color3.FromHexString('#2d609f'), 0.72, 0.06);
+    // Player roofs read as glazed slate rather than plastic: a deeper, cleaner blue for the mass
+    // and one lighter tone reserved for eaves and ridge trim.
+    this.roofBlue = pbr('mat-roof-blue', Color3.FromHexString('#2a5da5'), 0.68, 0.06);
+    this.roofBlueLight = pbr('mat-roof-blue-light', Color3.FromHexString('#4d87cf'), 0.6, 0.06);
     this.roofRed = pbr('mat-roof-red', Color3.FromHexString('#91303a'), 0.72, 0.06);
     this.gateWood = pbr('mat-gate-wood', Color3.FromHexString('#5b3925'), 0.92);
     this.gateWoodLight = pbr('mat-gate-wood-light', Color3.FromHexString('#6d452a'), 0.9);
@@ -101,16 +103,6 @@ export class MaterialLibrary {
     this.glowRed.diffuseColor = Color3.FromHexString('#ff3948');
     this.glowRed.emissiveColor = Color3.FromHexString('#aa1024');
     this.glowRed.alpha = 0.74;
-
-    this.torchGlow = new StandardMaterial('mat-torch-glow', scene);
-    this.torchGlow.diffuseColor = Color3.FromHexString('#ff9b3d');
-    this.torchGlow.emissiveColor = Color3.FromHexString('#ff6a1a');
-
-    // Second flame material so torch groups can flicker out of phase with each other while
-    // still costing only two material updates per frame (no extra lights, no per-mesh work).
-    this.torchGlowWarm = new StandardMaterial('mat-torch-glow-warm', scene);
-    this.torchGlowWarm.diffuseColor = Color3.FromHexString('#ffb457');
-    this.torchGlowWarm.emissiveColor = Color3.FromHexString('#ff7d24');
 
     this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#d09a32'), 0.7, 0.08);
 

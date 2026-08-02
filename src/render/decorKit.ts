@@ -1,4 +1,4 @@
-import { Matrix, Mesh, Quaternion, Vector3 } from '@babylonjs/core';
+import { Matrix, Mesh, Quaternion, TransformNode, Vector3 } from '@babylonjs/core';
 
 // Every prop position is derived from a seeded generator instead of Math.random so the
 // battlefield is byte-identical on every device and across reloads (helps visual QA and
@@ -37,7 +37,7 @@ export const smoothStep = (edge0: number, edge1: number, value: number): number 
 };
 
 /**
- * One-off decoration (kerbs, river banks, wall pillars, camp props...) is authored as many
+ * One-off decoration (kerbs, river banks, wall pillars, castle trim...) is authored as many
  * tiny primitives and then merged per material, so a few hundred pieces collapse into a
  * handful of draw calls with no per-mesh CPU cost at runtime.
  */
@@ -53,7 +53,12 @@ export class StaticBatch {
     return mesh;
   }
 
-  flush(prefix: string, receiveShadows = false): void {
+  /**
+   * Sources must be unparented while they are authored because merging bakes world matrices.
+   * Passing a parent attaches the merged result afterwards, which lets a group of dressing follow
+   * a root transform (castle roots carry a non-uniform width scale) while still being one mesh.
+   */
+  flush(prefix: string, receiveShadows = false, parent?: TransformNode): void {
     for (const [key, meshes] of this.groups) {
       const material = meshes[0].material;
       const merged = meshes.length === 1
@@ -64,6 +69,7 @@ export class StaticBatch {
       merged.material = material;
       merged.isPickable = false;
       merged.receiveShadows = receiveShadows;
+      if (parent) merged.parent = parent;
       merged.freezeWorldMatrix();
     }
     this.groups.clear();

@@ -1,6 +1,6 @@
 import { Mesh, MeshBuilder, Scene } from '@babylonjs/core';
 import { PORTRAIT_LAYOUT } from '../core/config';
-import { createRandom, Scatter, StaticBatch } from './decorKit';
+import { createRandom, Scatter } from './decorKit';
 import { MaterialLibrary } from './materials';
 import { surroundingsHeight } from './terrain';
 
@@ -181,87 +181,13 @@ function createRockField(scene: Scene, materials: MaterialLibrary, density: numb
 }
 
 /**
- * One torch: wooden post, metal bowl and flame. Ground-light decals are omitted so each fixture
- * remains a compact landmark without tinting the surrounding grass.
- */
-function addTorch(
-  scene: Scene,
-  materials: MaterialLibrary,
-  batch: StaticBatch,
-  x: number,
-  groundY: number,
-  z: number,
-  scale: number,
-  warm: boolean,
-): void {
-  const id = `${x.toFixed(1)}-${z.toFixed(1)}`;
-  const post = MeshBuilder.CreateCylinder(`torch-post-${id}`, {
-    height: 1.5 * scale,
-    diameterBottom: 0.19 * scale,
-    diameterTop: 0.13 * scale,
-    tessellation: 6,
-  }, scene);
-  post.position.set(x, groundY + 0.75 * scale, z);
-  post.material = materials.wood;
-  batch.add(post);
-
-  const bowl = MeshBuilder.CreateCylinder(`torch-bowl-${id}`, {
-    height: 0.3 * scale,
-    diameterTop: 0.52 * scale,
-    diameterBottom: 0.24 * scale,
-    tessellation: 8,
-  }, scene);
-  bowl.position.set(x, groundY + 1.62 * scale, z);
-  bowl.material = materials.metal;
-  batch.add(bowl);
-
-  const flame = MeshBuilder.CreateSphere(`torch-flame-${id}`, { diameter: 0.42 * scale, segments: 5 }, scene);
-  flame.position.set(x, groundY + 1.9 * scale, z);
-  flame.scaling.set(1, 1.5, 1);
-  flame.material = warm ? materials.torchGlowWarm : materials.torchGlow;
-  batch.add(flame);
-}
-
-/**
- * Firelight only where it means something: four torches mark the two castle approaches. Every
- * position sits in the safe band between the roads, leaving the central objective completely bare.
- */
-function createTorchlight(scene: Scene, materials: MaterialLibrary, batch: StaticBatch): void {
-  for (const sz of [-1, 1]) {
-    for (const sx of [-1, 1]) {
-      addTorch(scene, materials, batch, sx * 3.5, 0, sz * 23.4, 1.15, sx * sz > 0);
-    }
-  }
-}
-
-/**
- * Builds the prop layer. Repeated natural props are thin instances, one-offs are merged per
- * material, and the perimeter vegetation stays entirely outside the arena foundation.
+ * Builds the prop layer. Repeated natural props are thin instances and the perimeter vegetation
+ * stays entirely outside the arena foundation, so the battlefield itself carries no standing props.
  */
 export function createProps(scene: Scene, materials: MaterialLibrary, density: number): void {
-  const batch = new StaticBatch();
   const forest = createForestSources(scene, materials);
   plantPerimeterForest(forest, density);
   for (const source of forest.sources) source.finish();
   createUndergrowth(scene, materials, density);
   createRockField(scene, materials, density);
-  createTorchlight(scene, materials, batch);
-  batch.flush('prop-dressing');
-}
-
-/**
- * The only per-frame environment work: two flame materials pulse out of phase. There are no
- * animated decorative transforms, particles or extra lights.
- */
-export function startEnvironmentLife(scene: Scene, materials: MaterialLibrary): void {
-  const flameBase = materials.torchGlow.emissiveColor.clone();
-  const warmBase = materials.torchGlowWarm.emissiveColor.clone();
-  let elapsed = 0;
-  scene.onBeforeRenderObservable.add(() => {
-    elapsed += scene.getEngine().getDeltaTime() / 1000;
-    const flicker = 1 + Math.sin(elapsed * 7.3) * 0.14 + Math.sin(elapsed * 13.1) * 0.06;
-    const warmFlicker = 1 + Math.sin(elapsed * 6.1 + 2.2) * 0.16 + Math.sin(elapsed * 11.7 + 1.1) * 0.05;
-    materials.torchGlow.emissiveColor.copyFrom(flameBase).scaleInPlace(flicker);
-    materials.torchGlowWarm.emissiveColor.copyFrom(warmBase).scaleInPlace(warmFlicker);
-  });
 }

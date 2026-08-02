@@ -5,6 +5,7 @@ import {
   Scene,
   TransformNode,
   Vector3,
+  VertexBuffer,
 } from '@babylonjs/core';
 import {
   BLUE_CASTLE_ROOT_X,
@@ -15,6 +16,7 @@ import {
   RED_CASTLE_ROOT_Z,
 } from '../core/config';
 import type { Team } from '../core/types';
+import { smoothStep, StaticBatch, valueNoise } from './decorKit';
 import { MaterialLibrary } from './materials';
 
 type BoxOptions = { receiveShadow?: boolean };
@@ -35,6 +37,9 @@ export class CastleVisual {
 
   constructor(scene: Scene, materials: MaterialLibrary, team: Team) {
     this.team = team;
+    // The player keep stands roughly three times closer to the portrait camera than the enemy one,
+    // so it is the only castle that gets the extra silhouette work (see dressPlayerCastle below).
+    const hero = team === 'blue';
     this.baseX = team === 'blue' ? BLUE_CASTLE_ROOT_X : RED_CASTLE_ROOT_X;
     this.baseZ = team === 'blue' ? BLUE_CASTLE_ROOT_Z : RED_CASTLE_ROOT_Z;
     this.facing = team === 'blue' ? 1 : -1;
@@ -78,8 +83,8 @@ export class CastleVisual {
     createBox('wall-side-plinth-left', 2.5, 0.5, 8.6, new Vector3(-10.7, 0.25, -2.0 * this.facing), materials.castleStoneDark);
     createBox('wall-side-plinth-right', 2.5, 0.5, 8.6, new Vector3(10.7, 0.25, -2.0 * this.facing), materials.castleStoneDark);
 
-    createTower(scene, this.root, materials, team, new Vector3(-10.6, 0, 1.3 * this.facing));
-    createTower(scene, this.root, materials, team, new Vector3(10.6, 0, 1.3 * this.facing));
+    createTower(scene, this.root, materials, team, new Vector3(-10.6, 0, 1.3 * this.facing), hero);
+    createTower(scene, this.root, materials, team, new Vector3(10.6, 0, 1.3 * this.facing), hero);
 
     // ---- Gatehouse: layered pillars, lintel crown, and two turreted pylons ----
     const archLeft = createBox('gate-pillar-left', 2.5, 5.8, 2.8, new Vector3(-3.7, 2.9, 1.4 * this.facing), materials.castleStoneDark);
@@ -105,8 +110,8 @@ export class CastleVisual {
       block.material = materials.castleStoneLight;
       block.receiveShadows = false;
     }
-    createTurret(scene, this.root, materials, team, -3.7, 1.4 * this.facing);
-    createTurret(scene, this.root, materials, team, 3.7, 1.4 * this.facing);
+    createTurret(scene, this.root, materials, team, -3.7, 1.4 * this.facing, hero);
+    createTurret(scene, this.root, materials, team, 3.7, 1.4 * this.facing, hero);
 
     this.gate = new TransformNode(`${team}-gate-root`, scene);
     this.gate.parent = this.root;
@@ -134,6 +139,11 @@ export class CastleVisual {
 
     createBanner(scene, this.root, materials, team, new Vector3(-4.4, 5.7, 3.0 * this.facing));
     createBanner(scene, this.root, materials, team, new Vector3(4.4, 5.7, 3.0 * this.facing));
+
+    if (hero) {
+      dressPlayerCastle(scene, this.root, materials, this.facing);
+      shadeCastleStone(this.root);
+    }
 
     // Only the portrait-facing red castle is the enemy assault objective. Two
     // authored ladders sit on its left/right wall faces and match the AI paths.
@@ -251,12 +261,15 @@ function createAssaultLadder(
   }
 }
 
-function createTower(scene: Scene, parent: TransformNode, materials: MaterialLibrary, team: Team, position: Vector3): void {
+function createTower(scene: Scene, parent: TransformNode, materials: MaterialLibrary, team: Team, position: Vector3, hero = false): void {
+  // Rounder barrels and a proper spire instead of a squat cap: the two changes that decide whether
+  // a drum tower reads as architecture or as a toy chess piece at close range.
+  const sides = hero ? 16 : 12;
   const tower = MeshBuilder.CreateCylinder(`${team}-tower`, {
     height: 7.1,
     diameterBottom: 5.3,
     diameterTop: 4.85,
-    tessellation: 12,
+    tessellation: sides,
   }, scene);
   tower.parent = parent;
   tower.position = new Vector3(position.x, 3.55, position.z);
@@ -266,7 +279,7 @@ function createTower(scene: Scene, parent: TransformNode, materials: MaterialLib
   const plinth = MeshBuilder.CreateCylinder(`${team}-tower-plinth`, {
     height: 0.45,
     diameter: 5.7,
-    tessellation: 12,
+    tessellation: sides,
   }, scene);
   plinth.parent = parent;
   plinth.position = new Vector3(position.x, 0.225, position.z);
@@ -277,7 +290,7 @@ function createTower(scene: Scene, parent: TransformNode, materials: MaterialLib
     height: 0.3,
     diameterBottom: 5.4,
     diameterTop: 5.6,
-    tessellation: 12,
+    tessellation: sides,
   }, scene);
   ring.parent = parent;
   ring.position = new Vector3(position.x, 7.1, position.z);
@@ -294,45 +307,39 @@ function createTower(scene: Scene, parent: TransformNode, materials: MaterialLib
     battlement.isPickable = false;
   }
 
-  const cone = MeshBuilder.CreateCylinder(`${team}-tower-roof`, {
-    height: 1.0,
-    diameterBottom: 4.7,
-    diameterTop: 0.4,
-    tessellation: 12,
-  }, scene);
+  const cone = MeshBuilder.CreateCylinder(`${team}-tower-roof`, hero
+    ? { height: 2.55, diameterBottom: 5.05, diameterTop: 0.07, tessellation: 16 }
+    : { height: 1.0, diameterBottom: 4.7, diameterTop: 0.4, tessellation: 12 }, scene);
   cone.parent = parent;
-  cone.position = new Vector3(position.x, 7.8, position.z);
+  cone.position = new Vector3(position.x, hero ? 8.675 : 7.8, position.z);
   cone.material = materials.roofTeam(team);
   cone.receiveShadows = true;
 
-  const finial = MeshBuilder.CreateSphere(`${team}-tower-finial`, { diameter: 0.4, segments: 6 }, scene);
+  const finial = MeshBuilder.CreateSphere(`${team}-tower-finial`, { diameter: hero ? 0.44 : 0.4, segments: 6 }, scene);
   finial.parent = parent;
-  finial.position = new Vector3(position.x, 8.45, position.z);
+  finial.position = new Vector3(position.x, hero ? 10.08 : 8.45, position.z);
   finial.material = materials.gold;
   finial.isPickable = false;
 }
 
-function createTurret(scene: Scene, parent: TransformNode, materials: MaterialLibrary, team: Team, x: number, z: number): void {
+function createTurret(scene: Scene, parent: TransformNode, materials: MaterialLibrary, team: Team, x: number, z: number, hero = false): void {
   const body = MeshBuilder.CreateBox(`${team}-gate-turret-${x}`, { width: 1.7, height: 2.15, depth: 1.7 }, scene);
   body.parent = parent;
   body.position = new Vector3(x, 6.85, z);
   body.material = materials.castleStone;
   body.receiveShadows = true;
 
-  const roof = MeshBuilder.CreateCylinder(`${team}-gate-turret-roof-${x}`, {
-    height: 0.6,
-    diameterBottom: 2.0,
-    diameterTop: 0.2,
-    tessellation: 8,
-  }, scene);
+  const roof = MeshBuilder.CreateCylinder(`${team}-gate-turret-roof-${x}`, hero
+    ? { height: 1.15, diameterBottom: 2.12, diameterTop: 0.06, tessellation: 8 }
+    : { height: 0.6, diameterBottom: 2.0, diameterTop: 0.2, tessellation: 8 }, scene);
   roof.parent = parent;
-  roof.position = new Vector3(x, 8.24, z);
+  roof.position = new Vector3(x, hero ? 8.645 : 8.24, z);
   roof.material = materials.roofTeam(team);
   roof.receiveShadows = true;
 
-  const finial = MeshBuilder.CreateSphere(`${team}-gate-turret-finial-${x}`, { diameter: 0.26, segments: 6 }, scene);
+  const finial = MeshBuilder.CreateSphere(`${team}-gate-turret-finial-${x}`, { diameter: hero ? 0.3 : 0.26, segments: 6 }, scene);
   finial.parent = parent;
-  finial.position = new Vector3(x, 8.64, z);
+  finial.position = new Vector3(x, hero ? 9.36 : 8.64, z);
   finial.material = materials.gold;
   finial.isPickable = false;
 }
@@ -374,4 +381,193 @@ function createBanner(scene: Scene, parent: TransformNode, materials: MaterialLi
   finial.position = new Vector3(position.x, position.y + 2.55, position.z);
   finial.material = materials.gold;
   finial.isPickable = false;
+}
+
+/**
+ * Bakes cheap ambient occlusion and stone grain into vertex colours. Babylon's PBR shader
+ * multiplies albedo by the vertex colour, so every large face gains a grounded gradient plus a
+ * little mottling without a texture, an extra material or an extra draw call. This is what stops
+ * the flat "plastic block" read at close range.
+ */
+function shadeCastleStone(root: TransformNode): void {
+  for (const mesh of root.getChildMeshes()) {
+    if (!(mesh instanceof Mesh)) continue;
+    const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+    if (!positions) continue;
+    const originY = mesh.position.y;
+    const colors = new Float32Array((positions.length / 3) * 4);
+    for (let i = 0, c = 0; i < positions.length; i += 3, c += 4) {
+      const y = originY + positions[i + 1];
+      // Two bands: contact shade in the lower courses, sunlit crown from the parapet upwards.
+      const grounded = smoothStep(0, 3.4, y);
+      const crown = smoothStep(4.5, 10.6, y);
+      const grain = valueNoise(positions[i] * 0.44 + y * 0.29, positions[i + 2] * 0.44 - y * 0.17) - 0.5;
+      const tint = 0.79 + grounded * 0.15 + crown * 0.12 + grain * 0.07;
+      colors[c] = tint * 1.02;
+      colors[c + 1] = tint;
+      colors[c + 2] = tint * (1.04 - crown * 0.06);
+      colors[c + 3] = 1;
+    }
+    mesh.setVerticesData(VertexBuffer.ColorKind, colors, false);
+  }
+}
+
+/**
+ * Player-side finishing pass, built on top of the shared castle instead of replacing it.
+ *
+ * Everything here is medium-scale architecture rather than fine detail: base and string courses,
+ * buttresses, a machicolated corbel course, window loops, crenellated wall walks, a real hipped
+ * roof over the keep and clean blue-and-gold heraldry. All pieces are authored unparented in
+ * castle-local units and merged per material, so the entire pass adds roughly eight draw calls and
+ * no per-frame cost; the merged result is then parented to the castle root so it inherits the
+ * arena's castle width scale exactly like the hand-built blocks do.
+ */
+function dressPlayerCastle(scene: Scene, root: TransformNode, materials: MaterialLibrary, facing: number): void {
+  const batch = new StaticBatch();
+  const outward = -facing;
+  const keepZ = -2.7 * facing;
+  const keepFaceZ = keepZ + 3.6 * outward;
+
+  const slab = (
+    name: string,
+    width: number,
+    height: number,
+    depth: number,
+    x: number,
+    y: number,
+    z: number,
+    material: Mesh['material'],
+  ): Mesh => {
+    const mesh = MeshBuilder.CreateBox(`blue-castle-${name}`, { width, height, depth }, scene);
+    mesh.position.set(x, y, z);
+    mesh.material = material;
+    return batch.add(mesh);
+  };
+
+  const ring = (
+    name: string,
+    height: number,
+    diameterBottom: number,
+    diameterTop: number,
+    x: number,
+    y: number,
+    z: number,
+    material: Mesh['material'],
+  ): Mesh => {
+    const mesh = MeshBuilder.CreateCylinder(`blue-castle-${name}`, {
+      height,
+      diameterBottom,
+      diameterTop,
+      tessellation: 16,
+    }, scene);
+    mesh.position.set(x, y, z);
+    mesh.material = material;
+    return batch.add(mesh);
+  };
+
+  // ---- Keep: horizontal courses break the single tall block into dressed storeys ----
+  slab('keep-base-course', 9.98, 0.3, 7.62, 0, 0.74, keepZ, materials.castleStoneLight);
+  slab('keep-string-course', 9.78, 0.26, 7.56, 0, 4.15, keepZ, materials.castleStoneLight);
+
+  // ---- Camera-facing keep wall: buttresses, loops and a machicolated corbel course ----
+  for (const side of [-1, 1]) {
+    const bx = side * 3.05;
+    slab('keep-buttress', 1.12, 6.35, 0.95, bx, 3.18, keepFaceZ + 0.42 * outward, materials.castleStone);
+    slab('keep-buttress-foot', 1.44, 0.62, 1.24, bx, 0.31, keepFaceZ + 0.5 * outward, materials.castleStoneDark);
+    slab('keep-buttress-cap', 1.34, 0.32, 1.12, bx, 6.51, keepFaceZ + 0.45 * outward, materials.castleStoneLight);
+
+    const lx = side * 1.95;
+    slab('keep-loop', 0.26, 1.25, 0.14, lx, 5.5, keepFaceZ + 0.05 * outward, materials.castleStoneDark);
+    slab('keep-loop-lintel', 0.78, 0.22, 0.24, lx, 6.28, keepFaceZ + 0.08 * outward, materials.castleStoneLight);
+    slab('keep-loop-sill', 0.78, 0.18, 0.26, lx, 4.78, keepFaceZ + 0.1 * outward, materials.castleStoneLight);
+  }
+  for (let i = -4; i <= 4; i += 1) {
+    slab(`keep-corbel-${i}`, 0.42, 0.36, 0.5, i * 0.92, 7.02, keepFaceZ + 0.19 * outward, materials.castleStoneLight);
+  }
+
+  // ---- Player heraldry: the one strong colour accent, hung between the two loops ----
+  slab('keep-crest-cloth', 2.15, 2.3, 0.2, 0, 5.5, keepFaceZ + 0.14 * outward, materials.blue);
+  slab('keep-crest-hem', 2.15, 0.42, 0.24, 0, 4.56, keepFaceZ + 0.16 * outward, materials.blueDark);
+  slab('keep-crest-rod', 2.55, 0.17, 0.24, 0, 6.74, keepFaceZ + 0.17 * outward, materials.gold);
+  const lozenge = slab('keep-crest-boss', 0.62, 0.62, 0.12, 0, 5.62, keepFaceZ + 0.26 * outward, materials.gold);
+  lozenge.rotation.z = Math.PI / 4;
+
+  // ---- Hipped keep roof. A four-gon cylinder is the cheapest true pyramid, but Babylon applies
+  // scale before rotation, so the 45 degree turn that squares the base is baked into the vertices
+  // first and only then is the depth squashed to the keep footprint. ----
+  slab('keep-roof-eave', 8.58, 0.2, 6.62, 0, 8.45, keepZ, materials.roofBlueLight);
+  const roofMass = MeshBuilder.CreateCylinder('blue-castle-keep-roof', {
+    height: 2.0,
+    diameterBottom: 11.4,
+    diameterTop: 0.04,
+    tessellation: 4,
+  }, scene);
+  roofMass.rotation.y = Math.PI / 4;
+  roofMass.bakeCurrentTransformIntoVertices();
+  roofMass.scaling.z = 6.15 / 8.06;
+  roofMass.position.set(0, 9.55, keepZ);
+  roofMass.material = materials.roofBlue;
+  batch.add(roofMass);
+  const roofFinial = MeshBuilder.CreateSphere('blue-castle-keep-finial', { diameter: 0.42, segments: 8 }, scene);
+  roofFinial.position.set(0, 10.7, keepZ);
+  roofFinial.material = materials.gold;
+  batch.add(roofFinial);
+
+  // ---- Drum towers: a mid course plus a flared machicolation ring under the parapet ----
+  for (const side of [-1, 1]) {
+    const tx = side * 10.6;
+    const tz = 1.3 * facing;
+    ring('tower-course', 0.3, 5.32, 5.28, tx, 3.45, tz, materials.castleStoneLight);
+    ring('tower-corbel', 0.52, 4.95, 5.62, tx, 6.79, tz, materials.castleStoneDark);
+  }
+
+  // ---- Gatehouse turrets get the eave the taller roofs now sit on ----
+  for (const side of [-1, 1]) {
+    slab('gate-turret-eave', 2.06, 0.24, 2.06, side * 3.7, 7.95, 1.4 * facing, materials.castleStoneLight);
+  }
+
+  // ---- Curtain walls: coping, a recessed wall walk and crenellations, so the walls stop being
+  // plain slabs. Merlon spans are chosen to clear the tower barrels and the gate pylons. ----
+  for (const side of [-1, 1]) {
+    slab('wall-coping', 5.5, 0.22, 2.42, side * 7.2, 4.71, 1.3 * facing, materials.castleStoneLight);
+    slab('wall-walk', 4.9, 0.14, 1.15, side * 7.2, 4.89, 0.8 * facing, materials.castleStoneDark);
+    for (const mx of [7.9, 6.6, 5.3]) {
+      slab(`wall-merlon-${mx}`, 0.92, 0.8, 0.66, side * mx, 5.22, 2.09 * facing, materials.castleStoneLight);
+    }
+
+    slab('wall-side-coping', 2.32, 0.22, 8.5, side * 10.7, 4.41, -2.0 * facing, materials.castleStoneLight);
+    slab('wall-side-walk', 1.1, 0.14, 7.4, side * 10.2, 4.59, -2.0 * facing, materials.castleStoneDark);
+    for (const mz of [-5.4, -3.9, -2.4]) {
+      slab(`wall-side-merlon-${mz}`, 0.66, 0.8, 0.92, side * 11.42, 4.92, mz * facing, materials.castleStoneLight);
+    }
+  }
+
+  // ---- Gate: a segmental voussoir arch with a keystone turns the square opening into a portal,
+  // and a hood course above it gives the gatehouse front a shadow line. ----
+  const archRadius = 4.3;
+  for (let i = -3; i <= 3; i += 1) {
+    const angle = i * 0.2;
+    const isKey = i === 0;
+    const stone = slab(
+      `gate-voussoir-${i}`,
+      isKey ? 1.0 : 0.9,
+      isKey ? 0.74 : 0.56,
+      0.42,
+      Math.sin(angle) * archRadius,
+      1.32 + Math.cos(angle) * archRadius,
+      2.95 * facing,
+      materials.castleStoneLight,
+    );
+    stone.rotation.z = -angle;
+  }
+  slab('gate-hood', 9.9, 0.28, 0.5, 0, 6.72, 3.05 * facing, materials.castleStoneLight);
+
+  // ---- Wall banners: a gold rod and a dark hem finish the existing cloths ----
+  for (const side of [-1, 1]) {
+    const clothX = side * 4.4 + 0.78;
+    slab('banner-crossbar', 1.75, 0.14, 0.14, clothX, 7.52, 3.0 * facing, materials.gold);
+    slab('banner-hem', 1.55, 0.4, 0.1, clothX, 5.44, 3.0 * facing, materials.blueDark);
+  }
+
+  batch.flush('blue-castle-dressing', true, root);
 }

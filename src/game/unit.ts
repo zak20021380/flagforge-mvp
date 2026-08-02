@@ -1,6 +1,6 @@
 import { Vector3 } from '@babylonjs/core';
 import { CONFIG, UNIT_STATS } from '../core/config';
-import type { BridgeState, Lane, NavigationArea, Team, UnitKind, UnitState } from '../core/types';
+import type { BridgeState, Lane, NavigationArea, RecoveryState, Team, UnitKind, UnitState } from '../core/types';
 import { UnitRig } from '../render/unitRig';
 import type { RiverRoute } from './riverCrossing';
 import type { BridgeQueue } from './bridgeTraffic';
@@ -29,6 +29,32 @@ export class UnitEntity {
   bridgeState: BridgeState = 'none';
   /** The bridge queue this unit is committed to, when registered with the traffic system. */
   bridgeQueue: BridgeQueue | null = null;
+  /** Seconds without meaningful positional progress toward the current movement goal. */
+  noProgressClock = 0;
+  /** XZ anchor the last meaningful movement was measured against. */
+  progressAnchorX = 0;
+  progressAnchorZ = 0;
+  /** True once the progress anchor is initialized. */
+  hasProgressAnchor = false;
+  /** Active one-shot recovery manoeuvre: none | lateral | yield | wait. */
+  recoveryState: RecoveryState = 'none';
+  /** Remaining seconds of the active recovery manoeuvre. */
+  recoveryClock = 0;
+  /** Cooldown so a unit cannot oscillate or re-recover every frame. */
+  recoveryCooldown = 0;
+  /** Rotating index into the deterministic recovery-action list. */
+  recoveryPick = 0;
+  /** Absolute XZ point the active recovery manoeuvre walks to. */
+  recoveryGoalX = 0;
+  recoveryGoalZ = 0;
+  /** Throttled crowd-probe timer (staggered by unit id). */
+  crowdClock = 0;
+  /** Cached result of the crowd probe: this unit takes an engagement offset. */
+  crowdEngaged = false;
+  /** Index of the reserved tower standoff slot this unit holds, or -1. */
+  reservedSlot = -1;
+  /** Rotation offset for slot reacquisition after a stale-reservation release. */
+  acquireBias = 0;
 
   constructor(
     readonly id: number,
@@ -62,6 +88,20 @@ export class UnitEntity {
     this.riverRoute = null;
     this.bridgeState = 'none';
     this.bridgeQueue = null;
+    this.noProgressClock = 0;
+    this.progressAnchorX = position.x;
+    this.progressAnchorZ = position.z;
+    this.hasProgressAnchor = true;
+    this.recoveryState = 'none';
+    this.recoveryClock = 0;
+    this.recoveryCooldown = 0;
+    this.recoveryPick = 0;
+    this.recoveryGoalX = 0;
+    this.recoveryGoalZ = 0;
+    this.crowdClock = 0.18 + (this.id % 7) * 0.04;
+    this.crowdEngaged = false;
+    this.reservedSlot = -1;
+    this.acquireBias = 0;
     this.rig.root.position.copyFrom(position);
     this.rig.root.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
     this.rig.resetVisual();
@@ -77,6 +117,15 @@ export class UnitEntity {
     this.riverRoute = null;
     this.bridgeState = 'none';
     this.bridgeQueue = null;
+    this.noProgressClock = 0;
+    this.hasProgressAnchor = false;
+    this.recoveryState = 'none';
+    this.recoveryClock = 0;
+    this.recoveryCooldown = 0;
+    this.recoveryGoalX = 0;
+    this.recoveryGoalZ = 0;
+    this.crowdEngaged = false;
+    this.reservedSlot = -1;
     this.rig.setEnabled(false);
   }
 }

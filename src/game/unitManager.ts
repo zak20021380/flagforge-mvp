@@ -8,18 +8,44 @@ import { UnitRig } from '../render/unitRig';
 import { BridgeTraffic } from './bridgeTraffic';
 import { CastleLogic } from './castleLogic';
 import { CastleLadderSystem } from './castleLadderSystem';
+import { CrowdSystem } from './crowdSystem';
 import { EffectPool } from './effects';
 import { FlagController } from './flag';
 import { LadderSystem } from './ladderSystem';
 import { ProjectilePool } from './projectiles';
-import { applyGroundStep, keepOnLand, resolveCrossingGoal } from './riverCrossing';
+import { applyGroundStep, blocksGroundStep, BRIDGE_BANK_MARGIN, keepOnLand, resolveCrossingGoal } from './riverCrossing';
 import { UnitEntity } from './unit';
+
+/** A unit is only considered genuinely stuck after this long without meaningful progress. */
+const STUCK_WINDOW = 1.0;
+/** Movement shorter than this between frames does not count as meaningful progress. */
+const STUCK_PROGRESS_SQUARED = 0.35 * 0.35;
+/** A movement goal closer than this counts as reached, so arrival is never a stall. */
+const STUCK_DISTANT_GOAL_SQUARED = 1.4 * 1.4;
+/** Cooldown between recovery actions so units cannot oscillate or change recovery every frame. */
+const RECOVERY_COOLDOWN = 5;
+/** Lateral dodge distance and how long the dodge may take. */
+const LATERAL_DISTANCE = 1.15;
+const LATERAL_DURATION = 0.8;
+/** Backward yield distance and duration. */
+const YIELD_DISTANCE = 1.3;
+const YIELD_DURATION = 0.7;
+/** How long a unit explicitly waits for the unit ahead. */
+const WAIT_DURATION = 0.6;
+/** Only switch bridges while this close to the current entrance. */
+const BRIDGE_SWITCH_NEAR_ENTRANCE = 16;
+/** Opposing-team separation strength relative to same-team separation. */
+const ENEMY_SEPARATION_SCALE = 0.8;
+
+const stallAnchorScratch = Vector3.Zero();
+const recoveryScratch = Vector3.Zero();
 
 export class UnitManager {
   private readonly units: UnitEntity[] = [];
   private readonly bridges = new BridgeTraffic();
   private readonly ladders = new LadderSystem();
   private readonly castleLadders = new CastleLadderSystem();
+  private readonly engagements = new CrowdSystem();
   private readonly movementScratch = Vector3.Zero();
   private readonly facingScratch = Vector3.Zero();
   private nextId = 1;
@@ -55,6 +81,7 @@ export class UnitManager {
     this.bridges.beginFrame();
     this.ladders.beginFrame();
     this.castleLadders.beginFrame();
+    this.engagements.beginFrame();
     for (const unit of this.units) {
       if (!unit.active) continue;
       unit.age += deltaSeconds;
@@ -62,7 +89,10 @@ export class UnitManager {
       if (unit.state === 'dead') {
         unit.deathClock += deltaSeconds;
         unit.rig.updateAnimation('dead', elapsed, 0, 0, Math.min(1, unit.deathClock / 0.82), false);
-        if (unit.deathClock >= 1.18) unit.deactivate();
+        if (unit.deathClock >= 1.18) {
+          this.engagements.release(unit);
+          unit.deactivate();
+        }
         continue;
       }
 
@@ -158,6 +188,7 @@ export class UnitManager {
 
   private updateAliveUnit(unit: UnitEntity, deltaSeconds: number, elapsed: number): void {
     if (this.castles.isAttackWindow(unit.team) && this.castles.tryInfiltrate(unit)) {
+      this.engagements.release(unit);
       unit.state = 'idle';
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -169,11 +200,13 @@ export class UnitManager {
       && unit.navigationArea === 'ground'
       && unit.position.z > PORTRAIT_LAYOUT.arena.route.attackMergeThresholdZ;
     if (wantsCastleDefence && this.castleLadders.requestDefense(unit)) {
+      this.engagements.release(unit);
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
     }
     if (enemyCastleUnderAttack && unit.team === 'blue' && this.castleLadders.requestAssault(unit)) {
+      this.engagements.release(unit);
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -185,6 +218,7 @@ export class UnitManager {
       && !this.castleLadders.hasAssaultInProgress()
       && this.castleLadders.requestDefenseReturn(unit)
     ) {
+      this.engagements.release(unit);
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -208,6 +242,7 @@ export class UnitManager {
       && (!target || !target.active || target.state === 'dead')
       && this.castleLadders.requestWallExit(unit)
     ) {
+      this.engagements.release(unit);
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -220,6 +255,7 @@ export class UnitManager {
     const defenceApproach = wantsCastleDefence ? this.castleLadders.defenceApproach(unit) : null;
     const goal = defenceApproach ?? this.getStrategicGoal(unit);
     if (this.ladders.requestIfNeeded(unit, goal)) {
+      this.engagements.release(unit);
       this.ladders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
@@ -232,7 +268,9 @@ export class UnitManager {
       const ownDelivery = this.castles.getCastle(unit.team).deliveryPoint;
       this.flag.tryDeliver(unit, ownDelivery);
     }
-    if (this.castles.isAttackWindow(unit.team)) this.castles.tryInfiltrate(unit);
+    if (this.castles.isAttackWindow(unit.team) && this.castles.tryInfiltrate(unit)) {
+      this.engagements.release(unit);
+    }
 
     unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
   }
@@ -422,13 +460,28 @@ export class UnitManager {
 
   private moveUnit(unit: UnitEntity, goal: Vector3, deltaSeconds: number): boolean {
     let movementGoal = goal;
+    // An active recovery manoeuvre overrides every other goal so a blocked unit can actually
+    // dodge; the river-safe gate below still protects every step it takes.
+    const recovery = this.recoveryGoal(unit);
+    if (recovery) movementGoal = recovery;
     if (unit.navigationArea === 'ground') {
+      if (!recovery) {
+        const standoff = this.engagements.slotGoal(unit, goal);
+        movementGoal = standoff
+          ?? this.engagements.offsetGoal(unit, goal, this.units, this.isCrowdPoint(unit, goal), deltaSeconds)
+          ?? goal;
+      }
       // Bridge waypoint first, then tower avoidance around it. Both return their own scratch vector,
       // and no bridge waypoint sits inside the tower footprint, so the two never fight each other.
       this.bridges.syncRegistration(unit);
-      movementGoal = this.bridges.applyQueueGoal(unit, resolveCrossingGoal(unit, goal, deltaSeconds));
+      // A recovery point was water-checked when it was chosen, so the bridge queue keeps the unit's
+      // slot but never overrides the dodge; the queue and route only steer normal goals.
+      if (!recovery) {
+        movementGoal = this.bridges.applyQueueGoal(unit, resolveCrossingGoal(unit, movementGoal, deltaSeconds));
+      }
       movementGoal = this.resolveGroundGoal(unit, movementGoal);
     }
+    this.updateStallAndRecovery(unit, movementGoal, deltaSeconds);
     let dx = movementGoal.x - unit.position.x;
     let dz = movementGoal.z - unit.position.z;
     let distance = Math.hypot(dx, dz);
@@ -445,7 +498,6 @@ export class UnitManager {
         neighbor === unit
         || !neighbor.active
         || neighbor.state === 'dead'
-        || neighbor.team !== unit.team
         || neighbor.navigationArea !== unit.navigationArea
       ) continue;
       const offsetX = unit.position.x - neighbor.position.x;
@@ -453,7 +505,10 @@ export class UnitManager {
       const distanceSquared = offsetX * offsetX + offsetZ * offsetZ;
       if (distanceSquared <= 0.0001 || distanceSquared >= separationRadiusSquared) continue;
       const inverse = 1 / Math.sqrt(distanceSquared);
-      const strength = (1 - Math.sqrt(distanceSquared) / CONFIG.unit.separationRadius) * CONFIG.unit.separationStrength;
+      // Opposing teams are kept apart too, but softer, so marching groups slide around each other
+      // instead of overlapping or interpenetrating, while combat still closes to melee reach.
+      let strength = (1 - Math.sqrt(distanceSquared) / CONFIG.unit.separationRadius) * CONFIG.unit.separationStrength;
+      if (neighbor.team !== unit.team) strength *= ENEMY_SEPARATION_SCALE;
       separationX += offsetX * inverse * strength;
       separationZ += offsetZ * inverse * strength;
     }
@@ -516,6 +571,226 @@ export class UnitManager {
     return moved;
   }
 
+  /**
+   * Goal of the active recovery manoeuvre, or null when the unit moves normally. The lateral and
+   * yield points are stored absolutely at trigger time, so the manoeuvre is executed once instead
+   * of being re-chosen every frame.
+   */
+  private recoveryGoal(unit: UnitEntity): Vector3 | null {
+    if (unit.recoveryState === 'none') return null;
+    recoveryScratch.set(unit.recoveryGoalX, unit.position.y, unit.recoveryGoalZ);
+    return recoveryScratch;
+  }
+
+  /**
+   * Stuck detection and recovery state machine, run once per moving unit per frame against the
+   * final movement goal. A unit is only ever declared genuinely stuck when it has a distant goal,
+   * has made almost no positional progress for about a second, is neither attacking nor waiting on
+   * an in-range target, and holds no bridge queue, crossing, frontline or standoff role.
+   */
+  private updateStallAndRecovery(unit: UnitEntity, movementGoal: Vector3, deltaSeconds: number): void {
+    if (unit.recoveryCooldown > 0) {
+      unit.recoveryCooldown = Math.max(0, unit.recoveryCooldown - deltaSeconds);
+    }
+    if (unit.recoveryState !== 'none') {
+      unit.recoveryClock -= deltaSeconds;
+      if (unit.recoveryClock <= 0) {
+        unit.recoveryState = 'none';
+        unit.recoveryGoalX = 0;
+        unit.recoveryGoalZ = 0;
+      }
+      return;
+    }
+
+    if (unit.hasProgressAnchor) {
+      stallAnchorScratch.set(unit.progressAnchorX, 0, unit.progressAnchorZ);
+      if (squaredDistanceXZ(unit.position, stallAnchorScratch) >= STUCK_PROGRESS_SQUARED) {
+        unit.progressAnchorX = unit.position.x;
+        unit.progressAnchorZ = unit.position.z;
+        unit.noProgressClock = 0;
+        return;
+      }
+    } else {
+      unit.progressAnchorX = unit.position.x;
+      unit.progressAnchorZ = unit.position.z;
+      unit.hasProgressAnchor = true;
+      unit.noProgressClock = 0;
+      return;
+    }
+
+    unit.noProgressClock += deltaSeconds;
+    if (unit.noProgressClock < STUCK_WINDOW) return;
+    if (this.isLegitimatelyHeld(unit, movementGoal)) {
+      unit.noProgressClock = 0;
+      return;
+    }
+    // The cooldown lets a genuinely stuck unit only run one recovery per episode, so a failed
+    // manoeuvre cannot cascade into a new recovery every second.
+    if (unit.recoveryCooldown > 0) {
+      unit.noProgressClock = 0;
+      return;
+    }
+    this.triggerRecovery(unit, movementGoal);
+    unit.noProgressClock = 0;
+  }
+
+  /**
+   * True while the unit's lack of movement is legitimate: combat, an in-range target on cooldown,
+   * a bridge queue or deck role, or simply having arrived.
+   */
+  private isLegitimatelyHeld(unit: UnitEntity, movementGoal: Vector3): boolean {
+    if (unit.state === 'attacking' || unit.state === 'hit') return true;
+    const bridgeState = unit.bridgeState;
+    if (bridgeState === 'queued' || bridgeState === 'entering' || bridgeState === 'crossing' || bridgeState === 'exiting') {
+      return true;
+    }
+    if (this.engagedInCombat(unit)) return true;
+    const dx = movementGoal.x - unit.position.x;
+    const dz = movementGoal.z - unit.position.z;
+    return dx * dx + dz * dz <= STUCK_DISTANT_GOAL_SQUARED;
+  }
+
+  /** True while the unit has a live, attackable target within its own attack range. */
+  private engagedInCombat(unit: UnitEntity): boolean {
+    if (unit.carryingFlag) return false;
+    const target = this.bridges.contestedTarget(unit) ?? unit.target;
+    if (!target || !target.active || target.state === 'dead') return false;
+    if (!this.canAttackTarget(unit, target)) return false;
+    const dx = unit.position.x - target.position.x;
+    const dz = unit.position.z - target.position.z;
+    return dx * dx + dz * dz <= unit.stats.attackRange * unit.stats.attackRange;
+  }
+
+  /**
+   * Start exactly one lightweight recovery action. The action index rotates per stuck episode so a
+   * unit samples the whole toolbox, and the cooldown prevents oscillation or per-frame re-choices.
+   */
+  private triggerRecovery(unit: UnitEntity, movementGoal: Vector3): void {
+    // A unit that cannot reach its own reserved standoff re-keys to a different free slot.
+    if (unit.reservedSlot >= 0) {
+      this.engagements.reacquire(unit);
+      unit.recoveryCooldown = RECOVERY_COOLDOWN;
+      return;
+    }
+    const pick = unit.recoveryPick % 4;
+    unit.recoveryPick += 1;
+    let started = false;
+    switch (pick) {
+      case 0: started = this.tryLateral(unit, movementGoal); break;
+      case 1: started = this.tryYield(unit, movementGoal); break;
+      case 2: started = this.tryWait(unit); break;
+      default: started = this.tryBridgeSwitch(unit); break;
+    }
+    if (started) return;
+    // Deterministic fallback ladder: lateral, then yield, then the always-available wait.
+    if (pick !== 0 && this.tryLateral(unit, movementGoal)) return;
+    if (pick !== 1 && this.tryYield(unit, movementGoal)) return;
+    if (pick !== 2 && this.tryWait(unit)) return;
+  }
+
+  /** Walk a short way perpendicular to the goal, preferring a side from the unit id parity. */
+  private tryLateral(unit: UnitEntity, movementGoal: Vector3): boolean {
+    if (this.bridges.isInCombat(unit)) return false;
+    let dx = movementGoal.x - unit.position.x;
+    let dz = movementGoal.z - unit.position.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.001) return false;
+    dx /= length;
+    dz /= length;
+    const side = unit.id % 2 === 0 ? -1 : 1;
+    const candidates = [
+      [dz * side, -dx * side],
+      [-dz * side, dx * side],
+    ];
+    for (const [lx, lz] of candidates) {
+      const pointX = unit.position.x + lx * LATERAL_DISTANCE;
+      const pointZ = unit.position.z + lz * LATERAL_DISTANCE;
+      if (blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)) continue;
+      unit.recoveryState = 'lateral';
+      unit.recoveryClock = LATERAL_DURATION;
+      unit.recoveryCooldown = RECOVERY_COOLDOWN;
+      unit.recoveryGoalX = pointX;
+      unit.recoveryGoalZ = pointZ;
+      return true;
+    }
+    return false;
+  }
+
+  /** Step briefly backward along the goal axis so the unit ahead can advance. */
+  private tryYield(unit: UnitEntity, movementGoal: Vector3): boolean {
+    if (this.bridges.isInCombat(unit)) return false;
+    let dx = movementGoal.x - unit.position.x;
+    let dz = movementGoal.z - unit.position.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.001) return false;
+    dx /= length;
+    dz /= length;
+    const pointX = unit.position.x - dx * YIELD_DISTANCE;
+    const pointZ = unit.position.z - dz * YIELD_DISTANCE;
+    if (blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)) return false;
+    unit.recoveryState = 'yield';
+    unit.recoveryClock = YIELD_DURATION;
+    unit.recoveryCooldown = RECOVERY_COOLDOWN;
+    unit.recoveryGoalX = pointX;
+    unit.recoveryGoalZ = pointZ;
+    return true;
+  }
+
+  /** Wait briefly for the unit ahead, then retry normal movement. */
+  private tryWait(unit: UnitEntity): boolean {
+    unit.recoveryState = 'wait';
+    unit.recoveryClock = WAIT_DURATION;
+    unit.recoveryCooldown = RECOVERY_COOLDOWN;
+    unit.recoveryGoalX = unit.position.x;
+    unit.recoveryGoalZ = unit.position.z;
+    return true;
+  }
+
+  /**
+   * Switch to the other deck of the same channel, only while still approaching and only when that
+   * bridge is strictly less crowded, so units spread across bridges instead of pinging between two
+   * jammed decks. Units already on a deck, inside a queue, or fighting a contested bridge never
+   * switch.
+   */
+  private tryBridgeSwitch(unit: UnitEntity): boolean {
+    const route = unit.riverRoute;
+    if (!route || route.boardOnly || route.stage !== 0) return false;
+    if (unit.bridgeState !== 'none' && unit.bridgeState !== 'approaching') return false;
+    if (this.bridges.isInCombat(unit)) return false;
+    const channel = ARENA_RIVERS[route.channelIndex];
+    if (channel.bridges.length < 2) return false;
+    const deck = this.bridges.deckOf(route.channelIndex, route.bridgeIndex);
+    const otherIndex = (route.bridgeIndex + 1) % channel.bridges.length;
+    const otherDeck = this.bridges.deckOf(route.channelIndex, otherIndex);
+    if (this.bridges.committedCount(otherDeck) >= this.bridges.committedCount(deck)) return false;
+    const entrance = route.fromSide < 0
+      ? channel.minZ - BRIDGE_BANK_MARGIN - unit.bodyRadius
+      : channel.maxZ + BRIDGE_BANK_MARGIN + unit.bodyRadius;
+    if (Math.abs(unit.position.z - entrance) > BRIDGE_SWITCH_NEAR_ENTRANCE) return false;
+    route.bridgeIndex = otherIndex;
+    route.stage = 0;
+    route.stuckClock = 0;
+    route.bestDistanceSquared = Number.POSITIVE_INFINITY;
+    this.bridges.release(unit);
+    unit.recoveryCooldown = RECOVERY_COOLDOWN;
+    return true;
+  }
+
+  /**
+   * True when the strategic goal is a single point several units converge on (an enemy body, the
+   * dropped flag, the enemy gate). The tower-top flag is excluded: the reserved standoff ring owns
+   * that crowd.
+   */
+  private isCrowdPoint(unit: UnitEntity, goal: Vector3): boolean {
+    if (goal.y >= CENTRAL_TOWER.topSurfaceY - 0.6) return false;
+    if (unit.target?.active && unit.target.state !== 'dead' && squaredDistanceXZ(goal, unit.target.position) <= 0.05) {
+      return true;
+    }
+    if (!unit.target?.active && squaredDistanceXZ(goal, this.flag.position) <= 0.05) return true;
+    const gate = this.castles.getCastle(unit.team === 'blue' ? 'red' : 'blue').gatePoint;
+    return squaredDistanceXZ(goal, gate) <= 0.05;
+  }
+
   private faceUnit(unit: UnitEntity, target: Vector3, deltaSeconds: number): void {
     const dx = target.x - unit.position.x;
     const dz = target.z - unit.position.z;
@@ -553,6 +828,7 @@ export class UnitManager {
     unit.deathClock = 0;
     unit.target = null;
     this.bridges.release(unit);
+    this.engagements.release(unit);
     if (unit.carryingFlag) this.flag.dropFrom(unit);
     this.ladders.remove(unit, true);
     this.castleLadders.remove(unit, true);

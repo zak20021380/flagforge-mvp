@@ -77,9 +77,11 @@ export class LadderSystem {
     // keeps normal movement and queues after it has crossed a bridge. Descents are never held back:
     // the tower top is on no river's bank, and gating it would strand units up there.
     if (!unitIsTop && blocksApproach(unit, ladder.groundQueue[0].z)) return false;
-    // A full queue still owns the height transition for this frame. The unit
-    // waits in place and retries next frame instead of walking through the tower.
+    // A full queue: descending units hold their spot on the small top platform, while ascending
+    // units stay under normal movement and hold a reserved standoff position instead of freezing
+    // wherever they happen to stand; they retry the queue every frame.
     if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) {
+      if (!unitIsTop) return false;
       unit.target = null;
       unit.attackClock = 0;
       unit.attackHitApplied = false;

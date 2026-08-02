@@ -104,7 +104,7 @@ const pickBridge = (channel: ArenaRiverChannel, fromX: number, goalX: number): n
  * True when stepping from (fromX, fromZ) to (toX, toZ) would put any part of the body in water. The
  * swept Z range is compared against every channel, so an oversized step cannot tunnel through one.
  */
-const blocksGroundStep = (
+export const blocksGroundStep = (
   fromX: number,
   fromZ: number,
   toX: number,

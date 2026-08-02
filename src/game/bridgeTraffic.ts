@@ -291,6 +291,16 @@ export class BridgeTraffic {
     return 1;
   }
 
+  /** Deck object for a channel/bridge index pair. */
+  deckOf(channelIndex: number, bridgeIndex: number): BridgeDeck {
+    return this.decks[channelIndex][bridgeIndex];
+  }
+
+  /** Total bodies committed to a deck: deck walkers plus both bank queues. */
+  committedCount(deck: BridgeDeck): number {
+    return deck.onDeck + deck.low.members.length + deck.high.members.length;
+  }
+
   /**
    * True while an enemy unit is committed to the same deck (deck walkers or either bank queue), so
    * the unit keeps its strategic target and the combat goal rules take over its movement.

@@ -15,6 +15,8 @@ export type NavigationArea =
   | 'enemyCastleLadderRight'
   | 'enemyCastleAccess';
 export type Lane = 'left' | 'center' | 'right';
+/** One-shot stuck-recovery manoeuvre a unit may run before normal movement resumes. */
+export type RecoveryState = 'none' | 'lateral' | 'yield' | 'wait';
 export type QualityTier = 'low' | 'standard' | 'high';
 
 export interface UnitStats {

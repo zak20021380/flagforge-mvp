@@ -15,6 +15,7 @@ export class MaterialLibrary {
   readonly roofBlue: PBRMaterial;
   readonly roofBlueLight: PBRMaterial;
   readonly roofRed: PBRMaterial;
+  readonly roofRedLight: PBRMaterial;
   readonly gateWood: PBRMaterial;
   readonly gateWoodLight: PBRMaterial;
   readonly road: PBRMaterial;
@@ -70,6 +71,8 @@ export class MaterialLibrary {
     this.roofBlue = pbr('mat-roof-blue', Color3.FromHexString('#2a5da5'), 0.68, 0.06);
     this.roofBlueLight = pbr('mat-roof-blue-light', Color3.FromHexString('#4d87cf'), 0.6, 0.06);
     this.roofRed = pbr('mat-roof-red', Color3.FromHexString('#91303a'), 0.72, 0.06);
+    // Rival counterpart of roofBlueLight, one value step up from roofRed for eaves and ridge trim.
+    this.roofRedLight = pbr('mat-roof-red-light', Color3.FromHexString('#c04c50'), 0.64, 0.06);
     this.gateWood = pbr('mat-gate-wood', Color3.FromHexString('#5b3925'), 0.92);
     this.gateWoodLight = pbr('mat-gate-wood-light', Color3.FromHexString('#6d452a'), 0.9);
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
@@ -135,6 +138,11 @@ export class MaterialLibrary {
 
   roofTeam(team: Team): PBRMaterial {
     return team === 'blue' ? this.roofBlue : this.roofRed;
+  }
+
+  /** Lighter roof value, reserved for eaves and ridge trim on both castles. */
+  roofTeamLight(team: Team): PBRMaterial {
+    return team === 'blue' ? this.roofBlueLight : this.roofRedLight;
   }
 
   teamGlow(team: Team): StandardMaterial {

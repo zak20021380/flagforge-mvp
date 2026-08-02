@@ -58,11 +58,13 @@ export const artworkPixelToWorldZ = (pixelY: number): number =>
  *
  * Lane cross-check: the painted center road stays inside x -0.08..-0.27 over the whole field and the
  * painted side roads pass ±6.2 at mid-field, which matches arena.laneOffset 6.25.
+ *
+ * The octagon row above is documentation only: the objective tower is placed on the computed arena
+ * center (see CENTRAL_TOWER_ROOT_Z) rather than on the painted plaza, which the artist drew ~2.3
+ * units toward the red half.
  */
 const RED_BOUNDARY_PIXEL_Y = 535;
 const BLUE_BOUNDARY_PIXEL_Y = 1670;
-const OCTAGON_PIXEL_X = 622.25;
-const OCTAGON_PIXEL_Y = 1072;
 
 export const RED_BOUNDARY_Z = artworkPixelToWorldZ(RED_BOUNDARY_PIXEL_Y);
 export const BLUE_BOUNDARY_Z = artworkPixelToWorldZ(BLUE_BOUNDARY_PIXEL_Y);
@@ -83,8 +85,29 @@ export const RED_CASTLE_ROOT_X = 0;
 export const RED_CASTLE_ROOT_Z = RED_BOUNDARY_Z - RED_CASTLE_FRONT_FACE_OFFSET_Z;
 export const BLUE_CASTLE_ROOT_X = 0;
 export const BLUE_CASTLE_ROOT_Z = BLUE_BOUNDARY_Z - BLUE_CASTLE_FRONT_FACE_OFFSET_Z;
-export const CENTRAL_TOWER_ROOT_X = artworkPixelToWorldX(OCTAGON_PIXEL_X);
-export const CENTRAL_TOWER_ROOT_Z = artworkPixelToWorldZ(OCTAGON_PIXEL_Y);
+export const CENTRAL_TOWER_ROOT_X = 0;
+
+/**
+ * Exact geometric center of the playable battlefield, derived instead of eyeballed.
+ *
+ * X — the middle vertical lane. laneX('center') is 0 (src/core/math.ts) and both castle gates sit on
+ * x 0, so the central axis of play is x = 0. The tower base, not just the flagpole, is authored around
+ * this root (src/render/centralTower.ts), so the whole structure is centered on that axis and its two
+ * ladder faces stay square to the side lanes.
+ *
+ * Z — halfway between the two castle endpoints:
+ *   (RED_CASTLE_ROOT_Z + BLUE_CASTLE_ROOT_Z) / 2 = (70.405698 + -24.954158) / 2 = 22.725770
+ * Three independent readings of "halfway" agree exactly, because both castles use the same ±4.2
+ * front-face offset:
+ *   painted wall lines:   (RED_BOUNDARY_Z + BLUE_BOUNDARY_Z) / 2 = (66.205698 + -20.754158) / 2
+ *   castle front faces:   ((RED_CASTLE_ROOT_Z - 4.2) + (BLUE_CASTLE_ROOT_Z + 4.2)) / 2
+ *   castle roots:         the expression below
+ * Neutral-island check against the painted rivers: the water channels occupy z 41.46..38.47 (red side)
+ * and z 12.04..8.67 (blue side). The tower footprint is baseDepth 6.6 -> z 19.43..26.03, which clears
+ * the near channel by 7.39 and the far channel by 12.44, and x 0 sits on the central road rather than
+ * on either river crossing (bridges are painted around x -6.5..-5.6 and 5.3..5.8).
+ */
+export const CENTRAL_TOWER_ROOT_Z = (RED_CASTLE_ROOT_Z + BLUE_CASTLE_ROOT_Z) / 2;
 
 const ARENA_FOUNDATION_LENGTH = 76.6;
 // The tower caps are the castle geometry nearest the battlefield. Positioning the roots by this

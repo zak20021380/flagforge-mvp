@@ -208,8 +208,6 @@ export const PORTRAIT_LAYOUT = {
     interiorOffset: 1.3,
     unitBoundsX: 12.15,
     unitBoundsZ: CASTLE_CENTER_Z + 3.45,
-    aiSpawnMinZ: 14.5,
-    aiSpawnMaxZ: 19.7,
     route: {
       flagApproachZ: 5,
       flagApproachThresholdZ: 5.15,
@@ -388,6 +386,21 @@ export const BLUE_DEPLOYMENT = {
   maxZ: BLUE_RIVER_CHANNEL.minZ - PORTRAIT_LAYOUT.arena.bridgeShoulder,
 } as const;
 
+/**
+ * The enemy (red) deployment zone: the field front in front of the red wall line, clear of water.
+ * Mirrors BLUE_DEPLOYMENT against the upper (red side) river channel. The red castle faces -Z, so
+ * its wall line (RED_BOUNDARY_Z) is the high-Z bound and the river's castle-side bank
+ * (RED_RIVER_CHANNEL.maxZ) is the low-Z bound, inset by bridgeShoulder so spawns never touch water.
+ * Derived from the same world-space red castle boundary and upper-river bank the rest of the field
+ * reads — not from any mirrored deployment center.
+ */
+export const RED_DEPLOYMENT = {
+  minX: -PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  maxX: PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  minZ: RED_RIVER_CHANNEL.maxZ + PORTRAIT_LAYOUT.arena.bridgeShoulder,
+  maxZ: RED_BOUNDARY_Z,
+} as const;
+
 const ENEMY_CASTLE_X = RED_CASTLE_ROOT_X;
 const ENEMY_CASTLE_Z = RED_CASTLE_ROOT_Z;
 const enemyCastlePoint = (x: number, y: number, z: number) => ({
@@ -453,8 +466,8 @@ export const CONFIG = {
     halfLength: PORTRAIT_LAYOUT.arena.halfLength,
     blueDeployMinZ: BLUE_DEPLOYMENT.minZ,
     blueDeployMaxZ: BLUE_DEPLOYMENT.maxZ,
-    redDeployMinZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ - PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
-    redDeployMaxZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ + PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
+    redDeployMinZ: RED_DEPLOYMENT.minZ,
+    redDeployMaxZ: RED_DEPLOYMENT.maxZ,
     flagPickupRadius: 1.05,
     flagDeliveryZ: ENEMY_CASTLE_Z - PORTRAIT_LAYOUT.arena.deliveryOffset,
     castleInteriorZ: ENEMY_CASTLE_Z + PORTRAIT_LAYOUT.arena.interiorOffset,

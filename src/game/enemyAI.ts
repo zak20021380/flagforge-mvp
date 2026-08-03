@@ -1,5 +1,5 @@
 import { Vector3 } from '@babylonjs/core';
-import { CONFIG, PORTRAIT_LAYOUT, UNIT_STATS } from '../core/config';
+import { CONFIG, UNIT_STATS } from '../core/config';
 import { laneFromX, laneX, randomRange } from '../core/math';
 import type { Lane, UnitKind } from '../core/types';
 import { CastleLogic } from './castleLogic';
@@ -30,7 +30,7 @@ export class EnemyAI {
 
     const lane = this.chooseLane(kind);
     const x = laneX(lane) + randomRange(-1.2, 1.2);
-    const z = randomRange(PORTRAIT_LAYOUT.arena.aiSpawnMinZ, PORTRAIT_LAYOUT.arena.aiSpawnMaxZ);
+    const z = randomRange(CONFIG.arena.redDeployMinZ, CONFIG.arena.redDeployMaxZ);
     const cost = UNIT_STATS[kind].cost;
     if (!this.energy.spend(cost)) return;
     const spawned = this.units.spawn('red', kind, new Vector3(x, 0.16, z), laneFromX(x));

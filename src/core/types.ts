@@ -18,6 +18,8 @@ export type Lane = 'left' | 'center' | 'right';
 /** One-shot stuck-recovery manoeuvre a unit may run before normal movement resumes. */
 export type RecoveryState = 'none' | 'lateral' | 'yield' | 'wait';
 export type QualityTier = 'low' | 'standard' | 'high';
+/** Display-only castle gate/breach state for the castle health HUD. */
+export type CastleState = 'secure' | 'open' | 'breached';
 
 export interface UnitStats {
   readonly cost: number;

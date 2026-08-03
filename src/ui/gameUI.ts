@@ -1,5 +1,5 @@
 import { CONFIG, UNIT_LABELS, UNIT_STATS } from '../core/config';
-import type { QualityTier, Team, UnitKind } from '../core/types';
+import type { CastleState, QualityTier, Team, UnitKind } from '../core/types';
 import type { FlagStatus } from '../game/flag';
 
 const MOJIBAKE_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -22,6 +22,16 @@ export interface HudState {
   readonly breachCountdown: number;
   readonly selectedKind: UnitKind | null;
   readonly playerLocked: boolean;
+  readonly playerCastleHp: number;
+  readonly playerCastleMaxHp: number;
+  readonly playerCastleState: CastleState;
+  readonly playerCastleCountdown: number;
+  readonly playerFlagSecured: boolean;
+  readonly enemyCastleHp: number;
+  readonly enemyCastleMaxHp: number;
+  readonly enemyCastleState: CastleState;
+  readonly enemyCastleCountdown: number;
+  readonly enemyFlagSecured: boolean;
 }
 
 export class GameUI {
@@ -36,6 +46,18 @@ export class GameUI {
   private readonly energyFill: HTMLElement;
   private readonly energyText: HTMLElement;
   private readonly enemyEnergyFill: HTMLElement;
+  private readonly castlePanel: HTMLElement;
+  private readonly castleFill: HTMLElement;
+  private readonly castleStateLabel: HTMLElement;
+  private readonly castleHp: HTMLElement;
+  private readonly castleFlag: HTMLElement;
+  private readonly enemyCastleStrip: HTMLElement;
+  private readonly enemyCastleFill: HTMLElement;
+  private readonly enemyCastleStateLabel: HTMLElement;
+  private readonly enemyCastleHp: HTMLElement;
+  private readonly enemyCastleFlag: HTMLElement;
+  private readonly playerDamageFlash: CastleDamageFlash;
+  private readonly enemyDamageFlash: CastleDamageFlash;
   private readonly cardButtons = new Map<UnitKind, HTMLButtonElement>();
   private readonly endOverlay: HTMLElement;
   private readonly endTitle: HTMLElement;
@@ -59,6 +81,19 @@ export class GameUI {
     this.energyFill = this.query('#energy-fill');
     this.energyText = this.query('#energy-text');
     this.enemyEnergyFill = this.query('#enemy-energy-fill');
+    this.castlePanel = this.query('#player-castle-panel');
+    this.castleFill = this.query('#player-castle-fill');
+    this.castleStateLabel = this.query('#player-castle-state');
+    this.castleHp = this.query('#player-castle-hp');
+    this.castleFlag = this.query('#player-castle-flag');
+    this.enemyCastleStrip = this.query('#enemy-castle-strip');
+    this.enemyCastleFill = this.query('#enemy-castle-fill');
+    this.enemyCastleStateLabel = this.query('#enemy-castle-state');
+    this.enemyCastleHp = this.query('#enemy-castle-hp');
+    this.enemyCastleFlag = this.query('#enemy-castle-flag');
+    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.playerDamageFlash = new CastleDamageFlash(this.query('#player-castle-flash'), reducedMotion);
+    this.enemyDamageFlash = new CastleDamageFlash(this.query('#enemy-castle-flash'), reducedMotion);
     this.endOverlay = this.query('#end-overlay');
     this.endTitle = this.query('#end-title');
     this.endSubtitle = this.query('#end-subtitle');
@@ -108,6 +143,23 @@ export class GameUI {
     this.energyFill.style.width = `${(state.playerEnergy / CONFIG.energy.maximum) * 100}%`;
     this.energyText.textContent = `${Math.floor(state.playerEnergy)} / ${CONFIG.energy.maximum}`;
     this.enemyEnergyFill.style.width = `${(state.enemyEnergy / CONFIG.energy.maximum) * 100}%`;
+
+    const playerCastleHp = Math.max(0, Math.round(state.playerCastleHp));
+    const enemyCastleHp = Math.max(0, Math.round(state.enemyCastleHp));
+    this.castleFill.style.width = `${(playerCastleHp / state.playerCastleMaxHp) * 100}%`;
+    this.enemyCastleFill.style.width = `${(enemyCastleHp / state.enemyCastleMaxHp) * 100}%`;
+    this.castleHp.textContent = `${playerCastleHp} / ${state.playerCastleMaxHp}`;
+    this.enemyCastleHp.textContent = `${enemyCastleHp} / ${state.enemyCastleMaxHp}`;
+    this.castleStateLabel.textContent = castleStateText(state.playerCastleState, state.playerCastleCountdown, false);
+    this.enemyCastleStateLabel.textContent = castleStateText(state.enemyCastleState, state.enemyCastleCountdown, true);
+    this.castlePanel.classList.toggle('open', state.playerCastleState === 'open');
+    this.castlePanel.classList.toggle('breached', state.playerCastleState === 'breached');
+    this.enemyCastleStrip.classList.toggle('open', state.enemyCastleState === 'open');
+    this.enemyCastleStrip.classList.toggle('breached', state.enemyCastleState === 'breached');
+    this.setFlagSecured(this.castleFlag, state.playerFlagSecured, 'secured in your castle');
+    this.setFlagSecured(this.enemyCastleFlag, state.enemyFlagSecured, 'secured in the enemy castle');
+    this.playerDamageFlash.pulse(playerCastleHp, state.playerCastleMaxHp, state.playerCastleState === 'breached');
+    this.enemyDamageFlash.pulse(enemyCastleHp, state.enemyCastleMaxHp, state.enemyCastleState === 'breached');
 
     for (const [kind, button] of this.cardButtons) {
       const unaffordable = state.playerEnergy + 0.001 < UNIT_STATS[kind].cost;
@@ -170,6 +222,18 @@ export class GameUI {
 
       <div id="hud-top-strip"></div>
 
+      <div id="enemy-castle-strip" class="castle-strip">
+        <span class="castle-strip-sigil" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V8l2-2v6h2V4l2-2v8h2V2h2v8h2V2l2 2v8h2V6l2 2v13H4z"/></svg>
+        </span>
+        <small id="enemy-castle-state" class="castle-state">SECURE</small>
+        <span class="castle-track"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
+        <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
+        <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
+          <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
+        </span>
+      </div>
+
       <header class="match-hud">
         <div class="match-hud-chrome" aria-hidden="true">
           <span class="match-hud-edge"></span>
@@ -194,6 +258,21 @@ export class GameUI {
       </header>
 
       <footer class="bottom-hud">
+        <div id="player-castle-panel" class="castle-panel">
+          <span class="castle-sigil" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V8l2-2v6h2V4l2-2v8h2V2h2v8h2V2l2 2v8h2V6l2 2v13H4z"/><path class="castle-door" d="M10 21V18.4a2.6 2.6 0 0 1 4 0V21z"/></svg>
+          </span>
+          <span class="castle-col">
+            <span class="castle-track"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
+            <small id="player-castle-state" class="castle-state">GATE SECURE</small>
+          </span>
+          <span class="castle-side">
+            <b id="player-castle-hp" class="castle-hp">1000 / 1000</b>
+            <span id="player-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
+              <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
+            </span>
+          </span>
+        </div>
         <div class="energy-panel"><span>ENERGY</span><div class="energy-track"><i id="energy-fill"></i></div><b id="energy-text">5 / 10</b></div>
         <div class="card-row">${cards}</div>
       </footer>
@@ -208,6 +287,11 @@ export class GameUI {
         </div>
       </section>
     `;
+  }
+
+  private setFlagSecured(element: HTMLElement, secured: boolean, securedLabel: string): void {
+    element.classList.toggle('secured', secured);
+    element.setAttribute('aria-label', secured ? `Flag ${securedLabel}` : 'Flag not secured');
   }
 
   private icon(kind: UnitKind): string {
@@ -228,4 +312,45 @@ function normalizeDisplayText(value: string): string {
   let normalized = value;
   for (const [broken, intended] of MOJIBAKE_REPLACEMENTS) normalized = normalized.replaceAll(broken, intended);
   return normalized;
+}
+
+function castleStateText(state: CastleState, countdown: number, compact: boolean): string {
+  if (state === 'secure') return compact ? 'SECURE' : 'GATE SECURE';
+  const seconds = Math.max(1, Math.ceil(countdown));
+  if (state === 'breached') {
+    return compact ? `BREACHED ${seconds}s` : `BREACHED \u00b7 ${seconds}s`;
+  }
+  return compact ? `GATE OPEN ${seconds}s` : `GATE OPEN \u00b7 ${seconds}s`;
+}
+
+/**
+ * Lightweight damage cue for a castle health bar: a one-shot overlay flash over the fill that
+ * fades out via the Web Animations API. Throttled so steady assault drain reads as sustained
+ * damage rather than a strobe, and disabled entirely for reduced-motion users.
+ */
+class CastleDamageFlash {
+  private lastHp = -1;
+  private lastTime = 0;
+
+  constructor(
+    private readonly element: HTMLElement,
+    private readonly reducedMotion: boolean,
+  ) {}
+
+  pulse(hp: number, maxHp: number, breached: boolean): void {
+    const step = Math.max(1, maxHp * 0.015);
+    if (hp >= this.lastHp - step) {
+      this.lastHp = hp;
+      return;
+    }
+    this.lastHp = hp;
+    if (this.reducedMotion) return;
+    const now = performance.now();
+    if (now - this.lastTime < 450) return;
+    this.lastTime = now;
+    this.element.style.background = breached
+      ? 'linear-gradient(90deg, rgba(255, 74, 88, .9), rgba(255, 158, 120, .9))'
+      : 'linear-gradient(90deg, rgba(214, 238, 255, .95), rgba(122, 196, 255, .95))';
+    this.element.animate([{ opacity: 0.65 }, { opacity: 0 }], { duration: 400, easing: 'ease-out' });
+  }
 }

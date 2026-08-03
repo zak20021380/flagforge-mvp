@@ -2,9 +2,10 @@ import { AbstractMesh, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
 import { CONFIG, PORTRAIT_LAYOUT, UNIT_STATS } from '../core/config';
 import { laneFromX } from '../core/math';
-import type { Team, UnitKind } from '../core/types';
+import type { CastleState, Team, UnitKind } from '../core/types';
 import type { ArenaScene } from '../render/arena';
 import { GameUI } from '../ui/gameUI';
+import { CastleHealthModel } from './castleHealth';
 import { CastleLogic } from './castleLogic';
 import { EffectPool } from './effects';
 import { EnemyAI } from './enemyAI';
@@ -16,6 +17,8 @@ import { UnitManager } from './unitManager';
 export class GameController {
   private readonly playerEnergy = new EnergyModel();
   private readonly enemyEnergy = new EnergyModel();
+  private readonly playerCastleHealth = new CastleHealthModel();
+  private readonly enemyCastleHealth = new CastleHealthModel();
   private readonly effects: EffectPool;
   private readonly castles: CastleLogic;
   private readonly flag: FlagController;
@@ -23,6 +26,7 @@ export class GameController {
   private readonly units: UnitManager;
   private readonly ai: EnemyAI;
   private selectedKind: UnitKind | null = null;
+  private lastFlagDeliveredBy: Team | null = null;
   private started = false;
   private ended = false;
   private elapsed = 0;
@@ -105,6 +109,7 @@ export class GameController {
     this.effects.update(delta);
     this.flag.update(delta, this.elapsed);
     this.castles.update(delta, this.elapsed);
+    this.updateCastleHealth(delta);
     this.updateCamera(delta);
 
     this.hudClock -= delta;
@@ -239,6 +244,7 @@ export class GameController {
 
   private handleFlagDelivered(team: Team): void {
     this.audio.play('flag');
+    this.lastFlagDeliveredBy = team;
     this.castles.openEnemyGateFor(team);
     this.ui.showBanner(team === 'blue' ? 'ENEMY GATE OPEN — ATTACK NOW' : 'YOUR GATE IS OPEN — DEFEND', team === 'blue' ? 'success' : 'danger', 2.4);
   }
@@ -273,7 +279,47 @@ export class GameController {
     this.updateHud();
   }
 
+  private updateCastleHealth(deltaSeconds: number): void {
+    const breachedTeam = this.castles.getBreachedTeam();
+    const breachCountdown = this.castles.getBreachCountdown();
+    // The blue castle is under assault while red holds an attack window; the red castle while blue does.
+    this.playerCastleHealth.update(
+      deltaSeconds,
+      this.castles.getAttackWindowRemaining('red') > 0,
+      breachedTeam === 'blue',
+      breachCountdown,
+    );
+    this.enemyCastleHealth.update(
+      deltaSeconds,
+      this.castles.getAttackWindowRemaining('blue') > 0,
+      breachedTeam === 'red',
+      breachCountdown,
+    );
+  }
+
+  private castleStateFor(team: Team): CastleState {
+    if (this.castles.getBreachedTeam() === team) return 'breached';
+    return this.castleThreatWindow(team) > 0 ? 'open' : 'secure';
+  }
+
+  private castleThreatWindow(team: Team): number {
+    return team === 'blue'
+      ? this.castles.getAttackWindowRemaining('red')
+      : this.castles.getAttackWindowRemaining('blue');
+  }
+
+  private castleThreatCountdown(team: Team): number {
+    return this.castles.getBreachedTeam() === team
+      ? this.castles.getBreachCountdown()
+      : this.castleThreatWindow(team);
+  }
+
   private updateHud(): void {
+    // The flag is secured in a castle only while it is delivered (resetting status); it lands in
+    // the castle of whichever team delivered it.
+    const flagSecuredAt: Team | null = this.flag.currentStatus === 'resetting' && this.lastFlagDeliveredBy
+      ? (this.lastFlagDeliveredBy === 'blue' ? 'red' : 'blue')
+      : null;
     this.ui.update({
       playerEnergy: this.playerEnergy.value,
       enemyEnergy: this.enemyEnergy.value,
@@ -287,6 +333,16 @@ export class GameController {
       breachCountdown: this.castles.getBreachCountdown(),
       selectedKind: this.selectedKind,
       playerLocked: this.castles.isDeploymentLocked('blue'),
+      playerCastleHp: this.playerCastleHealth.hp,
+      playerCastleMaxHp: this.playerCastleHealth.maxHp,
+      playerCastleState: this.castleStateFor('blue'),
+      playerCastleCountdown: this.castleThreatCountdown('blue'),
+      playerFlagSecured: flagSecuredAt === 'blue',
+      enemyCastleHp: this.enemyCastleHealth.hp,
+      enemyCastleMaxHp: this.enemyCastleHealth.maxHp,
+      enemyCastleState: this.castleStateFor('red'),
+      enemyCastleCountdown: this.castleThreatCountdown('red'),
+      enemyFlagSecured: flagSecuredAt === 'red',
     });
   }
 

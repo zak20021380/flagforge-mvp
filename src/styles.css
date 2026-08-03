@@ -485,6 +485,155 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .energy-track { height: 8px; overflow: hidden; background: #06111d; border-radius: 999px; }
 .energy-track i { display: block; width: 50%; height: 100%; background: linear-gradient(90deg, #2b73f1, #58c5ff); border-radius: inherit; box-shadow: 0 0 12px #39a9ff; transition: width .16s linear; }
 
+/* ===== CASTLE INTEGRITY HUD =====
+   The player fortress (blue) sits directly above the energy bar; the rival castle (red) gets a
+   slim strip under the match banner. Both share one visual vocabulary: a small castle sigil, a
+   recessed track, tabular HP readout, a gate/breach state label and a flag-secured pennant. */
+.castle-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 42px;
+  padding: 5px 9px;
+  color: #d6e6f8;
+  background: rgba(7, 15, 28, .9);
+  border: 1px solid rgba(106, 185, 255, .3);
+  border-radius: 11px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, .35);
+  backdrop-filter: blur(6px);
+  transition: border-color .25s ease;
+}
+
+.castle-panel.open { border-color: rgba(255, 209, 138, .5); }
+.castle-panel.breached { border-color: rgba(255, 110, 120, .6); }
+
+.castle-sigil {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: radial-gradient(circle at 50% 32%, #4779a7, #172a42 72%);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 8px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 2px 6px rgba(0, 0, 0, .35);
+}
+.castle-sigil svg { width: 22px; height: 22px; }
+.castle-sigil .castle-body { fill: #f0ca7a; filter: drop-shadow(0 2px 1px rgba(0, 0, 0, .45)); }
+.castle-sigil .castle-door { fill: rgba(5, 12, 22, .6); }
+
+.castle-col { display: grid; gap: 4px; min-width: 0; }
+
+.castle-track {
+  position: relative;
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  background: #06111d;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(214, 232, 255, .1);
+}
+.castle-track i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #2b73f1, #58c5ff);
+  border-radius: inherit;
+  box-shadow: 0 0 12px rgba(57, 169, 255, .5);
+  transition: width .18s ease-out;
+}
+.castle-track em {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.castle-panel.breached .castle-track i {
+  background: linear-gradient(90deg, #e23b44, #ff8f5f);
+  box-shadow: 0 0 14px rgba(255, 90, 100, .65);
+  animation: breach-drain .55s ease-in-out infinite alternate;
+}
+@keyframes breach-drain { to { filter: brightness(1.28); } }
+
+.castle-state {
+  overflow: hidden;
+  font-size: 8.5px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .14em;
+  color: #8bb4e2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.castle-panel.open .castle-state,
+.castle-strip.open .castle-state { color: #ffd98a; }
+.castle-panel.breached .castle-state,
+.castle-strip.breached .castle-state { color: #ff7a80; }
+
+.castle-side { display: grid; gap: 4px; justify-items: end; }
+.castle-hp {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  color: #eef6ff;
+  white-space: nowrap;
+}
+.castle-panel.breached .castle-hp { color: #ffb3b8; }
+
+/* Rival castle: a slim forged strip tucked under the match banner, compact form of the same info. */
+.castle-strip {
+  position: absolute;
+  z-index: 9;
+  top: calc(var(--top-hud-top-offset) + var(--top-hud-height) + clamp(3px, .9vh, 6px));
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  gap: 7px;
+  align-items: center;
+  width: var(--top-hud-width);
+  max-width: var(--top-hud-max-width);
+  height: 20px;
+  margin-inline: auto;
+  padding: 0 9px;
+  pointer-events: none;
+  background: linear-gradient(180deg, #2c1c28, #150c14 70%);
+  border: 1px solid rgba(255, 150, 158, .3);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(2, 7, 14, .55), inset 0 1px rgba(255, 255, 255, .06);
+  transition: border-color .25s ease;
+}
+.castle-strip.open { border-color: rgba(255, 209, 138, .45); }
+.castle-strip.breached { border-color: rgba(255, 110, 120, .6); }
+
+.castle-strip-sigil { display: grid; place-items: center; }
+.castle-strip-sigil svg { width: 12px; height: 12px; }
+.castle-strip-sigil .castle-body { fill: #ffb6ab; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
+
+.castle-strip .castle-track { height: 5px; }
+.castle-strip .castle-track i {
+  background: linear-gradient(90deg, #d0343e, #ff8f5f);
+  box-shadow: 0 0 8px rgba(255, 100, 110, .5);
+}
+.castle-strip.breached .castle-track i { animation: breach-drain .55s ease-in-out infinite alternate; }
+.castle-strip .castle-state { font-size: 7px; letter-spacing: .12em; color: #d7a2a7; }
+.castle-strip .castle-hp { font-size: 8px; color: #f6e3e5; }
+.castle-strip .flag-chip { width: 16px; height: 11px; }
+.castle-strip .flag-chip svg { width: 12px; height: 10px; }
+
+/* Flag pennant: lit gold while the flag is secured in the castle, dim steel otherwise. */
+.flag-chip { display: grid; place-items: center; width: 24px; height: 15px; }
+.flag-chip svg { width: 17px; height: 14px; }
+.flag-chip .pole { fill: #8fa8c2; }
+.flag-chip .cloth { fill: #44586e; transition: fill .2s ease; }
+.flag-chip.secured .cloth {
+  fill: #ffd15b;
+  filter: drop-shadow(0 0 4px rgba(255, 209, 91, .8));
+  animation: flag-secure .9s ease-in-out infinite alternate;
+}
+@keyframes flag-secure { to { filter: drop-shadow(0 0 8px rgba(255, 209, 91, 1)); } }
+
 .card-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; width: 100%; }
 .unit-card {
   position: relative;
@@ -563,6 +712,11 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .loading-copy { margin-block: 6px 10px; }
   .bottom-hud { gap: 4px; }
   .energy-panel { min-height: 28px; padding-block: 4px; }
+  .castle-panel { min-height: 34px; padding-block: 4px; }
+  .castle-sigil { width: 26px; height: 26px; }
+  .castle-sigil svg { width: 19px; height: 19px; }
+  .castle-track { height: 8px; }
+  .castle-strip { height: 18px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }
   .card-portrait { width: 38px; height: 38px; }
   .card-portrait svg { width: 36px; height: 36px; }

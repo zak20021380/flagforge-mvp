@@ -487,39 +487,43 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 
 /* ===== CASTLE INTEGRITY HUD =====
    The player fortress (blue) sits directly above the energy bar; the rival castle (red) gets a
-   slim strip under the match banner. Both share one visual vocabulary: a small gatehouse sigil, a
-   recessed track, tabular HP readout, a gate/breach state label and a flag-secured pennant.
+   strip under the match banner. Both share one visual vocabulary: a machined keep emblem with a
+   lit status core, a recessed track, tabular HP readout, a gate/breach state label and a
+   flag-secured pennant.
 
-   The player widget idles as a compact pill (sigil + HP). Damage, a gate-open state or a breach
-   expands it into the full readout (bar + state + HP); after the damage pauses it settles back. */
+   Both widgets idle as a compact pill showing only the emblem and its status core — no bar, no
+   numbers. Damage, a gate-open state or a breach expands them into the full readout (bar + HP +
+   state) with a smooth slide; once the damage pauses they settle back into the compact pill. */
 .castle-panel {
   position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   width: max-content;
-  min-height: 27px;
-  padding: 3px 8px;
+  min-height: 36px;
+  padding: 4px 10px 4px 5px;
   color: #d6e6f8;
-  background: linear-gradient(180deg, rgba(10, 20, 35, .94), rgba(5, 12, 24, .96));
-  border: 1px solid rgba(106, 185, 255, .36);
+  background: linear-gradient(180deg, rgba(13, 26, 44, .96), rgba(6, 13, 25, .98));
+  border: 1px solid rgba(122, 190, 255, .34);
   border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .4), inset 0 1px rgba(255, 255, 255, .05);
-  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .44), inset 0 1px rgba(255, 255, 255, .07);
+  backdrop-filter: blur(8px);
   overflow: hidden;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: width .32s cubic-bezier(.4, 0, .2, 1), min-height .3s ease, border-radius .3s ease, border-color .25s ease;
+  transition: width .38s cubic-bezier(.22, 1, .36, 1), min-height .34s ease, border-radius .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
 }
 
 .castle-panel.expanded {
   width: 100%;
-  min-height: 44px;
-  border-radius: 11px;
+  min-height: 50px;
+  border-radius: 14px;
+  border-color: rgba(132, 196, 255, .5);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .52), inset 0 1px rgba(255, 255, 255, .09);
 }
 
 .castle-panel.open { border-color: rgba(255, 209, 138, .55); }
-.castle-panel.breached { border-color: rgba(255, 110, 120, .66); }
+.castle-panel.breached { border-color: rgba(255, 110, 120, .72); box-shadow: 0 8px 24px rgba(255, 40, 70, .16), inset 0 1px rgba(255, 255, 255, .08); }
 .castle-panel.hit { animation: castle-hit .34s ease; }
 @keyframes castle-hit {
   0%, 100% { transform: translateX(0); }
@@ -529,43 +533,73 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   80% { transform: translateX(1px); }
 }
 
+/* Keep emblem: a machined coin, the only element left in the compact pill. */
 .castle-sigil {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 27px;
-  height: 27px;
-  flex: 0 0 27px;
-  background: radial-gradient(circle at 50% 30%, #3b6fa3, #172a42 74%);
-  border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 8px;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 2px 6px rgba(0, 0, 0, .35);
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .15), transparent 42%),
+    radial-gradient(circle at 50% 50%, #2e5f9e, #132a4c 74%);
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 50%;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .16), inset 0 -3px 6px rgba(0, 0, 0, .42), 0 2px 7px rgba(0, 0, 0, .4);
+  transition: border-color .3s ease, box-shadow .3s ease;
 }
-.castle-sigil svg { width: 19px; height: 19px; }
-.castle-sigil .castle-body { fill: #f0ca7a; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .45)); }
-.castle-sigil .castle-door { fill: rgba(5, 14, 26, .74); }
-.castle-sigil .castle-grate { fill: none; stroke: rgba(240, 202, 122, .6); stroke-width: 1.1; }
+.castle-sigil svg { width: 17px; height: 17px; }
+.castle-sigil .castle-body { fill: #f6d489; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
+.castle-sigil .castle-door { fill: rgba(4, 13, 25, .82); }
+.castle-sigil .castle-grate { fill: none; stroke: rgba(246, 212, 137, .65); stroke-width: 1.1; }
+.castle-panel.open .castle-sigil { border-color: rgba(255, 209, 138, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .16), 0 0 10px rgba(255, 190, 80, .3); }
+.castle-panel.breached .castle-sigil { border-color: rgba(255, 120, 130, .55); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 12px rgba(255, 70, 90, .4); }
 
+/* Status core: the compact pill still whispers castle state through its LED. */
+.castle-core {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid rgba(4, 12, 22, .95);
+  border-radius: 50%;
+  transition: background .25s ease, box-shadow .25s ease;
+}
+.castle-sigil .castle-core { background: radial-gradient(circle at 35% 30%, #b9ecff, #2f8bff 68%); box-shadow: 0 0 6px rgba(64, 172, 255, .9); }
+.castle-strip-sigil .castle-core { background: radial-gradient(circle at 35% 30%, #ffd9d4, #ff4d5e 68%); box-shadow: 0 0 6px rgba(255, 80, 95, .9); }
+.castle-panel.open .castle-core,
+.castle-strip.open .castle-core { background: radial-gradient(circle at 35% 30%, #ffe9b0, #ffab2e 68%); box-shadow: 0 0 7px rgba(255, 190, 80, .95); }
+.castle-panel.breached .castle-core,
+.castle-strip.breached .castle-core { background: radial-gradient(circle at 35% 30%, #ffd7d2, #ff4d5e 68%); box-shadow: 0 0 8px rgba(255, 70, 90, .95); animation: castle-breach-pulse .8s ease-in-out infinite alternate; }
+@keyframes castle-breach-pulse { to { box-shadow: 0 0 13px rgba(255, 70, 90, 1); } }
+
+/* Expanding folder: the readout slides out of the pill without ever moving the page. */
 .castle-folder {
-  display: grid;
-  gap: 4px;
   min-width: 0;
   max-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity .3s ease, transform .34s cubic-bezier(.34, 1.2, .4, 1), max-width .34s cubic-bezier(.4, 0, .2, 1);
+  transition: opacity .3s ease, transform .38s cubic-bezier(.22, 1, .36, 1), max-width .38s cubic-bezier(.22, 1, .36, 1);
 }
-.castle-panel.expanded .castle-folder { opacity: 1; max-width: 480px; transform: none; }
+.castle-panel.expanded .castle-folder,
+.castle-strip.expanded .castle-folder { opacity: 1; max-width: 480px; transform: none; }
+.castle-panel .castle-folder { display: grid; gap: 5px; }
+.castle-strip .castle-folder { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
+
+.castle-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
 
 .castle-bar {
   position: relative;
   display: block;
   height: 9px;
   overflow: hidden;
-  background: #06111d;
+  background: rgba(4, 12, 22, .92);
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(214, 232, 255, .12);
+  box-shadow: inset 0 0 0 1px rgba(214, 232, 255, .14), inset 0 1px 2px rgba(0, 0, 0, .6);
 }
 .castle-bar i {
   display: block;
@@ -573,7 +607,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   height: 100%;
   background: linear-gradient(90deg, #2b73f1, #58c5ff);
   border-radius: inherit;
-  box-shadow: 0 0 12px rgba(57, 169, 255, .5);
+  box-shadow: 0 0 12px rgba(57, 169, 255, .55);
   transition: width .18s ease-out;
 }
 .castle-bar em {
@@ -583,7 +617,8 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   opacity: 0;
   pointer-events: none;
 }
-.castle-panel.breached .castle-bar i {
+.castle-panel.breached .castle-bar i,
+.castle-strip.breached .castle-bar i {
   background: linear-gradient(90deg, #e23b34, #ff8f5f);
   box-shadow: 0 0 14px rgba(255, 90, 100, .65);
   animation: breach-drain .55s ease-in-out infinite alternate;
@@ -595,67 +630,87 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   font-size: 8.5px;
   font-weight: 900;
   line-height: 1;
-  letter-spacing: .14em;
-  color: #9bbce6;
+  letter-spacing: .16em;
+  color: #9bc4ef;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(2, 7, 14, .6);
 }
 .castle-panel.open .castle-state,
 .castle-strip.open .castle-state { color: #ffd98a; }
 .castle-panel.breached .castle-state,
 .castle-strip.breached .castle-state { color: #ff7a80; }
 
-.castle-side { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .castle-hp {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
   color: #eef6ff;
   white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(2, 7, 14, .55);
 }
-.castle-panel.breached .castle-hp { color: #ffb3b8; }
+.castle-panel.breached .castle-hp,
+.castle-strip.breached .castle-hp { color: #ffb3b8; }
 .castle-panel:not(.expanded) .flag-chip { display: none; }
 
-/* Rival castle: a slim forged strip tucked under the match banner, compact form of the same info. */
+/* Rival castle: the same pill, red-tinted, pinned under the match banner. */
 .castle-strip {
   position: absolute;
   z-index: 9;
   top: calc(var(--top-hud-top-offset) + var(--top-hud-height) + clamp(3px, .9vh, 6px));
   left: 0;
   right: 0;
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-  gap: 7px;
-  align-items: center;
-  width: var(--top-hud-width);
-  max-width: var(--top-hud-max-width);
-  height: 20px;
-  margin-inline: auto;
-  padding: 0 9px;
+  display: flex;
+  justify-content: center;
   pointer-events: none;
-  background: linear-gradient(180deg, #2c1c28, #150c14 70%);
-  border: 1px solid rgba(255, 150, 158, .3);
-  border-radius: 3px;
-  box-shadow: 0 2px 6px rgba(2, 7, 14, .55), inset 0 1px rgba(255, 255, 255, .06);
-  transition: border-color .25s ease;
 }
-.castle-strip.open { border-color: rgba(255, 209, 138, .45); }
-.castle-strip.breached { border-color: rgba(255, 110, 120, .6); }
-
-.castle-strip-sigil { display: grid; place-items: center; }
-.castle-strip-sigil svg { width: 12px; height: 12px; }
-.castle-strip-sigil .castle-body { fill: #ffb6ab; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
-.castle-strip-sigil .castle-door { fill: rgba(28, 6, 12, .62); }
-
-.castle-strip .castle-bar { height: 5px; }
-.castle-strip .castle-bar i {
-  background: linear-gradient(90deg, #d0343e, #ff8f5f);
-  box-shadow: 0 0 8px rgba(255, 100, 110, .5);
+.castle-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 26px;
+  padding: 3px 11px 3px 5px;
+  background: linear-gradient(180deg, rgba(39, 22, 37, .96), rgba(18, 10, 17, .98));
+  border: 1px solid rgba(255, 150, 158, .34);
+  border-radius: 999px;
+  box-shadow: 0 5px 16px rgba(2, 7, 14, .5), inset 0 1px rgba(255, 255, 255, .07);
+  backdrop-filter: blur(8px);
+  transition: border-color .3s ease, box-shadow .3s ease;
 }
-.castle-strip.breached .castle-bar i { animation: breach-drain .55s ease-in-out infinite alternate; }
-.castle-strip .castle-state { font-size: 7px; letter-spacing: .12em; color: #d7a2a7; }
-.castle-strip .castle-hp { font-size: 8px; color: #f6e3e5; }
+.castle-strip.open .castle-strip-inner { border-color: rgba(255, 209, 138, .5); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 14px rgba(255, 190, 80, .22), inset 0 1px rgba(255, 255, 255, .08); }
+.castle-strip.breached .castle-strip-inner { border-color: rgba(255, 110, 120, .62); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 16px rgba(255, 60, 80, .3), inset 0 1px rgba(255, 255, 255, .07); }
+.castle-strip.hit { animation: castle-strip-hit .32s ease; }
+@keyframes castle-strip-hit {
+  0%, 100% { filter: brightness(1); }
+  35% { filter: brightness(1.5); }
+}
+
+.castle-strip-sigil {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .12), transparent 42%),
+    radial-gradient(circle at 50% 50%, #5e2c38, #2a1019 74%);
+  border: 1px solid rgba(255, 170, 178, .3);
+  border-radius: 50%;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .14), inset 0 -3px 6px rgba(0, 0, 0, .44), 0 2px 7px rgba(0, 0, 0, .45);
+  transition: border-color .3s ease, box-shadow .3s ease;
+}
+.castle-strip-sigil svg { width: 15px; height: 15px; }
+.castle-strip-sigil .castle-body { fill: #ffc2b8; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
+.castle-strip-sigil .castle-door { fill: rgba(26, 5, 11, .8); }
+.castle-strip.open .castle-strip-sigil { border-color: rgba(255, 209, 138, .45); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 10px rgba(255, 190, 80, .28); }
+.castle-strip.breached .castle-strip-sigil { border-color: rgba(255, 120, 130, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 0 12px rgba(255, 70, 90, .36); }
+
+.castle-strip .castle-bar { height: 5px; width: clamp(54px, 21vw, 132px); }
+.castle-strip .castle-bar i { background: linear-gradient(90deg, #d0343e, #ff8f5f); box-shadow: 0 0 8px rgba(255, 100, 110, .5); }
+.castle-strip .castle-state { font-size: 7.5px; letter-spacing: .14em; color: #e8b3b8; }
+.castle-strip .castle-hp { font-size: 8.5px; color: #f9e8ea; }
 .castle-strip .flag-chip { width: 16px; height: 11px; }
 .castle-strip .flag-chip svg { width: 12px; height: 10px; }
 
@@ -663,13 +718,13 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .flag-chip { display: grid; place-items: center; width: 24px; height: 15px; }
 .flag-chip svg { width: 17px; height: 14px; }
 .flag-chip .pole { fill: #8fa8c2; }
-.flag-chip .cloth { fill: #44586e; transition: fill .2s ease; }
+.flag-chip .cloth { fill: #45586e; transition: fill .2s ease, filter .2s ease; }
 .flag-chip.secured .cloth {
   fill: #ffd15b;
-  filter: drop-shadow(0 0 4px rgba(255, 209, 91, .8));
+  filter: drop-shadow(0 0 5px rgba(255, 209, 91, .85));
   animation: flag-secure .9s ease-in-out infinite alternate;
 }
-@keyframes flag-secure { to { filter: drop-shadow(0 0 8px rgba(255, 209, 91, 1)); } }
+@keyframes flag-secure { to { filter: drop-shadow(0 0 9px rgba(255, 209, 91, 1)); } }
 
 .card-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; width: 100%; }
 .unit-card {
@@ -749,12 +804,14 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .loading-copy { margin-block: 6px 10px; }
   .bottom-hud { gap: 4px; }
   .energy-panel { min-height: 28px; padding-block: 4px; }
-  .castle-panel { min-height: 24px; padding-block: 2px; }
-  .castle-panel.expanded { min-height: 38px; }
-  .castle-sigil { width: 24px; height: 24px; flex-basis: 24px; }
-  .castle-sigil svg { width: 17px; height: 17px; }
+  .castle-panel { min-height: 30px; padding-block: 3px; }
+  .castle-panel.expanded { min-height: 44px; }
+  .castle-sigil { width: 25px; height: 25px; flex-basis: 25px; }
+  .castle-sigil svg { width: 15px; height: 15px; }
   .castle-bar { height: 8px; }
-  .castle-strip { height: 18px; }
+  .castle-strip-inner { min-height: 23px; }
+  .castle-strip-sigil { width: 23px; height: 23px; flex-basis: 23px; }
+  .castle-strip-sigil svg { width: 13px; height: 13px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }
   .card-portrait { width: 38px; height: 38px; }
   .card-portrait svg { width: 36px; height: 36px; }

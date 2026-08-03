@@ -62,9 +62,12 @@ export class GameUI {
   private readonly endOverlay: HTMLElement;
   private readonly endTitle: HTMLElement;
   private readonly endSubtitle: HTMLElement;
-  private lastCastleHp = Infinity;
+  private lastPlayerHp = 0;
+  private lastEnemyHp = 0;
   private collapseTimer: number | undefined;
   private hitTimer: number | undefined;
+  private enemyCollapseTimer: number | undefined;
+  private enemyHitTimer: number | undefined;
   private readonly castleAttentionMs = 2600;
 
   onPrepare: (quality: QualityTier) => void = () => undefined;
@@ -158,31 +161,24 @@ export class GameUI {
 
     const playerCastleHp = Math.max(0, Math.round(state.playerCastleHp));
     const enemyCastleHp = Math.max(0, Math.round(state.enemyCastleHp));
-    const castleDamaged = playerCastleHp < this.lastCastleHp;
-    this.lastCastleHp = playerCastleHp;
+    const playerDamaged = playerCastleHp < this.lastPlayerHp;
+    const enemyDamaged = enemyCastleHp < this.lastEnemyHp;
+    this.lastPlayerHp = playerCastleHp;
+    this.lastEnemyHp = enemyCastleHp;
     this.castleFill.style.width = `${(playerCastleHp / state.playerCastleMaxHp) * 100}%`;
     this.enemyCastleFill.style.width = `${(enemyCastleHp / state.enemyCastleMaxHp) * 100}%`;
     this.castleHp.textContent = `${playerCastleHp} / ${state.playerCastleMaxHp}`;
     this.enemyCastleHp.textContent = `${enemyCastleHp} / ${state.enemyCastleMaxHp}`;
     this.castleStateLabel.textContent = castleStateText(state.playerCastleState, state.playerCastleCountdown, false);
     this.enemyCastleStateLabel.textContent = castleStateText(state.enemyCastleState, state.enemyCastleCountdown, true);
-    const castleOpen = state.playerCastleState === 'open';
-    const castleBreached = state.playerCastleState === 'breached';
-    this.castlePanel.classList.toggle('open', castleOpen);
-    this.castlePanel.classList.toggle('breached', castleBreached);
+    this.castlePanel.classList.toggle('open', state.playerCastleState === 'open');
+    this.castlePanel.classList.toggle('breached', state.playerCastleState === 'breached');
     this.enemyCastleStrip.classList.toggle('open', state.enemyCastleState === 'open');
     this.enemyCastleStrip.classList.toggle('breached', state.enemyCastleState === 'breached');
-    if (castleOpen || castleBreached) {
-      this.setCastleExpanded(true);
-      if (this.collapseTimer !== undefined) {
-        window.clearTimeout(this.collapseTimer);
-        this.collapseTimer = undefined;
-      }
-    } else if (castleDamaged) {
-      this.setCastleExpanded(true);
-      this.scheduleCastleCollapse();
-      this.pulseCastleHit();
-    }
+    const playerPinned = state.playerCastleState === 'open' || state.playerCastleState === 'breached';
+    const enemyPinned = state.enemyCastleState === 'open' || state.enemyCastleState === 'breached';
+    this.updateCastleAttention('player', playerPinned, playerDamaged);
+    this.updateCastleAttention('enemy', enemyPinned, enemyDamaged);
     this.setFlagSecured(this.castleFlag, state.playerFlagSecured, 'secured in your castle');
     this.setFlagSecured(this.enemyCastleFlag, state.enemyFlagSecured, 'secured in the enemy castle');
     this.playerDamageFlash.pulse(playerCastleHp, state.playerCastleMaxHp, state.playerCastleState === 'breached');
@@ -250,15 +246,20 @@ export class GameUI {
       <div id="hud-top-strip"></div>
 
       <div id="enemy-castle-strip" class="castle-strip">
-        <span class="castle-strip-sigil" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/><path class="castle-door" d="M10.5 21v-4.2a2.5 2.5 0 0 0 5 0v4.2z"/></svg>
-        </span>
-        <small id="enemy-castle-state" class="castle-state">SECURE</small>
-        <span class="castle-track"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
-        <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
-        <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
-          <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
-        </span>
+        <div class="castle-strip-inner">
+          <span class="castle-strip-sigil" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/><path class="castle-door" d="M10.5 21v-4.2a2.5 2.5 0 0 0 5 0v4.2z"/></svg>
+            <i class="castle-core"></i>
+          </span>
+          <span class="castle-folder">
+            <small id="enemy-castle-state" class="castle-state">SECURE</small>
+            <span class="castle-bar"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
+            <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
+            <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
+              <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
+            </span>
+          </span>
+        </div>
       </div>
 
       <header class="match-hud">
@@ -292,16 +293,17 @@ export class GameUI {
               <path class="castle-door" d="M10.5 21v-5a3 3 0 0 0 6 0v5z"/>
               <path class="castle-grate" d="M11.6 17h3.8M11.3 18.8h4.4"/>
             </svg>
+            <i class="castle-core"></i>
           </span>
           <span class="castle-folder">
-            <span class="castle-bar"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
-            <small id="player-castle-state" class="castle-state">GATE SECURE</small>
-          </span>
-          <span class="castle-side">
-            <b id="player-castle-hp" class="castle-hp">1000 / 1000</b>
-            <span id="player-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
-              <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
+            <span class="castle-meta">
+              <small id="player-castle-state" class="castle-state">GATE SECURE</small>
+              <b id="player-castle-hp" class="castle-hp">1000 / 1000</b>
             </span>
+            <span class="castle-bar"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
+          </span>
+          <span id="player-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
+            <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
           </span>
         </div>
         <div class="energy-panel"><span>ENERGY</span><div class="energy-track"><i id="energy-fill"></i></div><b id="energy-text">5 / 10</b></div>
@@ -325,35 +327,61 @@ export class GameUI {
     element.setAttribute('aria-label', secured ? `Flag ${securedLabel}` : 'Flag not secured');
   }
 
-  private setCastleExpanded(expanded: boolean): void {
-    this.castlePanel.classList.toggle('expanded', expanded);
-    this.castlePanel.setAttribute('aria-expanded', String(expanded));
+  private updateCastleAttention(side: 'player' | 'enemy', pinnedOpen: boolean, damaged: boolean): void {
+    if (pinnedOpen) {
+      this.setCastleExpanded(side, true);
+      this.clearCastleCollapse(side);
+      return;
+    }
+    if (damaged) {
+      this.setCastleExpanded(side, true);
+      this.scheduleCastleCollapse(side);
+      this.pulseCastleHit(side);
+    }
   }
 
-  private scheduleCastleCollapse(): void {
-    if (this.collapseTimer !== undefined) window.clearTimeout(this.collapseTimer);
-    this.collapseTimer = window.setTimeout(() => {
-      this.collapseTimer = undefined;
-      if (this.castlePanel.classList.contains('open') || this.castlePanel.classList.contains('breached')) return;
-      this.setCastleExpanded(false);
+  private setCastleExpanded(side: 'player' | 'enemy', expanded: boolean): void {
+    const panel = side === 'player' ? this.castlePanel : this.enemyCastleStrip;
+    panel.classList.toggle('expanded', expanded);
+    if (side === 'player') panel.setAttribute('aria-expanded', String(expanded));
+  }
+
+  private clearCastleCollapse(side: 'player' | 'enemy'): void {
+    const timer = side === 'player' ? 'collapseTimer' : 'enemyCollapseTimer';
+    if (this[timer] !== undefined) {
+      window.clearTimeout(this[timer]);
+      this[timer] = undefined;
+    }
+  }
+
+  private scheduleCastleCollapse(side: 'player' | 'enemy'): void {
+    const timer = side === 'player' ? 'collapseTimer' : 'enemyCollapseTimer';
+    this.clearCastleCollapse(side);
+    this[timer] = window.setTimeout(() => {
+      this[timer] = undefined;
+      const panel = side === 'player' ? this.castlePanel : this.enemyCastleStrip;
+      if (panel.classList.contains('open') || panel.classList.contains('breached')) return;
+      this.setCastleExpanded(side, false);
     }, this.castleAttentionMs);
   }
 
   private toggleCastle(): void {
     if (this.castlePanel.classList.contains('expanded')) {
-      this.setCastleExpanded(false);
+      this.setCastleExpanded('player', false);
     } else {
-      this.setCastleExpanded(true);
-      this.scheduleCastleCollapse();
+      this.setCastleExpanded('player', true);
+      this.scheduleCastleCollapse('player');
     }
   }
 
-  private pulseCastleHit(): void {
-    this.castlePanel.classList.remove('hit');
-    void this.castlePanel.offsetWidth;
-    this.castlePanel.classList.add('hit');
-    if (this.hitTimer !== undefined) window.clearTimeout(this.hitTimer);
-    this.hitTimer = window.setTimeout(() => this.castlePanel.classList.remove('hit'), 360);
+  private pulseCastleHit(side: 'player' | 'enemy'): void {
+    const panel = side === 'player' ? this.castlePanel : this.enemyCastleStrip;
+    const hitTimer = side === 'player' ? 'hitTimer' : 'enemyHitTimer';
+    panel.classList.remove('hit');
+    void panel.offsetWidth;
+    panel.classList.add('hit');
+    if (this[hitTimer] !== undefined) window.clearTimeout(this[hitTimer]);
+    this[hitTimer] = window.setTimeout(() => panel.classList.remove('hit'), 360);
   }
 
   private icon(kind: UnitKind): string {

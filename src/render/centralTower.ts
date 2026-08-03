@@ -44,25 +44,29 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     return mesh;
   };
 
-  // A low stepped base keys into the plaza. Above it, the entire shaft is an
-  // open arcade so the enemy castle and combat remain visible through the tower.
+  // ---- Stronger, more detailed medieval base: a wider dark foundation, a dressed plinth
+  // and a chamfered transition into the open arcade. Castle-stone tones keep it consistent
+  // with the two keeps while the octagon silhouette stays centred on the gameplay footprint.
   addOctagonalLayer(
     'tower-plaza-foundation',
-    0.34,
+    0.36,
     CENTRAL_TOWER.baseWidth,
     CENTRAL_TOWER.baseWidth,
-    0.17,
+    0.18,
     CENTRAL_TOWER.baseDepth / CENTRAL_TOWER.baseWidth,
-    materials.stoneDark,
+    materials.castleStoneDark,
   );
-  addOctagonalLayer('tower-plaza-plinth', 0.34, 6.95, 6.55, 0.48, 0.9, materials.stoneWarm);
-  addOctagonalLayer('tower-arcade-step', 0.28, 6.35, 5.95, 0.79, 0.88, materials.stoneLight);
+  addOctagonalLayer('tower-plaza-plinth', 0.34, 6.95, 6.55, 0.5, 0.9, materials.castleStone);
+  addOctagonalLayer('tower-base-chamfer', 0.2, 6.55, 6.2, 0.77, 0.88, materials.castleStoneLight);
+  addOctagonalLayer('tower-arcade-step', 0.26, 6.2, 5.95, 0.93, 0.88, materials.castleStoneDark);
 
   createOpenArcade(scene, root, materials);
 
   const platformDepthScale = CENTRAL_TOWER.topPlatformDepth / CENTRAL_TOWER.topPlatformWidth;
-  addOctagonalLayer('tower-open-corbel', 0.34, 5.45, 5.9, 8.62, 0.87, materials.stoneDark);
-  addOctagonalLayer('tower-crown-trim', 0.2, 5.9, 6.08, 8.87, platformDepthScale, materials.stoneLight);
+  // Corbelled crown: a dark recess, a light string course and the gold objective ring frame
+  // the upper deck so the main objective reads as the premium centrepiece of the arena.
+  addOctagonalLayer('tower-open-corbel', 0.34, 5.45, 5.9, 8.62, 0.87, materials.castleStoneDark);
+  addOctagonalLayer('tower-crown-trim', 0.2, 5.9, 6.08, 8.87, platformDepthScale, materials.castleStoneLight);
   addOctagonalLayer('tower-objective-ring', 0.12, 6.18, 6.18, 9, platformDepthScale, materials.gold);
   addOctagonalLayer(
     'tower-top-platform',
@@ -73,8 +77,18 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     platformDepthScale,
     materials.road,
   );
+  // Thin gold lip along the deck edge ties the crown ring to the walkable surface.
+  addOctagonalLayer(
+    'tower-deck-edge-trim',
+    0.08,
+    CENTRAL_TOWER.topPlatformWidth + 0.06,
+    CENTRAL_TOWER.topPlatformWidth + 0.06,
+    CENTRAL_TOWER.topSurfaceY + 0.02,
+    platformDepthScale,
+    materials.gold,
+  );
 
-  createOpenParapet(scene, root, materials);
+  createBattlementParapet(scene, root, materials);
   createSideLadder(scene, root, materials, 'player');
   createSideLadder(scene, root, materials, 'enemy');
   createSideBanners(scene, root, materials);
@@ -100,12 +114,14 @@ function createOpenArcade(scene: Scene, root: TransformNode, materials: Material
     new Vector3(-2.2, 4.61, 1.58),
     new Vector3(2.2, 4.61, 1.58),
   ];
+  // Stronger dressed-stone shafts carry the upper crown. The shaft is marginally wider so the
+  // proportions read heavier without widening the gameplay footprint (collisions use baseWidth).
   const pillar = MeshBuilder.CreateBox('tower-arcade-pillar-source', {
-    width: 0.58,
+    width: 0.64,
     height: CENTRAL_TOWER.shaftHeight,
-    depth: 0.58,
+    depth: 0.64,
   }, scene);
-  configureStatic(pillar, root, materials.stone);
+  configureStatic(pillar, root, materials.castleStone);
   pillar.position.copyFrom(pillarPositions[0]);
   for (let index = 1; index < pillarPositions.length; index += 1) {
     const instance = pillar.createInstance(`tower-arcade-pillar-${index}`);
@@ -114,83 +130,132 @@ function createOpenArcade(scene: Scene, root: TransformNode, materials: Material
     instance.isPickable = false;
   }
 
-  const foot = MeshBuilder.CreateBox('tower-pillar-foot-source', { width: 0.86, height: 0.34, depth: 0.86 }, scene);
-  configureStatic(foot, root, materials.stoneDark);
-  foot.position.set(pillarPositions[0].x, 1.08, pillarPositions[0].z);
-  const capital = MeshBuilder.CreateBox('tower-pillar-capital-source', { width: 0.88, height: 0.3, depth: 0.88 }, scene);
-  configureStatic(capital, root, materials.stoneLight);
+  // Two-step plinth base: a wide dark foot and a lighter die, giving each pillar a proper
+  // medieval base course that grounds the arcade.
+  const foot = MeshBuilder.CreateBox('tower-pillar-foot-source', { width: 0.96, height: 0.36, depth: 0.96 }, scene);
+  configureStatic(foot, root, materials.castleStoneDark);
+  foot.position.set(pillarPositions[0].x, 1.1, pillarPositions[0].z);
+  const die = MeshBuilder.CreateBox('tower-pillar-die-source', { width: 0.78, height: 0.22, depth: 0.78 }, scene);
+  configureStatic(die, root, materials.castleStoneLight);
+  die.position.set(pillarPositions[0].x, 1.39, pillarPositions[0].z);
+  // Capital with a projecting abacus plate so the load reads as transferring into the crown.
+  const capital = MeshBuilder.CreateBox('tower-pillar-capital-source', { width: 0.94, height: 0.3, depth: 0.94 }, scene);
+  configureStatic(capital, root, materials.castleStoneLight);
   capital.position.set(pillarPositions[0].x, 8.25, pillarPositions[0].z);
+  const abacus = MeshBuilder.CreateBox('tower-pillar-abacus-source', { width: 1.04, height: 0.14, depth: 1.04 }, scene);
+  configureStatic(abacus, root, materials.castleStoneDark);
+  abacus.position.set(pillarPositions[0].x, 8.46, pillarPositions[0].z);
   for (let index = 1; index < pillarPositions.length; index += 1) {
     const footInstance = foot.createInstance(`tower-pillar-foot-${index}`);
     footInstance.parent = root;
-    footInstance.position.set(pillarPositions[index].x, 1.08, pillarPositions[index].z);
+    footInstance.position.set(pillarPositions[index].x, 1.1, pillarPositions[index].z);
     footInstance.isPickable = false;
+    const dieInstance = die.createInstance(`tower-pillar-die-${index}`);
+    dieInstance.parent = root;
+    dieInstance.position.set(pillarPositions[index].x, 1.39, pillarPositions[index].z);
+    dieInstance.isPickable = false;
     const capitalInstance = capital.createInstance(`tower-pillar-capital-${index}`);
     capitalInstance.parent = root;
     capitalInstance.position.set(pillarPositions[index].x, 8.25, pillarPositions[index].z);
     capitalInstance.isPickable = false;
+    const abacusInstance = abacus.createInstance(`tower-pillar-abacus-${index}`);
+    abacusInstance.parent = root;
+    abacusInstance.position.set(pillarPositions[index].x, 8.46, pillarPositions[index].z);
+    abacusInstance.isPickable = false;
   }
 
-  // Short angled stones imply four arches without filling their openings.
+  // Short angled voussoirs imply four arches without filling their openings, alternating light
+  // and dark stone like the castle gate bands for a consistent dressed-stone vocabulary.
   for (const z of [-1.58, 1.58]) {
     for (const side of [-1, 1]) {
       const arch = MeshBuilder.CreateBox(`tower-arch-long-${z}-${side}`, { width: 1.82, height: 0.36, depth: 0.46 }, scene);
-      configureStatic(arch, root, materials.stoneWarm);
+      configureStatic(arch, root, side > 0 ? materials.castleStoneLight : materials.castleStoneDark);
       arch.position.set(side * 1.36, 8.12, z);
       arch.rotation.z = -side * 0.39;
     }
     const keystone = MeshBuilder.CreateBox(`tower-arch-long-keystone-${z}`, { width: 0.74, height: 0.52, depth: 0.54 }, scene);
-    configureStatic(keystone, root, materials.stoneLight);
+    configureStatic(keystone, root, materials.castleStoneLight);
     keystone.position.set(0, 8.38, z);
   }
 
   for (const x of [-2.2, 2.2]) {
     for (const side of [-1, 1]) {
       const arch = MeshBuilder.CreateBox(`tower-arch-side-${x}-${side}`, { width: 0.46, height: 0.34, depth: 1.25 }, scene);
-      configureStatic(arch, root, materials.stoneWarm);
+      configureStatic(arch, root, side > 0 ? materials.castleStoneLight : materials.castleStoneDark);
       arch.position.set(x, 8.08, side * 0.96);
       arch.rotation.x = side * 0.34;
     }
     const keystone = MeshBuilder.CreateBox(`tower-arch-side-keystone-${x}`, { width: 0.54, height: 0.48, depth: 0.58 }, scene);
-    configureStatic(keystone, root, materials.stoneLight);
+    configureStatic(keystone, root, materials.castleStoneLight);
     keystone.position.set(x, 8.35, 0);
   }
 }
 
-function createOpenParapet(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  const railY = CENTRAL_TOWER.topSurfaceY + 0.2;
-  const rails = [
-    { width: 2.05, depth: 0.2, x: -1.6, z: -2.47 },
-    { width: 2.05, depth: 0.2, x: 1.6, z: -2.47 },
-    { width: 2.05, depth: 0.2, x: -1.6, z: 2.47 },
-    { width: 2.05, depth: 0.2, x: 1.6, z: 2.47 },
-    // Side gaps line up with the ladder exits.
-    { width: 0.2, depth: 1.25, x: -2.92, z: 1.22 },
-    { width: 0.2, depth: 1.25, x: 2.92, z: -1.22 },
+function createBattlementParapet(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  const deckY = CENTRAL_TOWER.topSurfaceY;
+  const copingY = deckY + 0.17;
+  const merlonY = deckY + 0.5;
+
+  // Low coping runs the edges with the same ladder-exit gaps as the original railing so the
+  // side climb paths stay clear.
+  const coping = [
+    { w: 2.05, d: 0.26, x: -1.6, z: -2.47 },
+    { w: 2.05, d: 0.26, x: 1.6, z: -2.47 },
+    { w: 2.05, d: 0.26, x: -1.6, z: 2.47 },
+    { w: 2.05, d: 0.26, x: 1.6, z: 2.47 },
+    { w: 0.26, d: 1.25, x: -2.92, z: 1.22 },
+    { w: 0.26, d: 1.25, x: 2.92, z: -1.22 },
   ];
-  for (const [index, rail] of rails.entries()) {
-    const mesh = MeshBuilder.CreateBox(`tower-open-parapet-rail-${index}`, {
-      width: rail.width,
-      height: 0.22,
-      depth: rail.depth,
+  for (const [index, rail] of coping.entries()) {
+    const mesh = MeshBuilder.CreateBox(`tower-battlement-coping-${index}`, {
+      width: rail.w,
+      height: 0.3,
+      depth: rail.d,
     }, scene);
-    configureStatic(mesh, root, materials.stoneDark);
-    mesh.position.set(rail.x, railY, rail.z);
+    configureStatic(mesh, root, materials.castleStoneDark);
+    mesh.position.set(rail.x, copingY, rail.z);
   }
 
-  const posts = [
-    [-2.75, -2.35], [0, -2.52], [2.75, -2.35],
-    [-2.75, 2.35], [0, 2.52], [2.75, 2.35],
-    [-2.9, 0.35], [-2.9, 2], [2.9, -2], [2.9, -0.35],
-  ] as const;
-  const post = MeshBuilder.CreateBox('tower-parapet-post-source', { width: 0.46, height: 0.72, depth: 0.46 }, scene);
-  configureStatic(post, root, materials.stoneLight);
-  post.position.set(posts[0][0], CENTRAL_TOWER.topSurfaceY + 0.39, posts[0][1]);
-  for (let index = 1; index < posts.length; index += 1) {
-    const instance = post.createInstance(`tower-parapet-post-${index}`);
+  // Raised merlons (crenellations) along the front, back and side edges, kept clear of the
+  // ladder-exit gaps. One source renders as instances to stay a single draw call.
+  const merlons = [
+    { x: -1.6, z: -2.47 }, { x: 0, z: -2.47 }, { x: 1.6, z: -2.47 },
+    { x: -1.6, z: 2.47 }, { x: 0, z: 2.47 }, { x: 1.6, z: 2.47 },
+    { x: -2.92, z: 2.0 }, { x: 2.92, z: -2.0 },
+  ];
+  const merlon = MeshBuilder.CreateBox('tower-battlement-merlon-source', { width: 0.9, height: 0.86, depth: 0.74 }, scene);
+  configureStatic(merlon, root, materials.castleStoneLight);
+  merlon.position.set(merlons[0].x, merlonY, merlons[0].z);
+  for (let index = 1; index < merlons.length; index += 1) {
+    const instance = merlon.createInstance(`tower-battlement-merlon-${index}`);
     instance.parent = root;
-    instance.position.set(posts[index][0], CENTRAL_TOWER.topSurfaceY + 0.39, posts[index][1]);
+    instance.position.set(merlons[index].x, merlonY, merlons[index].z);
     instance.isPickable = false;
+  }
+
+  // Corner pinnacles above the four pillar axes: a slim octagonal shaft, a cone spire and a
+  // gold finial. They lift the silhouette without adding bulk and echo the castle turrets.
+  const pinnaclePositions: ReadonlyArray<readonly [number, number]> = [
+    [-2.75, -2.35], [2.75, -2.35], [-2.75, 2.35], [2.75, 2.35],
+  ];
+  const pBaseY = deckY + 0.05;
+  const pShaft = MeshBuilder.CreateCylinder('tower-pinnacle-shaft-source', { height: 1.3, diameterTop: 0.34, diameterBottom: 0.5, tessellation: 8 }, scene);
+  configureStatic(pShaft, root, materials.castleStoneLight);
+  pShaft.position.set(pinnaclePositions[0][0], pBaseY + 0.65, pinnaclePositions[0][1]);
+  const pCap = MeshBuilder.CreateCylinder('tower-pinnacle-cap-source', { height: 0.6, diameterTop: 0, diameterBottom: 0.42, tessellation: 8 }, scene);
+  configureStatic(pCap, root, materials.castleStoneLight);
+  pCap.position.set(pinnaclePositions[0][0], pBaseY + 1.6, pinnaclePositions[0][1]);
+  const pBall = MeshBuilder.CreateSphere('tower-pinnacle-finial-source', { diameter: 0.22, segments: 6 }, scene);
+  configureStatic(pBall, root, materials.gold);
+  pBall.position.set(pinnaclePositions[0][0], pBaseY + 2.02, pinnaclePositions[0][1]);
+  for (let index = 1; index < pinnaclePositions.length; index += 1) {
+    const [x, z] = pinnaclePositions[index];
+    const shaft = pShaft.createInstance(`tower-pinnacle-shaft-${index}`);
+    shaft.parent = root; shaft.position.set(x, pBaseY + 0.65, z); shaft.isPickable = false;
+    const cap = pCap.createInstance(`tower-pinnacle-cap-${index}`);
+    cap.parent = root; cap.position.set(x, pBaseY + 1.6, z); cap.isPickable = false;
+    const ball = pBall.createInstance(`tower-pinnacle-finial-${index}`);
+    ball.parent = root; ball.position.set(x, pBaseY + 2.02, z); ball.isPickable = false;
   }
 }
 

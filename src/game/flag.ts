@@ -15,7 +15,7 @@ export type FlagStatus = 'neutral' | 'carried' | 'dropped' | 'resetting';
 
 export class FlagController {
   readonly root: TransformNode;
-  private readonly cloth: Mesh;
+  private readonly clothSegments: ReadonlyArray<Mesh>;
   private readonly tail: Mesh;
   private readonly carrierRing: Mesh;
   private carrier: UnitEntity | null = null;
@@ -36,26 +36,73 @@ export class FlagController {
       CENTRAL_TOWER.safeFlagDrops.towerTop.z,
     );
 
-    const pole = MeshBuilder.CreateCylinder('central-flag-pole', { height: 5.5, diameter: 0.14, tessellation: 8 }, scene);
+    // Taller, cleaner flagpole with a gold base collar and a crossbar where the cloth attaches,
+    // so the main objective reads clearly above the tower crown from the portrait camera.
+    const poleHeight = 6.4;
+    const pole = MeshBuilder.CreateCylinder('central-flag-pole', { height: poleHeight, diameter: 0.16, tessellation: 8 }, scene);
     pole.parent = this.root;
-    pole.position.y = 2.75;
+    pole.position.y = poleHeight / 2;
     pole.material = materials.metal;
+    pole.isPickable = false;
 
-    const finial = MeshBuilder.CreateSphere('central-flag-finial', { diameter: 0.38, segments: 7 }, scene);
+    const poleCollar = MeshBuilder.CreateCylinder('central-flag-pole-collar', { height: 0.22, diameterTop: 0.26, diameterBottom: 0.34, tessellation: 8 }, scene);
+    poleCollar.parent = this.root;
+    poleCollar.position.y = 0.11;
+    poleCollar.material = materials.gold;
+    poleCollar.isPickable = false;
+
+    const crossbar = MeshBuilder.CreateBox('central-flag-crossbar', { width: 0.62, height: 0.1, depth: 0.1 }, scene);
+    crossbar.parent = this.root;
+    crossbar.position.y = poleHeight - 0.42;
+    crossbar.material = materials.gold;
+    crossbar.isPickable = false;
+
+    const finial = MeshBuilder.CreateSphere('central-flag-finial', { diameter: 0.36, segments: 7 }, scene);
     finial.parent = this.root;
-    finial.position.y = 5.61;
+    finial.position.y = poleHeight + 0.18;
     finial.material = materials.gold;
+    finial.isPickable = false;
 
-    this.cloth = MeshBuilder.CreateBox('central-flag-cloth', { width: 2.5, height: 1.42, depth: 0.08 }, scene);
-    this.cloth.parent = this.root;
-    this.cloth.position = new Vector3(1.27, 4.77, 0);
-    this.cloth.material = materials.objectiveCloth;
+    const spear = MeshBuilder.CreateCylinder('central-flag-finial-spear', { height: 0.5, diameterTop: 0, diameterBottom: 0.16, tessellation: 7 }, scene);
+    spear.parent = this.root;
+    spear.position.y = poleHeight + 0.5;
+    spear.material = materials.gold;
+    spear.isPickable = false;
 
-    this.tail = MeshBuilder.CreateBox('central-flag-tail', { width: 0.92, height: 0.92, depth: 0.085 }, scene);
-    this.tail.parent = this.cloth;
-    this.tail.position = new Vector3(1.25, -0.16, 0);
-    this.tail.rotation.z = -0.48;
+    // High-quality cloth built as a short chain of vertical strips. Each strip parents to the
+    // previous one, so phased rotations propagate along the length like fabric rippling in wind
+    // while staying a handful of cheap boxes (no per-frame mesh deformation).
+    const clothTop = poleHeight - 0.42;
+    const segWidth = 0.98;
+    const segHeight = 1.7;
+    const clothCenterY = clothTop - segHeight / 2;
+    const seg1 = MeshBuilder.CreateBox('central-flag-cloth-1', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
+    seg1.parent = this.root;
+    seg1.position = new Vector3(segWidth / 2, clothCenterY, 0);
+    seg1.material = materials.objectiveCloth;
+    seg1.isPickable = false;
+
+    const seg2 = MeshBuilder.CreateBox('central-flag-cloth-2', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
+    seg2.parent = seg1;
+    seg2.position = new Vector3(segWidth, 0, 0);
+    seg2.material = materials.objectiveCloth;
+    seg2.isPickable = false;
+
+    const seg3 = MeshBuilder.CreateBox('central-flag-cloth-3', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
+    seg3.parent = seg2;
+    seg3.position = new Vector3(segWidth, 0, 0);
+    seg3.material = materials.objectiveCloth;
+    seg3.isPickable = false;
+
+    this.clothSegments = [seg1, seg2, seg3];
+
+    // Swallowtail fly end on the free segment so the cloth reads as a finished pennant.
+    this.tail = MeshBuilder.CreateBox('central-flag-tail', { width: 0.7, height: 1.18, depth: 0.085 }, scene);
+    this.tail.parent = seg3;
+    this.tail.position = new Vector3(segWidth / 2 + 0.18, -0.18, 0);
+    this.tail.rotation.z = -0.34;
     this.tail.material = materials.objectiveCloth;
+    this.tail.isPickable = false;
 
     this.carrierRing = MeshBuilder.CreateTorus('flag-carrier-ring', { diameter: 2.15, thickness: 0.13, tessellation: 30 }, scene);
     this.carrierRing.rotation.x = Math.PI / 2;
@@ -92,7 +139,7 @@ export class FlagController {
     this.root.parent = unit.rig.flagSocket;
     this.root.position.set(0, -0.15, 0);
     this.root.scaling.setAll(0.76);
-    this.cloth.material = this.materials.team(unit.team);
+    this.setClothMaterial(this.materials.team(unit.team));
     this.tail.material = this.materials.team(unit.team);
     this.carrierRing.parent = unit.rig.root;
     this.carrierRing.position.set(0, 0.12, 0);
@@ -126,7 +173,7 @@ export class FlagController {
     this.root.scaling.setAll(1);
     this.placeAtSafeDrop(unit);
     this.root.setEnabled(true);
-    this.cloth.material = this.materials.objectiveCloth;
+    this.setClothMaterial(this.materials.objectiveCloth);
     this.tail.material = this.materials.objectiveCloth;
     this.carrierRing.parent = null;
     this.carrierRing.setEnabled(false);
@@ -134,8 +181,20 @@ export class FlagController {
   }
 
   update(deltaSeconds: number, elapsed: number): void {
-    this.cloth.rotation.y = Math.sin(elapsed * 4.4) * 0.08;
-    this.cloth.scaling.y = 1 + Math.sin(elapsed * 6.1) * 0.035;
+    // Subtle, lightweight cloth motion: a gentle horizontal sway on the root strip plus a
+    // travelling ripple (phased z-rotations) down the chain, and a soft flutter on the free
+    // edge. All values are absolute so nothing accumulates, and there is no mesh deformation.
+    const sway = Math.sin(elapsed * 2.1);
+    const ripple = elapsed * 3.3;
+    const seg1 = this.clothSegments[0];
+    seg1.rotation.y = sway * 0.05;
+    seg1.rotation.z = Math.sin(ripple) * 0.05;
+    const seg2 = this.clothSegments[1];
+    seg2.rotation.z = Math.sin(ripple - 0.95) * 0.075;
+    const seg3 = this.clothSegments[2];
+    seg3.rotation.z = Math.sin(ripple - 1.9) * 0.095;
+    seg3.scaling.y = 1 + Math.sin(elapsed * 5.5) * 0.03;
+    this.tail.rotation.z = -0.34 + Math.sin(ripple - 2.6) * 0.1;
     if (this.status !== 'resetting') return;
     this.resetTimer -= deltaSeconds;
     if (this.resetTimer <= 0) this.resetToCenter();
@@ -153,10 +212,14 @@ export class FlagController {
     );
     this.root.scaling.setAll(1);
     this.root.setEnabled(true);
-    this.cloth.material = this.materials.objectiveCloth;
+    this.setClothMaterial(this.materials.objectiveCloth);
     this.tail.material = this.materials.objectiveCloth;
     this.carrierRing.parent = null;
     this.carrierRing.setEnabled(false);
+  }
+
+  private setClothMaterial(material: Mesh['material']): void {
+    for (const segment of this.clothSegments) segment.material = material;
   }
 
   private placeAtSafeDrop(unit: UnitEntity): void {

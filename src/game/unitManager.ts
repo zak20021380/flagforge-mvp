@@ -1,6 +1,6 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
-import { ARENA_RIVERS, CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
+import { ARENA_RIVERS, BLUE_BATTLEFIELD, CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
 import { clamp, laneX, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
@@ -13,7 +13,7 @@ import { EffectPool } from './effects';
 import { FlagController } from './flag';
 import { LadderSystem } from './ladderSystem';
 import { ProjectilePool } from './projectiles';
-import { applyGroundStep, blocksGroundStep, BRIDGE_BANK_MARGIN, keepOnLand, resolveCrossingGoal } from './riverCrossing';
+import { applyGroundStep, blocksGroundStep, blocksPlayableStep, BRIDGE_BANK_MARGIN, keepOnLand, resolveCrossingGoal } from './riverCrossing';
 import { UnitEntity } from './unit';
 
 /** A unit is only considered genuinely stuck after this long without meaningful progress. */
@@ -546,8 +546,16 @@ export class UnitManager {
       unit.position.z = clamp(unit.position.z + dz * step, ENEMY_CASTLE_ASSAULT.wallBounds.minZ, ENEMY_CASTLE_ASSAULT.wallBounds.maxZ);
       unit.position.y = ENEMY_CASTLE_ASSAULT.wallTopY;
     } else {
+      // Ground movement spans the whole battlefield, from the blue fortress back wall to the far
+      // castle bound. The near edge is the blue fortress back (BLUE_BATTLEFIELD.minZ), not the
+      // painted wall line: the gate breach mechanic requires a unit to walk through the blue
+      // interior (interiorPoint z -26.254), so it must be free to move behind the wall front.
       let nextX = clamp(unit.position.x + dx * step, -PORTRAIT_LAYOUT.arena.unitBoundsX, PORTRAIT_LAYOUT.arena.unitBoundsX);
-      let nextZ = clamp(unit.position.z + dz * step, -PORTRAIT_LAYOUT.arena.unitBoundsZ, PORTRAIT_LAYOUT.arena.unitBoundsZ);
+      let nextZ = clamp(
+        unit.position.z + dz * step,
+        Math.min(unit.position.z, BLUE_BATTLEFIELD.minZ),
+        Math.max(unit.position.z, PORTRAIT_LAYOUT.arena.unitBoundsZ),
+      );
       if (unit.navigationArea === 'ground') {
         // A unit on a bridge deck stays inside its own deck's walkable span until it has cleared
         // the exit, so separation or goal seeking can never push it over a railing into the water.
@@ -559,8 +567,21 @@ export class UnitManager {
           }
         }
         // Goal seeking, separation and the arena clamp are all already folded into this one step, so
-        // rejecting it here is enough to keep every one of them out of the water.
+        // rejecting it is enough to keep every one of them out of the water. applyGroundStep lets a
+        // unit slide along a bank by trying each axis alone; only if the finished step still lands
+        // outside the playable battlefield (exterior or the full-mandated channel off-deck) do we
+        // veto it and roll the body back.
+        const prevX = unit.position.x;
+        const prevZ = unit.position.z;
         moved = applyGroundStep(unit, nextX, nextZ);
+        if (
+          moved
+          && blocksPlayableStep(prevX, prevZ, unit.position.x, unit.position.z, unit.bodyRadius)
+        ) {
+          unit.position.x = prevX;
+          unit.position.z = prevZ;
+          moved = false;
+        }
       } else {
         unit.position.x = nextX;
         unit.position.z = nextZ;
@@ -705,7 +726,10 @@ export class UnitManager {
     for (const [lx, lz] of candidates) {
       const pointX = unit.position.x + lx * LATERAL_DISTANCE;
       const pointZ = unit.position.z + lz * LATERAL_DISTANCE;
-      if (blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)) continue;
+      if (
+        blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+        || blocksPlayableStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+      ) continue;
       unit.recoveryState = 'lateral';
       unit.recoveryClock = LATERAL_DURATION;
       unit.recoveryCooldown = RECOVERY_COOLDOWN;
@@ -727,7 +751,10 @@ export class UnitManager {
     dz /= length;
     const pointX = unit.position.x - dx * YIELD_DISTANCE;
     const pointZ = unit.position.z - dz * YIELD_DISTANCE;
-    if (blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)) return false;
+    if (
+      blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+      || blocksPlayableStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+    ) return false;
     unit.recoveryState = 'yield';
     unit.recoveryClock = YIELD_DURATION;
     unit.recoveryCooldown = RECOVERY_COOLDOWN;

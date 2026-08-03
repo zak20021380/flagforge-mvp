@@ -115,6 +115,7 @@ export const ARENA_RIVERS: readonly ArenaRiverChannel[] = RIVER_CHANNEL_ARTWORK.
   };
 });
 
+
 /**
  * Each castle root sits behind its painted wall line by the castle's real front-face extent, so the
  * visible front face — not the pivot — lands on the painting. Measured from the assembled castle in
@@ -338,6 +339,55 @@ export const CENTRAL_TOWER = {
   },
 } as const;
 
+/**
+ * Authoritative world-space XZ gameplay regions.
+ *
+ * The painted-landmark anchors above define the field: the blue castle (painted) wall line is
+ * Z = -20.754, the lower (blue side) river water spans 8.590..12.114, and the upper (red side)
+ * channel runs 38.470..41.459. Every validator — deployment, ground-step legality, decoration
+ * clearance — reads these constants instead of any mirrored deployment center, so no stale red-side
+ * mirror can reject the blue flank again. Widths use the authored lane span (deploymentWidth).
+ */
+export const RED_RIVER_CHANNEL = {
+  minZ: ARENA_RIVERS[0].minZ,
+  maxZ: ARENA_RIVERS[0].maxZ,
+} as const;
+
+/**
+ * Authoritative lower (blue side) river channel. The task-mandated water span of the blue river is
+ * Z 8.590..12.114 (south edge 8.590). Kept distinct from ARENA_RIVERS[1] so the painted-edge tables
+ * that drive bridge traffic keep their measured spans while the shipped blockage guarantees the full
+ * mandated channel.
+ */
+export const BLUE_RIVER_CHANNEL = {
+  minZ: 8.590,
+  maxZ: 12.114,
+} as const;
+
+/**
+ * Back edge of the blue fortress: the blue keep sits at local z -2.7 with depth 7.8 (see
+ * src/render/castle.ts), so its rear wall is BLUE_CASTLE_ROOT_Z - 6.6. Ground movement may walk up
+ * to this line — the gate breach requires entering the interior (interiorPoint z -26.254) — and the
+ * forest exterior beyond it is blocked.
+ */
+export const BLUE_CASTLE_BACK_Z = BLUE_CASTLE_ROOT_Z - 6.6;
+
+/** The blue field floor: from the blue fortress back wall up to the south bank of the lower (blue) river. */
+export const BLUE_BATTLEFIELD = {
+  minX: -PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  maxX: PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  minZ: BLUE_CASTLE_BACK_Z,
+  maxZ: BLUE_RIVER_CHANNEL.minZ,
+} as const;
+
+/** The player deployment zone: the field front in front of the blue wall line, clear of water. */
+export const BLUE_DEPLOYMENT = {
+  minX: -PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  maxX: PORTRAIT_LAYOUT.arena.deploymentWidth / 2,
+  minZ: BLUE_BOUNDARY_Z,
+  maxZ: BLUE_RIVER_CHANNEL.minZ - PORTRAIT_LAYOUT.arena.bridgeShoulder,
+} as const;
+
 const ENEMY_CASTLE_X = RED_CASTLE_ROOT_X;
 const ENEMY_CASTLE_Z = RED_CASTLE_ROOT_Z;
 const enemyCastlePoint = (x: number, y: number, z: number) => ({
@@ -401,8 +451,8 @@ export const CONFIG = {
   arena: {
     halfWidth: PORTRAIT_LAYOUT.arena.halfWidth,
     halfLength: PORTRAIT_LAYOUT.arena.halfLength,
-    blueDeployMinZ: -PORTRAIT_LAYOUT.arena.deploymentCenterZ - PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
-    blueDeployMaxZ: -PORTRAIT_LAYOUT.arena.deploymentCenterZ + PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
+    blueDeployMinZ: BLUE_DEPLOYMENT.minZ,
+    blueDeployMaxZ: BLUE_DEPLOYMENT.maxZ,
     redDeployMinZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ - PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
     redDeployMaxZ: PORTRAIT_LAYOUT.arena.deploymentCenterZ + PORTRAIT_LAYOUT.arena.deploymentDepth / 2,
     flagPickupRadius: 1.05,

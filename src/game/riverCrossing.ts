@@ -1,5 +1,11 @@
 import { Vector3 } from '@babylonjs/core';
-import { ARENA_RIVERS, PORTRAIT_LAYOUT } from '../core/config';
+import {
+  ARENA_RIVERS,
+  BLUE_BATTLEFIELD,
+  BLUE_RIVER_CHANNEL,
+  PORTRAIT_LAYOUT,
+  RED_RIVER_CHANNEL,
+} from '../core/config';
 import type { ArenaRiverChannel, BridgeState } from '../core/types';
 
 /**
@@ -117,6 +123,43 @@ export const blocksGroundStep = (
     if (low >= channel.maxZ + radius || high <= channel.minZ - radius) continue;
     if (!spanFitsDeck(channel, fromX, toX, radius)) return true;
   }
+  return false;
+};
+
+/**
+ * True when stepping from (fromX, fromZ) to (toX, toZ) is illegal on the playable battlefield: it
+ * would leave the painted floor between the blue castle wall and the red river's south bank (the
+ * arena exterior beyond the blue front and past the red water is blocked), or enter either water
+ * channel outside its painted bridge deck. Castle footprints are deliberately NOT blocked: the gate
+ * breach mechanic requires units to walk through the blue fortress interior, and the red castle is
+ * reached by scripted ladders. Object avoidance around the central tower is handled separately by
+ * resolveGroundGoal (src/game/unitManager.ts), which is unaffected.
+ */
+export const blocksPlayableStep = (
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+  radius: number,
+): boolean => {
+  const low = Math.min(fromZ, toZ);
+  const high = Math.max(fromZ, toZ);
+  if (
+    high < BLUE_BATTLEFIELD.minZ - radius
+    || low > RED_RIVER_CHANNEL.minZ + radius
+    || toX < BLUE_BATTLEFIELD.minX - radius
+    || toX > BLUE_BATTLEFIELD.maxX + radius
+  ) return true;
+  if (
+    high > BLUE_RIVER_CHANNEL.minZ - radius
+    && low < BLUE_RIVER_CHANNEL.maxZ + radius
+    && !spanFitsDeck(ARENA_RIVERS[1], fromX, toX, radius)
+  ) return true;
+  if (
+    high > RED_RIVER_CHANNEL.minZ - radius
+    && low < RED_RIVER_CHANNEL.maxZ + radius
+    && !spanFitsDeck(ARENA_RIVERS[0], fromX, toX, radius)
+  ) return true;
   return false;
 };
 

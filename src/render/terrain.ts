@@ -15,6 +15,7 @@ import {
   ARENA_TEXTURE_U_SCALE,
   ARENA_TEXTURE_V_OFFSET,
   ARENA_TEXTURE_V_SCALE,
+  BLUE_DEPLOYMENT,
   PORTRAIT_LAYOUT,
 } from '../core/config';
 import { clamp } from '../core/math';
@@ -54,10 +55,12 @@ export function roadClearance(x: number): number {
 export const isNearWater = (z: number, margin = 0.6): boolean =>
   ARENA_RIVERS.some((channel) => z > channel.minZ - margin && z < channel.maxZ + margin);
 
-/** Deployment pads are read as UI, so no decoration is allowed to stand on or overhang one. */
+/** Deployment zone is read as UI, so no decoration is allowed to stand on or overhang it. */
 export const isOnDeploymentPad = (x: number, z: number, margin = 0): boolean =>
-  Math.abs(x) < ARENA.deploymentWidth / 2 + margin
-  && Math.abs(Math.abs(z) - ARENA.deploymentCenterZ) < ARENA.deploymentDepth / 2 + margin;
+  x >= BLUE_DEPLOYMENT.minX - margin
+  && x <= BLUE_DEPLOYMENT.maxX + margin
+  && z >= BLUE_DEPLOYMENT.minZ - margin
+  && z <= BLUE_DEPLOYMENT.maxZ + margin;
 
 /**
  * Rolling ground outside the arena. The displacement is masked to zero across the playfield

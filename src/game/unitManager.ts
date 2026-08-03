@@ -1,7 +1,7 @@
 import { Scene, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { AudioManager } from '../audio/audioManager';
 import { ARENA_RIVERS, BLUE_BATTLEFIELD, CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASSAULT, PORTRAIT_LAYOUT } from '../core/config';
-import { clamp, laneX, randomRange, squaredDistanceXZ } from '../core/math';
+import { clamp, laneX, oppositeTeam, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
@@ -105,7 +105,7 @@ export class UnitManager {
         if (
           !this.castleLadders.isRegistered(unit)
           && unit.navigationArea === 'ground'
-          && this.castles.isAttackWindow(unit.team)
+          && this.canAssaultCastle(unit.team)
         ) this.castles.tryInfiltrate(unit);
         unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
         continue;
@@ -187,14 +187,14 @@ export class UnitManager {
   }
 
   private updateAliveUnit(unit: UnitEntity, deltaSeconds: number, elapsed: number): void {
-    if (this.castles.isAttackWindow(unit.team) && this.castles.tryInfiltrate(unit)) {
+    if (this.canAssaultCastle(unit.team) && this.castles.tryInfiltrate(unit)) {
       this.engagements.release(unit);
       unit.state = 'idle';
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
     }
 
-    const enemyCastleUnderAttack = this.castles.isAttackWindow('blue');
+    const enemyCastleUnderAttack = this.canAssaultCastle('blue');
     const wantsCastleDefence = enemyCastleUnderAttack
       && unit.team === 'red'
       && unit.navigationArea === 'ground'
@@ -268,7 +268,7 @@ export class UnitManager {
       const ownDelivery = this.castles.getCastle(unit.team).deliveryPoint;
       this.flag.tryDeliver(unit, ownDelivery);
     }
-    if (this.castles.isAttackWindow(unit.team) && this.castles.tryInfiltrate(unit)) {
+    if (this.canAssaultCastle(unit.team) && this.castles.tryInfiltrate(unit)) {
       this.engagements.release(unit);
     }
 
@@ -379,6 +379,18 @@ export class UnitManager {
     return nearest;
   }
 
+  /**
+   * Phase gate for castle assault. A team may only target and assault the enemy castle after its
+   * own flag delivery opened the gate, and only while the flag is not a live field objective again
+   * (dropped, or reset to the tower). An active breach overrides the flag check so the final
+   * checkmate push is never interrupted. While the gate is closed every unit falls back to the flag.
+   */
+  private canAssaultCastle(team: Team): boolean {
+    if (!this.castles.isAttackWindow(team)) return false;
+    if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
+    return !this.flag.isFieldObjectiveActive();
+  }
+
   private getStrategicGoal(unit: UnitEntity): Vector3 {
     if (unit.carryingFlag) return this.getReturnRoutePoint(unit);
     if (unit.target?.active && unit.target.state !== 'dead') return unit.target.position;
@@ -388,16 +400,29 @@ export class UnitManager {
 
     const friendlyCarrier = this.flag.currentCarrier?.team === unit.team ? this.flag.currentCarrier : null;
     if (friendlyCarrier) {
+      // While the carrier is still on the tower (standing on top or on a ladder), escorts hold
+      // spaced ground standoffs around the tower instead of chasing the carrier's exact position;
+      // units on the top drain back to the ground. Neither ever queues up the ladders alongside
+      // the carrier.
+      if (friendlyCarrier.navigationArea !== 'ground') {
+        const angle = unit.id * 137.50776405003785 * (Math.PI / 180);
+        const radius = 7 + (unit.id % 3) * 0.5;
+        return new Vector3(
+          CENTRAL_TOWER.centerX + Math.sin(angle) * radius,
+          0.16,
+          CENTRAL_TOWER.centerZ + Math.cos(angle) * radius,
+        );
+      }
       const side = unit.id % 2 === 0 ? -1 : 1;
       const behind = unit.team === 'blue' ? -1 : 1;
       return new Vector3(
         friendlyCarrier.position.x + side * (unit.kind === 'ironGuard' ? 1.45 : 1.95),
-        friendlyCarrier.state === 'climbing' ? 0.16 : friendlyCarrier.position.y,
+        0.16,
         friendlyCarrier.position.z + behind * (unit.kind === 'ironGuard' ? 1.25 : 2.05),
       );
     }
 
-    if (this.castles.isAttackWindow(unit.team)) return this.getAttackRoutePoint(unit);
+    if (this.canAssaultCastle(unit.team)) return this.getAttackRoutePoint(unit);
     return this.getFlagRoutePoint(unit);
   }
 
@@ -416,9 +441,6 @@ export class UnitManager {
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue' && unit.position.z < -route.flagApproachThresholdZ) {
       return new Vector3(lanePosition, unit.position.y, -route.flagApproachZ);
-    }
-    if (unit.team === 'red' && unit.position.z > route.flagApproachThresholdZ) {
-      return new Vector3(lanePosition, unit.position.y, route.flagApproachZ);
     }
     return new Vector3(flagPosition.x, flagPosition.y, flagPosition.z);
   }
@@ -814,6 +836,14 @@ export class UnitManager {
       return true;
     }
     if (!unit.target?.active && squaredDistanceXZ(goal, this.flag.position) <= 0.05) return true;
+    // Interceptors converging on a carrier's ladder exit spread out instead of piling onto the
+    // landing spot, so the descent and the return path stay clear.
+    const playerBase = CENTRAL_TOWER.safeFlagDrops.playerBase;
+    const enemyBase = CENTRAL_TOWER.safeFlagDrops.enemyBase;
+    if (
+      squaredDistanceXZ(goal, new Vector3(playerBase.x, goal.y, playerBase.z)) <= 0.05
+      || squaredDistanceXZ(goal, new Vector3(enemyBase.x, goal.y, enemyBase.z)) <= 0.05
+    ) return true;
     const gate = this.castles.getCastle(unit.team === 'blue' ? 'red' : 'blue').gatePoint;
     return squaredDistanceXZ(goal, gate) <= 0.05;
   }

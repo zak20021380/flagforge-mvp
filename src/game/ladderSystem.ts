@@ -34,6 +34,8 @@ const point = (value: { readonly x: number; readonly y: number; readonly z: numb
 export class LadderSystem {
   private readonly ladders: Record<LadderId, LadderRuntime>;
   private readonly ladderList: readonly LadderRuntime[];
+  /** Units standing on the tower top, tracked so the shared occupancy cap stays exact. */
+  private readonly towerTopUnits = new Set<UnitEntity>();
 
   constructor() {
     this.ladders = {
@@ -51,6 +53,11 @@ export class LadderSystem {
       }
       if (ladder.active && (!ladder.active.unit.active || ladder.active.unit.state === 'dead')) {
         this.cancelActive(ladder, ladder.active.unit, true);
+      }
+    }
+    for (const unit of this.towerTopUnits) {
+      if (!unit.active || unit.state === 'dead' || unit.navigationArea !== 'towerTop') {
+        this.towerTopUnits.delete(unit);
       }
     }
   }
@@ -77,26 +84,98 @@ export class LadderSystem {
     // keeps normal movement and queues after it has crossed a bridge. Descents are never held back:
     // the tower top is on no river's bank, and gating it would strand units up there.
     if (!unitIsTop && blocksApproach(unit, ladder.groundQueue[0].z)) return false;
-    // A full queue: descending units hold their spot on the small top platform, while ascending
-    // units stay under normal movement and hold a reserved standoff position instead of freezing
-    // wherever they happen to stand; they retry the queue every frame.
-    if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) {
-      if (!unitIsTop) return false;
-      unit.target = null;
-      unit.attackClock = 0;
-      unit.attackHitApplied = false;
-      unit.state = 'queued';
-      return true;
+
+    if (unitIsTop) {
+      // A unit already on the tower may always descend: it leaves the tower and frees a slot.
+      if (unit.carryingFlag) {
+        // The flag carrier owns its ladder while on the tower: every queued or mid-climb ascender
+        // falls back to the ground and the carrier takes the head of the queue, so nothing blocks
+        // its exit and it starts the return run immediately.
+        this.cedeLadderToCarrier(ladder);
+        this.insertDescending(ladder, unit, true);
+      } else {
+        this.insertDescending(ladder, unit, false);
+      }
+    } else {
+      // The tower is reserved for exactly maximumTowerOccupancy units at any time (occupants plus
+      // committed ascenders, both teams combined). Everyone else stays on the ground around the
+      // tower and holds a reserved standoff position instead of queueing at the ladders.
+      if (this.towerOccupancy() + this.pendingAscenders() >= CENTRAL_TOWER.maximumTowerOccupancy) return false;
+      if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) return false;
+      ladder.queue.push({ unit, direction: 'ascending' });
     }
-    ladder.queue.push({
-      unit,
-      direction: unitIsTop ? 'descending' : 'ascending',
-    });
     unit.target = null;
     unit.attackClock = 0;
     unit.attackHitApplied = false;
     unit.state = 'queued';
     return true;
+  }
+
+  /** Units physically on the tower right now: standing on the top or climbing either direction. */
+  private towerOccupancy(): number {
+    let count = this.towerTopUnits.size;
+    for (const ladder of this.ladderList) {
+      if (ladder.active) count += 1;
+    }
+    return count;
+  }
+
+  /** Units committed to climbing up the tower from the ground queues. */
+  private pendingAscenders(): number {
+    let count = 0;
+    for (const ladder of this.ladderList) {
+      for (const entry of ladder.queue) {
+        if (entry.direction === 'ascending') count += 1;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Give the flag carrier its whole ladder: queued and mid-climb ascenders fall back to ground
+   * movement so the carrier never waits on a blocked exit.
+   */
+  private cedeLadderToCarrier(ladder: LadderRuntime): void {
+    const active = ladder.active;
+    if (active && active.direction === 'ascending') {
+      this.cancelActive(ladder, active.unit, true);
+      this.returnToGround(active.unit);
+    }
+    for (let index = ladder.queue.length - 1; index >= 0; index -= 1) {
+      if (ladder.queue[index].direction !== 'ascending') continue;
+      const [evicted] = ladder.queue.splice(index, 1);
+      this.returnToGround(evicted.unit);
+    }
+  }
+
+  /** Stop ladder involvement for a unit so normal ground movement resumes next frame. */
+  private returnToGround(unit: UnitEntity): void {
+    unit.target = null;
+    unit.attackClock = 0;
+    unit.attackHitApplied = false;
+    unit.state = 'idle';
+  }
+
+  /**
+   * Queue a descending unit ahead of every ascender so the tower drains before it refills. The
+   * flag carrier goes to the head of the queue; overflow (always ascending tail) falls back to the
+   * ground instead of ever holding a descending unit back.
+   */
+  private insertDescending(ladder: LadderRuntime, unit: UnitEntity, carrier: boolean): void {
+    let insertAt = carrier ? 0 : ladder.queue.length;
+    if (!carrier) {
+      for (let index = 0; index < ladder.queue.length; index += 1) {
+        if (ladder.queue[index].direction === 'ascending') {
+          insertAt = index;
+          break;
+        }
+      }
+    }
+    ladder.queue.splice(insertAt, 0, { unit, direction: 'descending' });
+    while (ladder.queue.length > CENTRAL_TOWER.maximumQueuePerLadder) {
+      const evicted = ladder.queue.pop();
+      if (evicted) this.returnToGround(evicted.unit);
+    }
   }
 
   updateUnit(unit: UnitEntity, deltaSeconds: number): void {
@@ -119,6 +198,7 @@ export class LadderSystem {
       if (queueIndex === 0 && !ladder.active && reached) {
         ladder.queue.shift();
         ladder.active = { ...entry, pathIndex: 0 };
+        if (entry.direction === 'descending') this.towerTopUnits.delete(entry.unit);
         unit.navigationArea = ladder.id === 'player' ? 'playerLadder' : 'enemyLadder';
         unit.state = 'climbing';
         this.updateActive(ladder, deltaSeconds);
@@ -133,6 +213,7 @@ export class LadderSystem {
       if (queuedIndex >= 0) ladder.queue.splice(queuedIndex, 1);
       if (ladder.active?.unit === unit) this.cancelActive(ladder, unit, snapActiveToSafety);
     }
+    this.towerTopUnits.delete(unit);
   }
 
   private createRuntime(id: LadderId): LadderRuntime {
@@ -179,6 +260,7 @@ export class LadderSystem {
     unit.state = 'idle';
     unit.target = null;
     unit.targetRefreshClock = 0.04;
+    if (active.direction === 'ascending') this.towerTopUnits.add(unit);
     ladder.active = null;
   }
 

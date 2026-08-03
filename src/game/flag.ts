@@ -127,6 +127,14 @@ export class FlagController {
     return this.status === 'neutral' || this.status === 'dropped';
   }
 
+  /**
+   * True while the flag is a live field objective teams must capture again (on the tower or dropped).
+   * While false the flag is in hand or freshly delivered, so a team with an open gate may assault.
+   */
+  isFieldObjectiveActive(): boolean {
+    return this.status === 'neutral' || this.status === 'dropped';
+  }
+
   tryPickup(unit: UnitEntity): boolean {
     if (!this.canBePickedUp() || unit.state === 'dead') return false;
     const flagPosition = this.root.getAbsolutePosition();
@@ -155,7 +163,10 @@ export class FlagController {
     unit.carryingFlag = false;
     this.carrier = null;
     this.status = 'resetting';
-    this.resetTimer = 1.15;
+    // The delivered flag stays secured (invisible, not pickable) for the whole gate window: castle
+    // assault is only legal while it is delivered, and it becomes a live objective again exactly
+    // when the gate closes, so both teams return to flag duty at the same moment.
+    this.resetTimer = CONFIG.match.gateOpenSeconds;
     this.root.parent = null;
     this.root.setEnabled(false);
     this.carrierRing.parent = null;

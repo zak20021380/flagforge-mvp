@@ -294,6 +294,10 @@ export const CENTRAL_TOWER = {
   queueMoveScale: 0.82,
   queueArrivalRadius: 0.18,
   maximumQueuePerLadder: 3,
+  // The central tower reserves exactly this many slots for units climbing onto or standing on it
+  // at any one time (both teams combined). Everyone else holds a ground standoff around the tower
+  // and never queues at the ladders.
+  maximumTowerOccupancy: 3,
   ladders: {
     // Navigation-area names stay stable for flag/drop rules; visually these are
     // the left and right side ladders respectively.

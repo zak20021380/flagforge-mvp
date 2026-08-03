@@ -1,7 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
 import { CONFIG, UNIT_STATS } from '../core/config';
-import { laneFromX, laneX, randomRange } from '../core/math';
-import type { Lane, UnitKind } from '../core/types';
+import { laneFromX, laneX, oppositeTeam, randomRange } from '../core/math';
+import type { Lane, Team, UnitKind } from '../core/types';
 import { CastleLogic } from './castleLogic';
 import { EnergyModel } from './energy';
 import { FlagController } from './flag';
@@ -42,7 +42,7 @@ export class EnemyAI {
     const playerHasFlag = this.flag.currentCarrier?.team === 'blue';
     const aiHasFlag = this.flag.currentCarrier?.team === 'red';
 
-    if (this.castles.isAttackWindow('red')) {
+    if (this.canAssaultCastle('red')) {
       if (roll < 0.52) return 'raider';
       if (roll < 0.72) return 'ironGuard';
       if (roll < 0.88) return 'vanguard';
@@ -77,9 +77,19 @@ export class EnemyAI {
 
   private chooseLane(kind: UnitKind): Lane {
     if (kind === 'raider' && this.flag.currentStatus === 'dropped') return laneFromX(this.flag.position.x);
-    const activeWindow = this.castles.isAttackWindow('red');
+    const activeWindow = this.canAssaultCastle('red');
     if (activeWindow && Math.random() < 0.55) return 'center';
     const roll = Math.random();
     return roll < 0.33 ? 'left' : roll < 0.66 ? 'center' : 'right';
+  }
+
+  /**
+   * Phase gate for castle assault: red may only assault after its own flag delivery opened the gate
+   * and only while the flag is not a live field objective again (dropped, or reset to the tower).
+   */
+  private canAssaultCastle(team: Team): boolean {
+    if (!this.castles.isAttackWindow(team)) return false;
+    if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
+    return !this.flag.isFieldObjectiveActive();
   }
 }

@@ -44,30 +44,33 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     return mesh;
   };
 
-  // ---- Stronger, more detailed medieval base: a wider dark foundation, a dressed plinth
-  // and a chamfered transition into the open arcade. Castle-stone tones keep it consistent
-  // with the two keeps while the octagon silhouette stays centred on the gameplay footprint.
+  // ---- Grand royal base: a wide dark foundation, a dressed plinth with a clean light string
+  // course, a chamfered transition and the arcade step. The extra course lifts the whole mass so
+  // the crown reads taller, while every layer stays inside the gameplay footprint (baseWidth x
+  // baseDepth) the ladder bases and collision rules are authored against.
   addOctagonalLayer(
     'tower-plaza-foundation',
-    0.36,
+    0.4,
     CENTRAL_TOWER.baseWidth,
     CENTRAL_TOWER.baseWidth,
-    0.18,
+    0.2,
     CENTRAL_TOWER.baseDepth / CENTRAL_TOWER.baseWidth,
     materials.castleStoneDark,
   );
-  addOctagonalLayer('tower-plaza-plinth', 0.34, 6.95, 6.55, 0.5, 0.9, materials.castleStone);
-  addOctagonalLayer('tower-base-chamfer', 0.2, 6.55, 6.2, 0.77, 0.88, materials.castleStoneLight);
-  addOctagonalLayer('tower-arcade-step', 0.26, 6.2, 5.95, 0.93, 0.88, materials.castleStoneDark);
+  addOctagonalLayer('tower-plaza-plinth', 0.44, 6.95, 6.55, 0.62, 0.9, materials.castleStone);
+  addOctagonalLayer('tower-plinth-trim', 0.1, 6.55, 6.55, 0.87, 0.9, materials.castleStoneLight);
+  addOctagonalLayer('tower-base-chamfer', 0.18, 6.55, 6.2, 1.01, 0.9, materials.castleStoneLight);
+  addOctagonalLayer('tower-arcade-step', 0.26, 6.2, 5.95, 1.19, 0.9, materials.castleStoneDark);
 
   createOpenArcade(scene, root, materials);
 
   const platformDepthScale = CENTRAL_TOWER.topPlatformDepth / CENTRAL_TOWER.topPlatformWidth;
-  // Corbelled crown: a dark recess, a light string course and the gold objective ring frame
-  // the upper deck so the main objective reads as the premium centrepiece of the arena.
+  // Corbelled crown: a dark recess, a slim light string course and the gold objective ring frame
+  // the light-paved royal deck, so the main objective reads as the premium centrepiece of the
+  // arena. The slab overhangs the recess to cast a clean shadow line around the walkable surface.
   addOctagonalLayer('tower-open-corbel', 0.34, 5.45, 5.9, 8.62, 0.87, materials.castleStoneDark);
-  addOctagonalLayer('tower-crown-trim', 0.2, 5.9, 6.08, 8.87, platformDepthScale, materials.castleStoneLight);
-  addOctagonalLayer('tower-objective-ring', 0.12, 6.18, 6.18, 9, platformDepthScale, materials.gold);
+  addOctagonalLayer('tower-crown-trim', 0.16, 5.9, 6.0, 8.87, platformDepthScale, materials.castleStoneLight);
+  addOctagonalLayer('tower-objective-ring', 0.12, 6.18, 6.18, 9.0, platformDepthScale, materials.gold);
   addOctagonalLayer(
     'tower-top-platform',
     0.26,
@@ -75,7 +78,7 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     CENTRAL_TOWER.topPlatformWidth,
     CENTRAL_TOWER.topSurfaceY - 0.13,
     platformDepthScale,
-    materials.road,
+    materials.castleStoneLight,
   );
   // Thin gold lip along the deck edge ties the crown ring to the walkable surface.
   addOctagonalLayer(
@@ -88,10 +91,11 @@ export function createCentralTower(scene: Scene, materials: MaterialLibrary): Ce
     materials.gold,
   );
 
+  createFlagMount(scene, root, materials);
   createBattlementParapet(scene, root, materials);
   createSideLadder(scene, root, materials, 'player');
   createSideLadder(scene, root, materials, 'enemy');
-  createSideBanners(scene, root, materials);
+  createPennants(scene, root, materials);
   createHeraldry(scene, root, materials);
 
   return {
@@ -191,13 +195,33 @@ function createOpenArcade(scene: Scene, root: TransformNode, materials: Material
   }
 }
 
+/**
+ * Royal flag mount: a three-course octagonal dais set in the middle of the deck directly under the
+ * objective pole. A dark plinth, a gold band and a light upper step make the flag read as mounted
+ * on a proper plinth instead of standing on the bare deck. Purely visual: the walkable surface and
+ * every flag rule stay untouched.
+ */
+function createFlagMount(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  const deckY = CENTRAL_TOWER.topSurfaceY;
+  const addCourse = (name: string, height: number, diameter: number, y: number, material: Mesh['material']): void => {
+    const mesh = MeshBuilder.CreateCylinder(name, { height, diameter, tessellation: 8 }, scene);
+    configureStatic(mesh, root, material);
+    mesh.position.y = y;
+  };
+  addCourse('tower-flag-dais-base', 0.18, 2.3, deckY + 0.07, materials.castleStoneDark);
+  addCourse('tower-flag-dais-trim', 0.06, 2.3, deckY + 0.17, materials.gold);
+  addCourse('tower-flag-dais-top', 0.08, 1.5, deckY + 0.16, materials.castleStoneLight);
+}
+
 function createBattlementParapet(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
   const deckY = CENTRAL_TOWER.topSurfaceY;
-  const copingY = deckY + 0.17;
-  const merlonY = deckY + 0.5;
+  const copingY = deckY + 0.19;
+  const merlonY = deckY + 0.51;
+  const merlonHeight = 1.02;
+  const capY = merlonY + merlonHeight / 2 + 0.07;
 
-  // Low coping runs the edges with the same ladder-exit gaps as the original railing so the
-  // side climb paths stay clear.
+  // Clean low parapet coping running the edges with the same ladder-exit gaps as the original
+  // railing so the side climb paths stay clear.
   const coping = [
     { w: 2.05, d: 0.26, x: -1.6, z: -2.47 },
     { w: 2.05, d: 0.26, x: 1.6, z: -2.47 },
@@ -209,56 +233,78 @@ function createBattlementParapet(scene: Scene, root: TransformNode, materials: M
   for (const [index, rail] of coping.entries()) {
     const mesh = MeshBuilder.CreateBox(`tower-battlement-coping-${index}`, {
       width: rail.w,
-      height: 0.3,
+      height: 0.34,
       depth: rail.d,
     }, scene);
     configureStatic(mesh, root, materials.castleStoneDark);
     mesh.position.set(rail.x, copingY, rail.z);
   }
 
-  // Raised merlons (crenellations) along the front, back and side edges, kept clear of the
-  // ladder-exit gaps. One source renders as instances to stay a single draw call.
+  // Raised crenellations along the front, back and side edges, kept clear of the ladder-exit
+  // gaps. Taller blocks with dressed coping caps give the parapet a clean, finished royal trim.
   const merlons = [
     { x: -1.6, z: -2.47 }, { x: 0, z: -2.47 }, { x: 1.6, z: -2.47 },
     { x: -1.6, z: 2.47 }, { x: 0, z: 2.47 }, { x: 1.6, z: 2.47 },
     { x: -2.92, z: 2.0 }, { x: 2.92, z: -2.0 },
   ];
-  const merlon = MeshBuilder.CreateBox('tower-battlement-merlon-source', { width: 0.9, height: 0.86, depth: 0.74 }, scene);
+  const merlon = MeshBuilder.CreateBox('tower-battlement-merlon-source', { width: 0.9, height: merlonHeight, depth: 0.74 }, scene);
   configureStatic(merlon, root, materials.castleStoneLight);
   merlon.position.set(merlons[0].x, merlonY, merlons[0].z);
+  const cap = MeshBuilder.CreateBox('tower-battlement-cap-source', { width: 1.06, height: 0.14, depth: 0.88 }, scene);
+  configureStatic(cap, root, materials.castleStoneDark);
+  cap.position.set(merlons[0].x, capY, merlons[0].z);
   for (let index = 1; index < merlons.length; index += 1) {
-    const instance = merlon.createInstance(`tower-battlement-merlon-${index}`);
-    instance.parent = root;
-    instance.position.set(merlons[index].x, merlonY, merlons[index].z);
-    instance.isPickable = false;
+    const merlonInstance = merlon.createInstance(`tower-battlement-merlon-${index}`);
+    merlonInstance.parent = root;
+    merlonInstance.position.set(merlons[index].x, merlonY, merlons[index].z);
+    merlonInstance.isPickable = false;
+    const capInstance = cap.createInstance(`tower-battlement-cap-${index}`);
+    capInstance.parent = root;
+    capInstance.position.set(merlons[index].x, capY, merlons[index].z);
+    capInstance.isPickable = false;
   }
 
-  // Corner pinnacles above the four pillar axes: a slim octagonal shaft, a cone spire and a
-  // gold finial. They lift the silhouette without adding bulk and echo the castle turrets.
+  // Corner pinnacles above the four pillar axes: a slim octagonal shaft, a cone spire, a gold
+  // ball and a spear finial. They lift the silhouette without adding bulk and echo the castle
+  // turrets, making the crown read taller from the portrait camera.
   const pinnaclePositions: ReadonlyArray<readonly [number, number]> = [
     [-2.75, -2.35], [2.75, -2.35], [-2.75, 2.35], [2.75, 2.35],
   ];
   const pBaseY = deckY + 0.05;
-  const pShaft = MeshBuilder.CreateCylinder('tower-pinnacle-shaft-source', { height: 1.3, diameterTop: 0.34, diameterBottom: 0.5, tessellation: 8 }, scene);
+  const pShaft = MeshBuilder.CreateCylinder('tower-pinnacle-shaft-source', { height: 1.6, diameterTop: 0.34, diameterBottom: 0.5, tessellation: 8 }, scene);
   configureStatic(pShaft, root, materials.castleStoneLight);
-  pShaft.position.set(pinnaclePositions[0][0], pBaseY + 0.65, pinnaclePositions[0][1]);
-  const pCap = MeshBuilder.CreateCylinder('tower-pinnacle-cap-source', { height: 0.6, diameterTop: 0, diameterBottom: 0.42, tessellation: 8 }, scene);
+  pShaft.position.set(pinnaclePositions[0][0], pBaseY + 0.8, pinnaclePositions[0][1]);
+  const pCap = MeshBuilder.CreateCylinder('tower-pinnacle-cap-source', { height: 0.72, diameterTop: 0, diameterBottom: 0.42, tessellation: 8 }, scene);
   configureStatic(pCap, root, materials.castleStoneLight);
-  pCap.position.set(pinnaclePositions[0][0], pBaseY + 1.6, pinnaclePositions[0][1]);
-  const pBall = MeshBuilder.CreateSphere('tower-pinnacle-finial-source', { diameter: 0.22, segments: 6 }, scene);
+  pCap.position.set(pinnaclePositions[0][0], pBaseY + 1.96, pinnaclePositions[0][1]);
+  const pBall = MeshBuilder.CreateSphere('tower-pinnacle-finial-source', { diameter: 0.26, segments: 6 }, scene);
   configureStatic(pBall, root, materials.gold);
-  pBall.position.set(pinnaclePositions[0][0], pBaseY + 2.02, pinnaclePositions[0][1]);
+  pBall.position.set(pinnaclePositions[0][0], pBaseY + 2.45, pinnaclePositions[0][1]);
+  const pSpear = MeshBuilder.CreateCylinder('tower-pinnacle-spear-source', { height: 0.34, diameterTop: 0, diameterBottom: 0.18, tessellation: 6 }, scene);
+  configureStatic(pSpear, root, materials.gold);
+  pSpear.position.set(pinnaclePositions[0][0], pBaseY + 2.75, pinnaclePositions[0][1]);
   for (let index = 1; index < pinnaclePositions.length; index += 1) {
     const [x, z] = pinnaclePositions[index];
     const shaft = pShaft.createInstance(`tower-pinnacle-shaft-${index}`);
-    shaft.parent = root; shaft.position.set(x, pBaseY + 0.65, z); shaft.isPickable = false;
+    shaft.parent = root; shaft.position.set(x, pBaseY + 0.8, z); shaft.isPickable = false;
     const cap = pCap.createInstance(`tower-pinnacle-cap-${index}`);
-    cap.parent = root; cap.position.set(x, pBaseY + 1.6, z); cap.isPickable = false;
+    cap.parent = root; cap.position.set(x, pBaseY + 1.96, z); cap.isPickable = false;
     const ball = pBall.createInstance(`tower-pinnacle-finial-${index}`);
-    ball.parent = root; ball.position.set(x, pBaseY + 2.02, z); ball.isPickable = false;
+    ball.parent = root; ball.position.set(x, pBaseY + 2.45, z); ball.isPickable = false;
+    const spear = pSpear.createInstance(`tower-pinnacle-spear-${index}`);
+    spear.parent = root; spear.position.set(x, pBaseY + 2.75, z); spear.isPickable = false;
   }
 }
 
+/**
+ * Side ladders rebuilt for the portrait camera: the climb centreline stays exactly on the gameplay
+ * path (groundAlign -> climbTop) while the frame becomes chunkier and reads as a proper siege
+ * ladder. Thick dark-wood stiles, polished steel ferrules, wide deep gold steps that stand proud
+ * of the stiles, and a stronger outward lean at the top so the last rungs clear the corbelled
+ * crown and the gold objective ring instead of vanishing behind the deck edge. Rungs are deep
+ * boxes facing the tower's outer corner, so both ladders (near left and far right) project as
+ * clearly spaced steps instead of thin edge-on slats.
+ */
 function createSideLadder(
   scene: Scene,
   root: TransformNode,
@@ -289,18 +335,17 @@ function createSideLadder(
   const panelOutward = new Vector3(outwardDirection.x, 0, outwardDirection.z).normalize();
   const sideLabel = ladder.side;
 
-  const railHalfSpan = 0.7;
-  const railDiameter = 0.24;
-  // The ladder leans outward from plinth to crown so the top rungs clear the corbelled
-  // crown and the gold objective ring without clipping, while the stiles stay planted
-  // against the base. The rails also sink a little below the climb start so the ladder
-  // reads as grounded rather than floating.
-  const bottomStandoff = 0.05;
-  const topStandoff = 0.22;
-  const plantedDepth = 0.22;
+  const railHalfSpan = 0.72;
+  const railDiameter = 0.34;
+  // The ladder leans outward from plinth to crown so the top rungs clear the corbelled crown and
+  // the gold objective ring without clipping, while the stiles stay planted against the base. The
+  // rails also sink below the climb start so the ladder reads as grounded rather than floating.
+  const bottomStandoff = 0.08;
+  const topStandoff = 0.34;
+  const plantedDepth = 0.3;
   const standoffAt = (t: number): number => bottomStandoff + (topStandoff - bottomStandoff) * t;
 
-  // ---- Side stiles: thick dark-wood rails with forged metal ferrules at both ends. ----
+  // ---- Side stiles: thick dark-wood rails with polished steel ferrules at the tops. ----
   const railOffsets: readonly number[] = [-railHalfSpan, railHalfSpan];
   const railBottoms = railOffsets.map((offset) => (
     bottom
@@ -331,39 +376,38 @@ function createSideLadder(
     rail.rotationQuaternion = railRotation.clone();
   }
 
-  const cap = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-cap-source`, {
-    height: 0.22,
-    diameter: 0.32,
+  const ferrule = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-ferrule-source`, {
+    height: 0.42,
+    diameter: 0.46,
     tessellation: 8,
   }, scene);
-  configureStatic(cap, root, materials.metal);
-  cap.rotationQuaternion = railRotation.clone();
-  const capPositions = [
-    railTops[0].add(railDirection.scale(0.11)),
-    railTops[1].add(railDirection.scale(0.11)),
-    railBottoms[0].subtract(railDirection.scale(0.11)),
-    railBottoms[1].subtract(railDirection.scale(0.11)),
+  configureStatic(ferrule, root, materials.metal);
+  ferrule.rotationQuaternion = railRotation.clone();
+  const ferrulePositions = [
+    railTops[0].add(railDirection.scale(0.16)),
+    railTops[1].add(railDirection.scale(0.16)),
   ];
-  cap.position.copyFrom(capPositions[0]);
-  for (let index = 1; index < capPositions.length; index += 1) {
-    const item = cap.createInstance(`tower-${sideLabel}-ladder-cap-${index}`);
+  ferrule.position.copyFrom(ferrulePositions[0]);
+  for (let index = 1; index < ferrulePositions.length; index += 1) {
+    const item = ferrule.createInstance(`tower-${sideLabel}-ladder-ferrule-${index}`);
     item.parent = root;
-    item.position.copyFrom(capPositions[index]);
+    item.position.copyFrom(ferrulePositions[index]);
     item.rotationQuaternion = railRotation.clone();
     item.isPickable = false;
   }
 
-  // ---- Rungs: wide gold step bars, evenly spaced, protruding past the stiles. ----
+  // ---- Rungs: wide, deep gold step bars, evenly spaced, protruding well past the stiles. The
+  // depth faces the tower's outer corner, which keeps every step visible from the side cameras.
   const rungRotation = Quaternion.RotationQuaternionFromAxis(
     Vector3.Cross(shaftDirection, outwardDirection).normalize(),
     shaftDirection,
     outwardDirection,
   );
-  const rungCount = Math.ceil(length / 0.38);
+  const rungCount = Math.ceil(length / 0.36);
   const rung = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-rung-source`, {
-    width: 1.9,
-    height: 0.14,
-    depth: 0.18,
+    width: 2.9,
+    height: 0.17,
+    depth: 0.5,
   }, scene);
   configureStatic(rung, root, materials.gold);
   rung.rotationQuaternion = rungRotation.clone();
@@ -377,15 +421,17 @@ function createSideLadder(
     if (index > 0) item.rotationQuaternion = rungRotation.clone();
   }
 
-  // ---- Mounting brackets: gold straps pinning the stiles to the plinth and the corbel. ----
+  // ---- Mounting brackets: gold straps pinning the stiles to the plinth, the shaft and the
+  // corbelled crown, so the ladder reads as bolted to the tower along its whole run. ----
   const bracketRotation = Quaternion.RotationQuaternionFromAxis(
     panelOutward.scale(-1),
     new Vector3(0, 1, 0),
     Vector3.Cross(panelOutward.scale(-1), new Vector3(0, 1, 0)).normalize(),
   );
   const bracketMounts: ReadonlyArray<{ readonly t: number; readonly length: number }> = [
-    { t: (0.55 - bottom.y) / shaft.y, length: 0.66 }, // plinth course
-    { t: (8.75 - bottom.y) / shaft.y, length: 0.6 }, // corbelled crown
+    { t: (1.15 - bottom.y) / shaft.y, length: 0.66 }, // plinth course
+    { t: (4.9 - bottom.y) / shaft.y, length: 0.66 },  // mid shaft
+    { t: (8.6 - bottom.y) / shaft.y, length: 0.6 },   // corbelled crown
   ];
   for (const [index, mount] of bracketMounts.entries()) {
     const panelPoint = bottom.add(shaft.scale(mount.t)).add(panelOutward.scale(standoffAt(mount.t)));
@@ -398,22 +444,66 @@ function createSideLadder(
     bracket.position.copyFrom(panelPoint.subtract(panelOutward.scale(mount.length / 2 + 0.05)));
     bracket.rotationQuaternion = bracketRotation.clone();
   }
+
+  // ---- Foot plate: a metal disc grounding the ladder where it meets the ground. ----
+  const plate = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-foot-plate`, {
+    height: 0.07,
+    diameter: 1.7,
+    tessellation: 8,
+  }, scene);
+  configureStatic(plate, root, materials.metal);
+  plate.position.copyFrom(bottom.add(panelOutward.scale(bottomStandoff)));
+  plate.position.y = 0.1;
 }
 
-function createSideBanners(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
-  for (const [index, x] of [-2.42, 2.42].entries()) {
-    const pole = MeshBuilder.CreateCylinder(`tower-side-banner-pole-${index}`, { height: 2.75, diameter: 0.09, tessellation: 7 }, scene);
-    configureStatic(pole, root, materials.metal);
-    pole.position.set(x, 7.15, -1.82);
-
-    const crossbar = MeshBuilder.CreateBox(`tower-side-banner-crossbar-${index}`, { width: 0.82, height: 0.08, depth: 0.08 }, scene);
-    configureStatic(crossbar, root, materials.gold);
-    crossbar.position.set(x + (x < 0 ? 0.32 : -0.32), 8.22, -1.88);
-
-    const cloth = MeshBuilder.CreateBox(`tower-side-banner-cloth-${index}`, { width: 0.68, height: 1.38, depth: 0.06 }, scene);
-    configureStatic(cloth, root, materials.objectiveCloth);
-    cloth.position.set(x + (x < 0 ? 0.34 : -0.34), 7.48, -1.9);
-    cloth.rotation.z = x < 0 ? -0.035 : 0.035;
+/**
+ * Royal pennant standards on the front and back merlon caps. Gold poles with small cloth pennants
+ * flank the flag axis, lifting the crown silhouette and echoing the objective colours without
+ * crowding the ladders at the open corners.
+ */
+function createPennants(scene: Scene, root: TransformNode, materials: MaterialLibrary): void {
+  const deckY = CENTRAL_TOWER.topSurfaceY;
+  const capTopY = deckY + 0.51 + 1.02 / 2 + 0.14;
+  const mounts: ReadonlyArray<readonly [number, number]> = [
+    [-1.6, -2.47], [1.6, -2.47], [-1.6, 2.47], [1.6, 2.47],
+  ];
+  const pole = MeshBuilder.CreateCylinder('tower-pennant-pole-source', {
+    height: 1.5,
+    diameter: 0.07,
+    tessellation: 6,
+  }, scene);
+  configureStatic(pole, root, materials.gold);
+  pole.position.set(mounts[0][0], capTopY + 0.75, mounts[0][1]);
+  const ball = MeshBuilder.CreateSphere('tower-pennant-finial-source', {
+    diameter: 0.14,
+    segments: 5,
+  }, scene);
+  configureStatic(ball, root, materials.gold);
+  ball.position.set(mounts[0][0], capTopY + 1.5, mounts[0][1]);
+  const cloth = MeshBuilder.CreateBox('tower-pennant-cloth-source', {
+    width: 0.55,
+    height: 0.72,
+    depth: 0.05,
+  }, scene);
+  configureStatic(cloth, root, materials.objectiveCloth);
+  cloth.position.set(mounts[0][0], capTopY + 0.41, mounts[0][1] + 0.3);
+  cloth.rotation.x = 0.04;
+  for (let index = 1; index < mounts.length; index += 1) {
+    const [x, z] = mounts[index];
+    const front = z < 0;
+    const poleInstance = pole.createInstance(`tower-pennant-pole-${index}`);
+    poleInstance.parent = root;
+    poleInstance.position.set(x, capTopY + 0.75, z);
+    poleInstance.isPickable = false;
+    const ballInstance = ball.createInstance(`tower-pennant-finial-${index}`);
+    ballInstance.parent = root;
+    ballInstance.position.set(x, capTopY + 1.5, z);
+    ballInstance.isPickable = false;
+    const clothInstance = cloth.createInstance(`tower-pennant-cloth-${index}`);
+    clothInstance.parent = root;
+    clothInstance.position.set(x, capTopY + 0.41, z + (front ? 0.3 : -0.3));
+    clothInstance.rotation.x = front ? 0.04 : -0.04;
+    clothInstance.isPickable = false;
   }
 }
 

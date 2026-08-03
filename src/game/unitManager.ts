@@ -454,7 +454,7 @@ export class UnitManager {
     if (unit.team === 'red' && unit.position.z < route.returnMergeThresholdZ) {
       return new Vector3(laneX(unit.lane) * route.returnLaneScale, delivery.y, route.returnMergeZ);
     }
-    return new Vector3(delivery.x, unit.position.y, delivery.z);
+    return new Vector3(delivery.x, delivery.y, delivery.z);
   }
 
   private getAttackRoutePoint(unit: UnitEntity): Vector3 {

@@ -62,6 +62,10 @@ export class GameUI {
   private readonly endOverlay: HTMLElement;
   private readonly endTitle: HTMLElement;
   private readonly endSubtitle: HTMLElement;
+  private lastCastleHp = Infinity;
+  private collapseTimer: number | undefined;
+  private hitTimer: number | undefined;
+  private readonly castleAttentionMs = 2600;
 
   onPrepare: (quality: QualityTier) => void = () => undefined;
   onStart: () => void = () => undefined;
@@ -97,6 +101,14 @@ export class GameUI {
     this.endOverlay = this.query('#end-overlay');
     this.endTitle = this.query('#end-title');
     this.endSubtitle = this.query('#end-subtitle');
+
+    this.castlePanel.addEventListener('click', () => this.toggleCastle());
+    this.castlePanel.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        this.toggleCastle();
+      }
+    });
 
     for (const kind of ['vanguard', 'ranger', 'raider', 'ironGuard'] as const) {
       const button = this.query<HTMLButtonElement>(`[data-card="${kind}"]`);
@@ -146,16 +158,31 @@ export class GameUI {
 
     const playerCastleHp = Math.max(0, Math.round(state.playerCastleHp));
     const enemyCastleHp = Math.max(0, Math.round(state.enemyCastleHp));
+    const castleDamaged = playerCastleHp < this.lastCastleHp;
+    this.lastCastleHp = playerCastleHp;
     this.castleFill.style.width = `${(playerCastleHp / state.playerCastleMaxHp) * 100}%`;
     this.enemyCastleFill.style.width = `${(enemyCastleHp / state.enemyCastleMaxHp) * 100}%`;
     this.castleHp.textContent = `${playerCastleHp} / ${state.playerCastleMaxHp}`;
     this.enemyCastleHp.textContent = `${enemyCastleHp} / ${state.enemyCastleMaxHp}`;
     this.castleStateLabel.textContent = castleStateText(state.playerCastleState, state.playerCastleCountdown, false);
     this.enemyCastleStateLabel.textContent = castleStateText(state.enemyCastleState, state.enemyCastleCountdown, true);
-    this.castlePanel.classList.toggle('open', state.playerCastleState === 'open');
-    this.castlePanel.classList.toggle('breached', state.playerCastleState === 'breached');
+    const castleOpen = state.playerCastleState === 'open';
+    const castleBreached = state.playerCastleState === 'breached';
+    this.castlePanel.classList.toggle('open', castleOpen);
+    this.castlePanel.classList.toggle('breached', castleBreached);
     this.enemyCastleStrip.classList.toggle('open', state.enemyCastleState === 'open');
     this.enemyCastleStrip.classList.toggle('breached', state.enemyCastleState === 'breached');
+    if (castleOpen || castleBreached) {
+      this.setCastleExpanded(true);
+      if (this.collapseTimer !== undefined) {
+        window.clearTimeout(this.collapseTimer);
+        this.collapseTimer = undefined;
+      }
+    } else if (castleDamaged) {
+      this.setCastleExpanded(true);
+      this.scheduleCastleCollapse();
+      this.pulseCastleHit();
+    }
     this.setFlagSecured(this.castleFlag, state.playerFlagSecured, 'secured in your castle');
     this.setFlagSecured(this.enemyCastleFlag, state.enemyFlagSecured, 'secured in the enemy castle');
     this.playerDamageFlash.pulse(playerCastleHp, state.playerCastleMaxHp, state.playerCastleState === 'breached');
@@ -224,7 +251,7 @@ export class GameUI {
 
       <div id="enemy-castle-strip" class="castle-strip">
         <span class="castle-strip-sigil" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V8l2-2v6h2V4l2-2v8h2V2h2v8h2V2l2 2v8h2V6l2 2v13H4z"/></svg>
+          <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/><path class="castle-door" d="M10.5 21v-4.2a2.5 2.5 0 0 0 5 0v4.2z"/></svg>
         </span>
         <small id="enemy-castle-state" class="castle-state">SECURE</small>
         <span class="castle-track"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
@@ -258,12 +285,16 @@ export class GameUI {
       </header>
 
       <footer class="bottom-hud">
-        <div id="player-castle-panel" class="castle-panel">
+        <div id="player-castle-panel" class="castle-panel" role="button" tabindex="0" aria-expanded="false" aria-label="Castle integrity. Activate to expand details.">
           <span class="castle-sigil" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V8l2-2v6h2V4l2-2v8h2V2h2v8h2V2l2 2v8h2V6l2 2v13H4z"/><path class="castle-door" d="M10 21V18.4a2.6 2.6 0 0 1 4 0V21z"/></svg>
+            <svg viewBox="0 0 24 24">
+              <path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/>
+              <path class="castle-door" d="M10.5 21v-5a3 3 0 0 0 6 0v5z"/>
+              <path class="castle-grate" d="M11.6 17h3.8M11.3 18.8h4.4"/>
+            </svg>
           </span>
-          <span class="castle-col">
-            <span class="castle-track"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
+          <span class="castle-folder">
+            <span class="castle-bar"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
             <small id="player-castle-state" class="castle-state">GATE SECURE</small>
           </span>
           <span class="castle-side">
@@ -292,6 +323,37 @@ export class GameUI {
   private setFlagSecured(element: HTMLElement, secured: boolean, securedLabel: string): void {
     element.classList.toggle('secured', secured);
     element.setAttribute('aria-label', secured ? `Flag ${securedLabel}` : 'Flag not secured');
+  }
+
+  private setCastleExpanded(expanded: boolean): void {
+    this.castlePanel.classList.toggle('expanded', expanded);
+    this.castlePanel.setAttribute('aria-expanded', String(expanded));
+  }
+
+  private scheduleCastleCollapse(): void {
+    if (this.collapseTimer !== undefined) window.clearTimeout(this.collapseTimer);
+    this.collapseTimer = window.setTimeout(() => {
+      this.collapseTimer = undefined;
+      if (this.castlePanel.classList.contains('open') || this.castlePanel.classList.contains('breached')) return;
+      this.setCastleExpanded(false);
+    }, this.castleAttentionMs);
+  }
+
+  private toggleCastle(): void {
+    if (this.castlePanel.classList.contains('expanded')) {
+      this.setCastleExpanded(false);
+    } else {
+      this.setCastleExpanded(true);
+      this.scheduleCastleCollapse();
+    }
+  }
+
+  private pulseCastleHit(): void {
+    this.castlePanel.classList.remove('hit');
+    void this.castlePanel.offsetWidth;
+    this.castlePanel.classList.add('hit');
+    if (this.hitTimer !== undefined) window.clearTimeout(this.hitTimer);
+    this.hitTimer = window.setTimeout(() => this.castlePanel.classList.remove('hit'), 360);
   }
 
   private icon(kind: UnitKind): string {

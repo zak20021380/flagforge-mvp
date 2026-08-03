@@ -207,7 +207,7 @@ export const PORTRAIT_LAYOUT = {
     deliveryOffset: 5.7,
     interiorOffset: 1.3,
     unitBoundsX: 12.15,
-    unitBoundsZ: CASTLE_CENTER_Z + 3.45,
+    unitBoundsZ: RED_BOUNDARY_Z,
     route: {
       flagApproachZ: 5,
       flagApproachThresholdZ: 5.15,

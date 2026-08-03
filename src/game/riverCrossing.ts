@@ -4,6 +4,7 @@ import {
   BLUE_BATTLEFIELD,
   BLUE_RIVER_CHANNEL,
   PORTRAIT_LAYOUT,
+  RED_BOUNDARY_Z,
   RED_RIVER_CHANNEL,
 } from '../core/config';
 import type { ArenaRiverChannel, BridgeState } from '../core/types';
@@ -128,12 +129,15 @@ export const blocksGroundStep = (
 
 /**
  * True when stepping from (fromX, fromZ) to (toX, toZ) is illegal on the playable battlefield: it
- * would leave the painted floor between the blue castle wall and the red river's south bank (the
- * arena exterior beyond the blue front and past the red water is blocked), or enter either water
- * channel outside its painted bridge deck. Castle footprints are deliberately NOT blocked: the gate
- * breach mechanic requires units to walk through the blue fortress interior, and the red castle is
- * reached by scripted ladders. Object avoidance around the central tower is handled separately by
- * resolveGroundGoal (src/game/unitManager.ts), which is unaffected.
+ * would leave the painted floor between the blue castle back wall and the red castle front wall
+ * (the arena exterior beyond the blue fortress and past the red castle's own wall line, plus the
+ * red castle interior behind it, is blocked), or enter either water channel outside its painted
+ * bridge deck. The red deployment island (the castle-side bank of the upper river, RED_BOUNDARY_Z
+ * being the red wall line / RED_DEPLOYMENT.maxZ) is walkable ground, so spawns there can reach the
+ * bridges. Castle footprints are deliberately NOT blocked where ground traversal is required: the
+ * gate breach mechanic lets units walk through the blue fortress interior, and climbing the red
+ * castle is handled by scripted ladders. Object avoidance around the central tower is handled
+ * separately by resolveGroundGoal (src/game/unitManager.ts), which is unaffected.
  */
 export const blocksPlayableStep = (
   fromX: number,
@@ -146,7 +150,7 @@ export const blocksPlayableStep = (
   const high = Math.max(fromZ, toZ);
   if (
     high < BLUE_BATTLEFIELD.minZ - radius
-    || low > RED_RIVER_CHANNEL.minZ + radius
+    || low > RED_BOUNDARY_Z + radius
     || toX < BLUE_BATTLEFIELD.minX - radius
     || toX > BLUE_BATTLEFIELD.maxX + radius
   ) return true;

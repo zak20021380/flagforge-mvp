@@ -297,13 +297,16 @@ function createBattlementParapet(scene: Scene, root: TransformNode, materials: M
 }
 
 /**
- * Side ladders rebuilt for the portrait camera: the climb centreline stays exactly on the gameplay
- * path (groundAlign -> climbTop) while the frame becomes chunkier and reads as a proper siege
- * ladder. Thick dark-wood stiles, polished steel ferrules, wide deep gold steps that stand proud
- * of the stiles, and a stronger outward lean at the top so the last rungs clear the corbelled
- * crown and the gold objective ring instead of vanishing behind the deck edge. Rungs are deep
- * boxes facing the tower's outer corner, so both ladders (near left and far right) project as
- * clearly spaced steps instead of thin edge-on slats.
+ * The single shared siege-ladder blueprint for both tower sides. The climb centreline stays exactly
+ * on the gameplay path (groundAlign -> climbTop); the near player ladder and the far enemy ladder
+ * are built from this one design and mirrored across the tower, so their size, shape, materials,
+ * rung count and spacing are identical. The ladder is noticeably wider than the old frame with
+ * thick dark-wood stiles capped top and bottom by polished steel ferrules, wide deep gold rungs
+ * evenly spaced and standing proud of the stiles, and a stronger outward lean at the top so the
+ * last rungs clear the corbelled crown and the gold objective ring instead of clipping the deck
+ * edge. Rungs are deep boxes facing the tower's outer corner, so both ladders (near left and far
+ * right) project as clearly spaced steps with strong contrast against the stone instead of thin
+ * edge-on slats.
  */
 function createSideLadder(
   scene: Scene,
@@ -335,17 +338,17 @@ function createSideLadder(
   const panelOutward = new Vector3(outwardDirection.x, 0, outwardDirection.z).normalize();
   const sideLabel = ladder.side;
 
-  const railHalfSpan = 0.72;
-  const railDiameter = 0.34;
+  const railHalfSpan = 1.0;
+  const railDiameter = 0.42;
   // The ladder leans outward from plinth to crown so the top rungs clear the corbelled crown and
   // the gold objective ring without clipping, while the stiles stay planted against the base. The
   // rails also sink below the climb start so the ladder reads as grounded rather than floating.
-  const bottomStandoff = 0.08;
-  const topStandoff = 0.34;
-  const plantedDepth = 0.3;
+  const bottomStandoff = 0.1;
+  const topStandoff = 0.38;
+  const plantedDepth = 0.34;
   const standoffAt = (t: number): number => bottomStandoff + (topStandoff - bottomStandoff) * t;
 
-  // ---- Side stiles: thick dark-wood rails with polished steel ferrules at the tops. ----
+  // ---- Side stiles: thick dark-wood rails, grounded at the base and capped at the crown. ----
   const railOffsets: readonly number[] = [-railHalfSpan, railHalfSpan];
   const railBottoms = railOffsets.map((offset) => (
     bottom
@@ -376,9 +379,12 @@ function createSideLadder(
     rail.rotationQuaternion = railRotation.clone();
   }
 
+  // Every stile carries the same polished steel ferrule at both ends: a head cap biting into the
+  // crown just above the deck and a base collar seating the stile into its steel foot plate, so
+  // the ladder reads as metal-tipped wood from ground to platform.
   const ferrule = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-ferrule-source`, {
-    height: 0.42,
-    diameter: 0.46,
+    height: 0.5,
+    diameter: 0.56,
     tessellation: 8,
   }, scene);
   configureStatic(ferrule, root, materials.metal);
@@ -386,6 +392,8 @@ function createSideLadder(
   const ferrulePositions = [
     railTops[0].add(railDirection.scale(0.16)),
     railTops[1].add(railDirection.scale(0.16)),
+    railBottoms[0].add(railDirection.scale(0.26)),
+    railBottoms[1].add(railDirection.scale(0.26)),
   ];
   ferrule.position.copyFrom(ferrulePositions[0]);
   for (let index = 1; index < ferrulePositions.length; index += 1) {
@@ -397,17 +405,18 @@ function createSideLadder(
   }
 
   // ---- Rungs: wide, deep gold step bars, evenly spaced, protruding well past the stiles. The
-  // depth faces the tower's outer corner, which keeps every step visible from the side cameras.
+  // depth faces the tower's outer corner, which keeps every step visible from the side cameras
+  // and gives the brightest possible contrast against the grey stone work. ----
   const rungRotation = Quaternion.RotationQuaternionFromAxis(
     Vector3.Cross(shaftDirection, outwardDirection).normalize(),
     shaftDirection,
     outwardDirection,
   );
-  const rungCount = Math.ceil(length / 0.36);
+  const rungCount = Math.ceil(length / 0.4);
   const rung = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-rung-source`, {
-    width: 2.9,
-    height: 0.17,
-    depth: 0.5,
+    width: 3.0,
+    height: 0.2,
+    depth: 0.55,
   }, scene);
   configureStatic(rung, root, materials.gold);
   rung.rotationQuaternion = rungRotation.clone();
@@ -429,26 +438,26 @@ function createSideLadder(
     Vector3.Cross(panelOutward.scale(-1), new Vector3(0, 1, 0)).normalize(),
   );
   const bracketMounts: ReadonlyArray<{ readonly t: number; readonly length: number }> = [
-    { t: (1.15 - bottom.y) / shaft.y, length: 0.66 }, // plinth course
-    { t: (4.9 - bottom.y) / shaft.y, length: 0.66 },  // mid shaft
-    { t: (8.6 - bottom.y) / shaft.y, length: 0.6 },   // corbelled crown
+    { t: (1.15 - bottom.y) / shaft.y, length: 0.9 }, // plinth course
+    { t: (4.9 - bottom.y) / shaft.y, length: 0.8 },  // mid shaft
+    { t: (8.6 - bottom.y) / shaft.y, length: 0.7 },  // corbelled crown
   ];
   for (const [index, mount] of bracketMounts.entries()) {
     const panelPoint = bottom.add(shaft.scale(mount.t)).add(panelOutward.scale(standoffAt(mount.t)));
     const bracket = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-bracket-${index}`, {
       width: mount.length,
-      height: 0.12,
-      depth: 0.18,
+      height: 0.14,
+      depth: 0.22,
     }, scene);
     configureStatic(bracket, root, materials.gold);
     bracket.position.copyFrom(panelPoint.subtract(panelOutward.scale(mount.length / 2 + 0.05)));
     bracket.rotationQuaternion = bracketRotation.clone();
   }
 
-  // ---- Foot plate: a metal disc grounding the ladder where it meets the ground. ----
+  // ---- Foot plate: a wide metal disc grounding both stiles where the ladder meets the ground. ----
   const plate = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-foot-plate`, {
-    height: 0.07,
-    diameter: 1.7,
+    height: 0.08,
+    diameter: 2.2,
     tessellation: 8,
   }, scene);
   configureStatic(plate, root, materials.metal);

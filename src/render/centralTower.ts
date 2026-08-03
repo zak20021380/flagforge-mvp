@@ -276,42 +276,127 @@ function createSideLadder(
     ladder.climbTop.y,
     ladder.climbTop.z - CENTRAL_TOWER.centerZ,
   );
+  // The climb centreline stays exactly on the gameplay path (groundAlign -> climbTop).
   const shaft = top.subtract(bottom);
   const length = shaft.length();
   const shaftDirection = shaft.scale(1 / length);
   const radialCenter = bottom.add(top).scale(0.5);
+  // Tangential axis, running along the tower face the ladder leans against.
   const rungDirection = new Vector3(-radialCenter.z, 0, radialCenter.x).normalize();
-  const outwardDirection = Vector3.Cross(rungDirection, shaftDirection).normalize();
-  const rotation = Quaternion.RotationQuaternionFromAxis(rungDirection, shaftDirection, outwardDirection);
+  // Outward face normal: away from the tower centre, where the rungs are climbed.
+  const outwardDirection = Vector3.Cross(shaftDirection, rungDirection).normalize();
+  // The standoff below is applied along the horizontal part of that normal.
+  const panelOutward = new Vector3(outwardDirection.x, 0, outwardDirection.z).normalize();
   const sideLabel = ladder.side;
 
-  for (const offset of [-0.64, 0.64]) {
-    const rail = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-rail-${offset}`, {
-      height: length,
-      diameter: 0.15,
-      tessellation: 7,
+  const railHalfSpan = 0.7;
+  const railDiameter = 0.24;
+  // The ladder leans outward from plinth to crown so the top rungs clear the corbelled
+  // crown and the gold objective ring without clipping, while the stiles stay planted
+  // against the base. The rails also sink a little below the climb start so the ladder
+  // reads as grounded rather than floating.
+  const bottomStandoff = 0.05;
+  const topStandoff = 0.22;
+  const plantedDepth = 0.22;
+  const standoffAt = (t: number): number => bottomStandoff + (topStandoff - bottomStandoff) * t;
+
+  // ---- Side stiles: thick dark-wood rails with forged metal ferrules at both ends. ----
+  const railOffsets: readonly number[] = [-railHalfSpan, railHalfSpan];
+  const railBottoms = railOffsets.map((offset) => (
+    bottom
+      .add(rungDirection.scale(offset))
+      .add(panelOutward.scale(bottomStandoff))
+      .subtract(shaftDirection.scale(plantedDepth))
+  ));
+  const railTops = railOffsets.map((offset) => (
+    top.add(rungDirection.scale(offset)).add(panelOutward.scale(topStandoff))
+  ));
+  const railShaft = railTops[0].subtract(railBottoms[0]);
+  const railLength = railShaft.length();
+  const railDirection = railShaft.scale(1 / railLength);
+  const railRotation = Quaternion.RotationQuaternionFromAxis(
+    rungDirection,
+    railDirection,
+    Vector3.Cross(rungDirection, railDirection).normalize(),
+  );
+
+  for (let index = 0; index < railOffsets.length; index += 1) {
+    const rail = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-rail-${index}`, {
+      height: railLength,
+      diameter: railDiameter,
+      tessellation: 8,
     }, scene);
-    configureStatic(rail, root, materials.wood);
-    rail.position.copyFrom(bottom.add(top).scale(0.5).add(rungDirection.scale(offset)));
-    rail.rotationQuaternion = rotation.clone();
+    configureStatic(rail, root, materials.gateWood);
+    rail.position.copyFrom(railBottoms[index].add(railTops[index]).scale(0.5));
+    rail.rotationQuaternion = railRotation.clone();
   }
 
-  const rungCount = Math.ceil(length / 0.43);
-  const rung = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-rung-source`, {
-    width: 1.48,
-    height: 0.12,
-    depth: 0.15,
+  const cap = MeshBuilder.CreateCylinder(`tower-${sideLabel}-ladder-cap-source`, {
+    height: 0.22,
+    diameter: 0.32,
+    tessellation: 8,
   }, scene);
-  configureStatic(rung, root, materials.wood);
-  rung.rotationQuaternion = rotation.clone();
+  configureStatic(cap, root, materials.metal);
+  cap.rotationQuaternion = railRotation.clone();
+  const capPositions = [
+    railTops[0].add(railDirection.scale(0.11)),
+    railTops[1].add(railDirection.scale(0.11)),
+    railBottoms[0].subtract(railDirection.scale(0.11)),
+    railBottoms[1].subtract(railDirection.scale(0.11)),
+  ];
+  cap.position.copyFrom(capPositions[0]);
+  for (let index = 1; index < capPositions.length; index += 1) {
+    const item = cap.createInstance(`tower-${sideLabel}-ladder-cap-${index}`);
+    item.parent = root;
+    item.position.copyFrom(capPositions[index]);
+    item.rotationQuaternion = railRotation.clone();
+    item.isPickable = false;
+  }
+
+  // ---- Rungs: wide gold step bars, evenly spaced, protruding past the stiles. ----
+  const rungRotation = Quaternion.RotationQuaternionFromAxis(
+    Vector3.Cross(shaftDirection, outwardDirection).normalize(),
+    shaftDirection,
+    outwardDirection,
+  );
+  const rungCount = Math.ceil(length / 0.38);
+  const rung = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-rung-source`, {
+    width: 1.9,
+    height: 0.14,
+    depth: 0.18,
+  }, scene);
+  configureStatic(rung, root, materials.gold);
+  rung.rotationQuaternion = rungRotation.clone();
   for (let index = 0; index < rungCount; index += 1) {
     const t = (index + 0.5) / rungCount;
-    const position = bottom.add(shaft.scale(t));
+    const position = bottom.add(shaft.scale(t)).add(panelOutward.scale(standoffAt(t)));
     const item = index === 0 ? rung : rung.createInstance(`tower-${sideLabel}-ladder-rung-${index}`);
     item.parent = root;
     item.position.copyFrom(position);
     item.isPickable = false;
-    if (index > 0) item.rotationQuaternion = rotation.clone();
+    if (index > 0) item.rotationQuaternion = rungRotation.clone();
+  }
+
+  // ---- Mounting brackets: gold straps pinning the stiles to the plinth and the corbel. ----
+  const bracketRotation = Quaternion.RotationQuaternionFromAxis(
+    panelOutward.scale(-1),
+    new Vector3(0, 1, 0),
+    Vector3.Cross(panelOutward.scale(-1), new Vector3(0, 1, 0)).normalize(),
+  );
+  const bracketMounts: ReadonlyArray<{ readonly t: number; readonly length: number }> = [
+    { t: (0.55 - bottom.y) / shaft.y, length: 0.66 }, // plinth course
+    { t: (8.75 - bottom.y) / shaft.y, length: 0.6 }, // corbelled crown
+  ];
+  for (const [index, mount] of bracketMounts.entries()) {
+    const panelPoint = bottom.add(shaft.scale(mount.t)).add(panelOutward.scale(standoffAt(mount.t)));
+    const bracket = MeshBuilder.CreateBox(`tower-${sideLabel}-ladder-bracket-${index}`, {
+      width: mount.length,
+      height: 0.12,
+      depth: 0.18,
+    }, scene);
+    configureStatic(bracket, root, materials.gold);
+    bracket.position.copyFrom(panelPoint.subtract(panelOutward.scale(mount.length / 2 + 0.05)));
+    bracket.rotationQuaternion = bracketRotation.clone();
   }
 }
 

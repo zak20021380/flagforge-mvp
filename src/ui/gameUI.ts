@@ -168,7 +168,7 @@ export class GameUI {
     this.castleFill.style.width = `${(playerCastleHp / state.playerCastleMaxHp) * 100}%`;
     this.enemyCastleFill.style.width = `${(enemyCastleHp / state.enemyCastleMaxHp) * 100}%`;
     this.castleHp.textContent = `${playerCastleHp} / ${state.playerCastleMaxHp}`;
-    this.enemyCastleHp.textContent = `${enemyCastleHp} / ${state.enemyCastleMaxHp}`;
+    this.enemyCastleHp.textContent = `${enemyCastleHp}/${state.enemyCastleMaxHp}`;
     this.castleStateLabel.textContent = castleStateText(state.playerCastleState, state.playerCastleCountdown, false);
     this.enemyCastleStateLabel.textContent = castleStateText(state.enemyCastleState, state.enemyCastleCountdown, true);
     this.castlePanel.classList.toggle('open', state.playerCastleState === 'open');

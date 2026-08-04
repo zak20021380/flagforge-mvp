@@ -486,18 +486,23 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .energy-track i { display: block; width: 50%; height: 100%; background: linear-gradient(90deg, #2b73f1, #58c5ff); border-radius: inherit; box-shadow: 0 0 12px #39a9ff; transition: width .16s linear; }
 
 /* ===== CASTLE INTEGRITY HUD =====
-   The player fortress (blue) sits directly above the energy bar; the rival castle (red) is a
-   centered strip just under the match banner. Both share one visual vocabulary: a machined keep
-   emblem with a lit status core, a recessed integrity bar, a tabular HP readout and a
-   gate/breach state label.
+   Both castle widgets are pure screen-space HUD elements anchored to the screen-edge safe areas —
+   they are never positioned over a castle silhouette. The player fortress (blue) lives in the
+   bottom HUD, directly above the energy bar. The rival fortress (red) is pinned to the top-left
+   safe-area corner, just below the match banner, where the screen-edge margin is always clear of
+   the centered enemy castle.
 
-   Both widgets idle as a compact, perfectly centered emblem pill — no bar, no numbers. Damage,
-   a gate-open state or a breach slides a folder open with a state/HP row over a clean bar; once
-   the damage pauses they settle back into the compact pill. The emblem never shifts: collapsed
-   the folder is a zero-width, zero-gap flex item and the pill padding is symmetric, so the coin
-   stays dead-centered while the readout animates only width and gap. */
+   Both widgets render as a bare emblem — the castle icon only, on a fully transparent background.
+   No pill, badge, panel, border or backdrop. Damage, a gate-open state or a breach slides a folder
+   open with a minimal state/HP readout over a clean bar; once the damage pauses they settle back
+   into the compact icon. The player widget expands horizontally inside the bottom HUD; the rival
+   widget expands downward as a narrow vertical readout column that stays inside the reserved top-left
+   safe-area box, so neither state can ever render over the enemy castle, the central tower or the
+   battlefield. */
 
-/* --- Player fortress pill (bottom HUD, above ENERGY) --- */
+/* --- Player fortress icon (bottom HUD, above ENERGY) ---
+   Icon-only overlay: the wrapper keeps its layout box for identical HUD positioning but carries
+   no background, border or shape of its own. */
 .castle-panel {
   position: relative;
   display: flex;
@@ -508,27 +513,18 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   min-height: 42px;
   padding: 6px 9px;
   color: #d6e6f8;
-  background: linear-gradient(180deg, rgba(13, 26, 44, .96), rgba(6, 13, 25, .98));
-  border: 1px solid rgba(122, 190, 255, .34);
-  border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .44), inset 0 1px rgba(255, 255, 255, .07);
-  backdrop-filter: blur(8px);
-  overflow: hidden;
+  background: transparent;
+  border: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), border-radius .38s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
+  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1);
 }
 
 .castle-panel.expanded {
   min-height: 52px;
   gap: 11px;
-  border-radius: 16px;
-  border-color: rgba(132, 196, 255, .5);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, .52), inset 0 1px rgba(255, 255, 255, .09);
 }
 
-.castle-panel.open { border-color: rgba(255, 209, 138, .55); }
-.castle-panel.breached { border-color: rgba(255, 110, 120, .72); box-shadow: 0 8px 24px rgba(255, 40, 70, .16), inset 0 1px rgba(255, 255, 255, .08); }
 .castle-panel.hit { animation: castle-hit .34s ease; }
 @keyframes castle-hit {
   0%, 100% { transform: translateX(0); }
@@ -538,7 +534,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   80% { transform: translateX(1px); }
 }
 
-/* Machined emblem coin — the only element in the compact pill, perfectly centered. */
+/* Machined emblem — the only element in the collapsed widget, perfectly centered. No backing coin. */
 .castle-sigil {
   position: relative;
   display: grid;
@@ -546,22 +542,15 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
-  background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .16), transparent 44%),
-    radial-gradient(circle at 50% 50%, #2e5f9e, #122a4c 74%);
-  border: 1px solid rgba(255, 255, 255, .22);
-  border-radius: 50%;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .16), inset 0 -3px 6px rgba(0, 0, 0, .42), 0 2px 7px rgba(0, 0, 0, .4);
-  transition: border-color .3s ease, box-shadow .3s ease;
+  background: transparent;
+  border: none;
 }
 .castle-sigil svg { width: 18px; height: 18px; }
 .castle-sigil .castle-body { fill: #f6d489; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
 .castle-sigil .castle-door { fill: rgba(4, 13, 25, .82); }
 .castle-sigil .castle-grate { fill: none; stroke: rgba(246, 212, 137, .65); stroke-width: 1.1; }
-.castle-panel.open .castle-sigil { border-color: rgba(255, 209, 138, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .16), 0 0 10px rgba(255, 190, 80, .3); }
-.castle-panel.breached .castle-sigil { border-color: rgba(255, 120, 130, .55); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 12px rgba(255, 70, 90, .4); }
 
-/* Status core: a corner LED that keeps whispering castle state in the compact pill. */
+/* Status core: a corner LED that keeps whispering castle state in the compact icon. */
 .castle-core {
   position: absolute;
   right: -1px;
@@ -595,9 +584,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   transform: translateX(-6px);
   transition: opacity .3s ease, transform .38s cubic-bezier(.22, 1, .36, 1), width .38s cubic-bezier(.22, 1, .36, 1);
 }
-.castle-panel.expanded .castle-folder,
-.castle-strip.expanded .castle-folder { opacity: 1; width: clamp(168px, 44vw, 232px); transform: none; }
-.castle-strip.expanded .castle-folder { width: clamp(150px, 38vw, 200px); }
+.castle-panel.expanded .castle-folder { opacity: 1; width: clamp(168px, 44vw, 232px); transform: none; }
 
 .castle-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
 
@@ -663,50 +650,88 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .castle-panel.breached .castle-hp,
 .castle-strip.breached .castle-hp { color: #ffb3b8; }
 
-/* Compact pill shows the emblem only; the flag pennant appears once expanded. */
+/* Compact icon shows the emblem only; the flag pennant appears once expanded. */
 .castle-panel:not(.expanded) .flag-chip,
 .castle-strip:not(.expanded) .flag-chip { display: none; }
 
-/* --- Rival fortress strip (top HUD, centered under the match banner) --- */
+/* --- Rival fortress icon (top-left HUD corner — pure screen-space, never over the enemy castle) ---
+   Anchored to the top-left safe area, just below the match banner. It is NOT centered and NOT tied
+   to the enemy castle world position: the enemy castle projects to the centered upper battlefield,
+   so a centered strip would sit on top of it. Pinning the widget to the left safe-area margin keeps
+   both its collapsed icon and its expanded minimal readout inside the screen-edge HUD zone, clear of
+   the castle silhouette, the central tower and the battlefield.
+
+   Icon-only overlay: the wrapper keeps its layout box for identical HUD positioning but carries no
+   background, border, radius or shape of its own — just the castle emblem on a fully transparent
+   background, matching the player fortress widget. */
 .castle-strip {
   position: absolute;
   z-index: 9;
   top: calc(var(--top-hud-top-offset) + var(--top-hud-height) + clamp(3px, .9vh, 6px));
-  left: 0;
-  right: 0;
+  left: var(--safe-left);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
   pointer-events: none;
 }
+
 .castle-strip-inner {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 0;
   width: max-content;
-  max-width: 96vw;
   min-height: 42px;
-  padding: 6px 9px;
+  padding: 6px;
   color: #f4e0e2;
-  background: linear-gradient(180deg, rgba(39, 22, 37, .96), rgba(18, 10, 17, .98));
-  border: 1px solid rgba(255, 150, 158, .34);
-  border-radius: 999px;
-  box-shadow: 0 5px 16px rgba(2, 7, 14, .5), inset 0 1px rgba(255, 255, 255, .07);
-  backdrop-filter: blur(8px);
-  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), border-radius .38s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), padding .34s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1);
 }
+
+/* Collapsed: the emblem only, perfectly centered in its layout box. No backing coin or badge. */
+.castle-strip:not(.expanded) .castle-strip-inner {
+  width: 42px;
+}
+
+/* Expanded: a narrow column that grows downward inside the reserved top-left safe-area box. Width is
+   capped so the readout never reaches the centered enemy castle; height grows only as much as the
+   minimal HP info needs. The base stays transparent — no panel, card or container is drawn. */
 .castle-strip.expanded .castle-strip-inner {
-  min-height: 50px;
-  gap: 10px;
-  border-radius: 16px;
+  min-height: 0;
+  gap: 6px;
+  padding: 7px 7px 8px;
+  width: clamp(58px, 17vw, 72px);
 }
-.castle-strip.open .castle-strip-inner { border-color: rgba(255, 209, 138, .5); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 14px rgba(255, 190, 80, .22), inset 0 1px rgba(255, 255, 255, .08); }
-.castle-strip.breached .castle-strip-inner { border-color: rgba(255, 110, 120, .62); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 16px rgba(255, 60, 80, .3), inset 0 1px rgba(255, 255, 255, .07); }
+
+/* The expanding folder becomes a full-width column under the emblem. Collapsed it collapses to zero
+   height so the icon stays compact; expanded it grows downward (never sideways toward the centered
+   battlefield), capped wide enough only for the minimal HP readout. The state/HP meta stacks
+   vertically so the column stays narrow, with no container drawn around it. */
+.castle-strip .castle-folder {
+  width: 100%;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .3s ease, transform .38s cubic-bezier(.22, 1, .36, 1), max-height .38s cubic-bezier(.22, 1, .36, 1);
+}
+.castle-strip.expanded .castle-folder {
+  width: 100%;
+  max-height: 90px;
+  opacity: 1;
+  transform: none;
+}
+.castle-strip .castle-meta { flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; }
 .castle-strip.hit { animation: castle-strip-hit .32s ease; }
 @keyframes castle-strip-hit {
   0%, 100% { filter: brightness(1); }
   35% { filter: brightness(1.5); }
 }
 
+/* Machined emblem — the only element in the collapsed widget, perfectly centered. No backing coin. */
 .castle-strip-sigil {
   position: relative;
   display: grid;
@@ -714,26 +739,20 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
-  background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .14), transparent 44%),
-    radial-gradient(circle at 50% 50%, #5e2c38, #2a1019 74%);
-  border: 1px solid rgba(255, 170, 178, .3);
-  border-radius: 50%;
-  box-shadow: inset 0 1px rgba(255, 255, 255, .14), inset 0 -3px 6px rgba(0, 0, 0, .44), 0 2px 7px rgba(0, 0, 0, .45);
-  transition: border-color .3s ease, box-shadow .3s ease;
+  background: transparent;
+  border: none;
 }
 .castle-strip-sigil svg { width: 18px; height: 18px; }
 .castle-strip-sigil .castle-body { fill: #ffc2b8; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
 .castle-strip-sigil .castle-door { fill: rgba(26, 5, 11, .8); }
-.castle-strip.open .castle-strip-sigil { border-color: rgba(255, 209, 138, .45); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 10px rgba(255, 190, 80, .28); }
-.castle-strip.breached .castle-strip-sigil { border-color: rgba(255, 120, 130, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 0 12px rgba(255, 70, 90, .36); }
 
-/* The rival bar runs red; its copy stays a touch tighter to fit the top strip. */
+/* The rival bar runs red; its copy stays tight to fit the narrow top-left icon. */
+.castle-strip .castle-bar { height: 7px; }
 .castle-strip .castle-bar i { background: linear-gradient(90deg, #d0343e, #ff8f5f); box-shadow: 0 0 8px rgba(255, 100, 110, .5); }
-.castle-strip .castle-state { font-size: 8.5px; letter-spacing: .14em; color: #e8b3b8; }
-.castle-strip .castle-hp { font-size: 10px; color: #f9e8ea; }
-.castle-strip .flag-chip { width: 18px; height: 13px; }
-.castle-strip .flag-chip svg { width: 13px; height: 11px; }
+.castle-strip .castle-state { font-size: 7px; letter-spacing: .06em; color: #e8b3b8; text-align: center; }
+.castle-strip .castle-hp { font-size: 8.5px; color: #f9e8ea; text-align: center; }
+/* The rival icon stays compact: the flag pennant is reserved for the player widget. */
+.castle-strip .flag-chip { display: none; }
 
 /* Flag pennant: lit gold while the flag is secured in the castle, dim steel otherwise. */
 .flag-chip { display: grid; place-items: center; width: 22px; height: 15px; flex: 0 0 auto; }
@@ -830,8 +849,10 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .castle-sigil { width: 26px; height: 26px; flex-basis: 26px; }
   .castle-sigil svg { width: 16px; height: 16px; }
   .castle-bar { height: 8px; }
-  .castle-strip-inner { min-height: 36px; padding: 5px 8px; }
-  .castle-strip.expanded .castle-strip-inner { min-height: 44px; }
+  .castle-strip-inner { min-height: 36px; padding: 5px; }
+  .castle-strip:not(.expanded) .castle-strip-inner { width: 36px; }
+  .castle-strip.expanded .castle-strip-inner { min-height: 0; padding: 6px 6px 7px; width: clamp(52px, 17vw, 66px); }
+  .castle-strip .castle-folder { max-height: 78px; }
   .castle-strip-sigil { width: 26px; height: 26px; flex-basis: 26px; }
   .castle-strip-sigil svg { width: 16px; height: 16px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }

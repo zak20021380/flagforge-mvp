@@ -4,6 +4,12 @@ export type Team = 'blue' | 'red';
 export type UnitKind = 'vanguard' | 'ranger' | 'raider' | 'ironGuard';
 export type UnitState = 'idle' | 'moving' | 'queued' | 'climbing' | 'falling' | 'attacking' | 'hit' | 'dead';
 /**
+ * Authoritative match flow. The match starts in FLAG_OBJECTIVE, advances once to CASTLE_ASSAULT
+ * when the flag is delivered, and finishes when a castle is breached/destroyed. This single value
+ * is the source of truth every subsystem (flag, tower, targeting, castle) reads from.
+ */
+export type MatchPhase = 'FLAG_OBJECTIVE' | 'CASTLE_ASSAULT' | 'MATCH_FINISHED';
+/**
  * Central-tower ladder mount sequence (src/game/ladderSystem.ts): a queued ascender walks to the
  * ladder front (approaching), swings onto the centreline and turns to face the rungs (aligning),
  * plants one hand and one foot on the first rung (mounting), then holds at the base, posed and

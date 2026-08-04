@@ -5,6 +5,7 @@ import type { Lane, Team, UnitKind } from '../core/types';
 import { CastleLogic } from './castleLogic';
 import { EnergyModel } from './energy';
 import { FlagController } from './flag';
+import { MatchFlow } from './matchFlow';
 import { UnitManager } from './unitManager';
 
 export class EnemyAI {
@@ -15,6 +16,7 @@ export class EnemyAI {
     private readonly units: UnitManager,
     private readonly flag: FlagController,
     private readonly castles: CastleLogic,
+    private readonly matchFlow: MatchFlow,
   ) {}
 
   update(deltaSeconds: number): void {
@@ -84,14 +86,12 @@ export class EnemyAI {
   }
 
   /**
-   * Phase gate for castle assault: red may only assault after its own flag delivery opened the gate
-   * and only while the flag is not a live field objective again (dropped, or reset to the tower).
+   * Phase gate for castle assault, read from the match flow: red may only assault after it has
+   * delivered the flag and the match has entered the permanent CASTLE_ASSAULT phase.
    */
   private canAssaultCastle(team: Team): boolean {
+    if (!this.matchFlow.isAssaulting(team)) return false;
     if (this.castles.getHealth(oppositeTeam(team)).destroyed) return false;
-    if (!this.castles.isAttackWindow(team)) return false;
-    if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
-    if (this.castles.isAssaultActive(team)) return true;
-    return !this.flag.isFieldObjectiveActive();
+    return true;
   }
 }

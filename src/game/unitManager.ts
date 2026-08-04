@@ -12,6 +12,7 @@ import { CrowdSystem } from './crowdSystem';
 import { EffectPool } from './effects';
 import { FlagController } from './flag';
 import { LadderSystem } from './ladderSystem';
+import { MatchFlow } from './matchFlow';
 import { ProjectilePool } from './projectiles';
 import { applyGroundStep, blocksGroundStep, blocksPlayableStep, BRIDGE_BANK_MARGIN, keepOnLand, resolveCrossingGoal } from './riverCrossing';
 import { UnitEntity } from './unit';
@@ -57,6 +58,7 @@ export class UnitManager {
     private readonly effects: EffectPool,
     private readonly flag: FlagController,
     private readonly castles: CastleLogic,
+    private readonly matchFlow: MatchFlow,
     private readonly projectiles: ProjectilePool,
     private readonly audio: AudioManager,
   ) {
@@ -165,6 +167,25 @@ export class UnitManager {
     return count;
   }
 
+  /**
+   * Called exactly once when the flag is delivered and the match flips to CASTLE_ASSAULT. Clears
+   * the flag/tower/return objectives, engagements and central-tower ladder commitments from every
+   * living unit of the delivering team so they immediately retarget the enemy castle. Rerouting is
+   * idempotent, and the per-frame targeting below keeps every newly deployed unit on the same
+   * castle objective for the rest of the phase.
+   */
+  beginCastleAssault(team: Team): void {
+    for (const unit of this.units) {
+      if (!unit.active || unit.state === 'dead' || unit.team !== team) continue;
+      unit.target = null;
+      unit.attackClock = 0;
+      unit.attackHitApplied = false;
+      unit.targetRefreshClock = 0.02;
+      this.ladders.remove(unit, true);
+      this.engagements.release(unit);
+    }
+  }
+
   hasActiveKind(team: Team, kind: UnitKind): boolean {
     return this.units.some((unit) => unit.active && unit.state !== 'dead' && unit.team === team && unit.kind === kind);
   }
@@ -197,19 +218,19 @@ export class UnitManager {
       return;
     }
 
-    if (this.canAssaultCastle(unit.team) && !this.castles.isAssaultActive(unit.team) && this.castles.tryInfiltrate(unit)) {
+    if (this.canAssaultCastle(unit.team) && this.castles.tryInfiltrate(unit)) {
       this.engagements.release(unit);
       unit.state = 'idle';
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
     }
 
-    if (this.castles.isAssaultActive(unit.team) && this.tryAttackCastle(unit, enemyTeam, deltaSeconds, elapsed)) {
+    if (this.matchFlow.isAssaulting(unit.team) && this.tryAttackCastle(unit, enemyTeam, deltaSeconds, elapsed)) {
       return;
     }
 
-    const enemyCastleUnderAttack = this.canAssaultCastle('blue');
-    const wantsCastleDefence = enemyCastleUnderAttack
+    const redCastleUnderAttack = this.canAssaultCastle('blue');
+    const wantsCastleDefence = redCastleUnderAttack
       && unit.team === 'red'
       && unit.navigationArea === 'ground'
       && unit.position.z > PORTRAIT_LAYOUT.arena.route.attackMergeThresholdZ;
@@ -219,7 +240,7 @@ export class UnitManager {
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
       return;
     }
-    if (enemyCastleUnderAttack && unit.team === 'blue' && this.castleLadders.requestAssault(unit)) {
+    if (redCastleUnderAttack && unit.team === 'blue' && this.castleLadders.requestAssault(unit)) {
       this.engagements.release(unit);
       this.castleLadders.updateUnit(unit, deltaSeconds);
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
@@ -228,7 +249,7 @@ export class UnitManager {
     if (
       unit.team === 'red'
       && unit.navigationArea === 'enemyWallTop'
-      && !enemyCastleUnderAttack
+      && !redCastleUnderAttack
       && !this.castleLadders.hasAssaultInProgress()
       && this.castleLadders.requestDefenseReturn(unit)
     ) {
@@ -332,8 +353,14 @@ export class UnitManager {
       return;
     }
 
-    if (this.castles.isAssaultActive(unit.team)) {
-      unit.target = null;
+    if (this.matchFlow.isAssaulting(unit.team)) {
+      // The castle stays this unit's standing objective. Only an enemy already in immediate
+      // engagement range may be adopted, so a blocker is fought without dragging the attacker off
+      // the castle approach; the next refresh drops the target and the unit resumes advancing.
+      const engagementRange = unit.kind === 'ranger'
+        ? unit.stats.attackRange
+        : unit.stats.attackRange + 1.4;
+      unit.target = this.findNearestEnemy(unit.position, unit.team, engagementRange, unit.navigationArea);
       return;
     }
 
@@ -402,17 +429,15 @@ export class UnitManager {
   }
 
   /**
-   * Phase gate for castle assault. A team may only target and assault the enemy castle after its
-   * own flag delivery opened the gate, and only while the flag is not a live field objective again
-   * (dropped, or reset to the tower). An active breach overrides the flag check so the final
-   * checkmate push is never interrupted. While the gate is closed every unit falls back to the flag.
+   * Authoritative phase gate for castle assault, read from the match flow: a team may only target
+   * and assault the enemy castle after it has delivered the flag (CASTLE_ASSAULT). The old flag
+   * "live objective" fallback is gone — once the flag is delivered it is consumed forever, so the
+   * assault never reverts to capture duty.
    */
   private canAssaultCastle(team: Team): boolean {
+    if (!this.matchFlow.isAssaulting(team)) return false;
     if (this.castles.getHealth(oppositeTeam(team)).destroyed) return false;
-    if (!this.castles.isAttackWindow(team)) return false;
-    if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
-    if (this.castles.isAssaultActive(team)) return true;
-    return !this.flag.isFieldObjectiveActive();
+    return true;
   }
 
   private getStrategicGoal(unit: UnitEntity): Vector3 {
@@ -447,6 +472,9 @@ export class UnitManager {
     }
 
     if (this.canAssaultCastle(unit.team)) return this.getAttackRoutePoint(unit);
+    // During the assault the flag no longer exists: the defending team falls back to holding its
+    // own castle front instead of marching to a nonexistent objective or the central tower.
+    if (this.matchFlow.isCastleAssault) return this.getDefenceRoutePoint(unit);
     return this.getFlagRoutePoint(unit);
   }
 
@@ -481,36 +509,35 @@ export class UnitManager {
     return new Vector3(delivery.x, delivery.y, delivery.z);
   }
 
+  /**
+   * Objective of the defending team during CASTLE_ASSAULT: hold a spread of standoff points along
+   * the front of its own castle so it guards the gate and fights attackers instead of circling the
+   * tower or drifting toward the consumed flag.
+   */
+  private getDefenceRoutePoint(unit: UnitEntity): Vector3 {
+    const ownCastle = this.castles.getCastle(unit.team);
+    const slots = CONFIG.castle.assaultSlots;
+    const slot = slots[unit.id % slots.length];
+    // Offset toward the field from the gate so defenders stand between the castle and the assault.
+    const towardField = unit.team === 'blue' ? 1 : -1;
+    const spreadZ = 0.6 + Math.abs(slot.z) * 0.9;
+    const goldenAngle = unit.id * 137.50776405003785 * (Math.PI / 180);
+    const jitterX = Math.sin(goldenAngle) * (unit.id % 3) * 0.35;
+    return new Vector3(
+      ownCastle.root.position.x + slot.x + jitterX,
+      0.16,
+      ownCastle.gatePoint.z + towardField * spreadZ,
+    );
+  }
+
   private getAttackRoutePoint(unit: UnitEntity): Vector3 {
     const enemyTeam = unit.team === 'blue' ? 'red' : 'blue';
-    const enemyCastle = this.castles.getCastle(enemyTeam);
     const enemyHealth = this.castles.getHealth(enemyTeam);
     if (enemyHealth.destroyed) return unit.position;
-
-    if (this.castles.isAssaultActive(unit.team)) {
-      if (unit.kind === 'ranger') return this.castleLadders.getRangerSupportPoint(unit);
-      return this.castles.getAssaultSlot(unit);
-    }
-
-    const route = PORTRAIT_LAYOUT.arena.route;
-    if (unit.team === 'blue') {
-      if (unit.kind === 'ranger') return this.castleLadders.getRangerSupportPoint(unit);
-      if (unit.position.z < route.attackMergeThresholdZ) {
-        return new Vector3(laneX(unit.lane) * route.attackLaneScale, enemyCastle.gatePoint.y, route.attackMergeZ);
-      }
-      if (unit.position.z < enemyCastle.gatePoint.z - 0.12) {
-        return new Vector3(enemyCastle.gatePoint.x, enemyCastle.gatePoint.y, enemyCastle.gatePoint.z);
-      }
-    } else {
-      if (unit.position.z > -route.attackMergeThresholdZ) {
-        return new Vector3(laneX(unit.lane) * route.attackLaneScale, enemyCastle.gatePoint.y, -route.attackMergeZ);
-      }
-      if (unit.position.z > enemyCastle.gatePoint.z + 0.12) {
-        return new Vector3(enemyCastle.gatePoint.x, enemyCastle.gatePoint.y, enemyCastle.gatePoint.z);
-      }
-    }
-    const infiltrationZ = enemyCastle.interiorPoint.z + (unit.team === 'blue' ? route.infiltrationDepth : -route.infiltrationDepth);
-    return new Vector3(enemyCastle.interiorPoint.x, enemyCastle.interiorPoint.y, infiltrationZ);
+    // Every attacker walks to one of the predefined assault slots spread around the enemy gate and
+    // front wall (the slot is a pure function of the unit id, so units fan out instead of stacking
+    // on a single point). Rivers and the tower are re-routed by the movement layer.
+    return this.castles.getAssaultSlot(unit);
   }
 
   private moveUnit(unit: UnitEntity, goal: Vector3, deltaSeconds: number): boolean {

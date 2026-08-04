@@ -11,10 +11,12 @@ import { EffectPool } from './effects';
 import { EnemyAI } from './enemyAI';
 import { EnergyModel } from './energy';
 import { FlagController } from './flag';
+import { MatchFlow } from './matchFlow';
 import { ProjectilePool } from './projectiles';
 import { UnitManager } from './unitManager';
 
 export class GameController {
+  private readonly matchFlow = new MatchFlow();
   private readonly playerEnergy = new EnergyModel();
   private readonly enemyEnergy = new EnergyModel();
   private readonly playerCastleHealth = new CastleHealthModel();
@@ -54,6 +56,7 @@ export class GameController {
       arena.blueCastle,
       arena.redCastle,
       this.flag,
+      this.matchFlow,
       (castleTeam) => this.handleGateOpened(castleTeam),
       (attacker, defender) => this.handleBreach(attacker, defender),
       (winner) => this.finishMatch(winner),
@@ -70,11 +73,12 @@ export class GameController {
       this.effects,
       this.flag,
       this.castles,
+      this.matchFlow,
       this.projectiles,
       this.audio,
     );
     this.units = unitManager;
-    this.ai = new EnemyAI(this.enemyEnergy, this.units, this.flag, this.castles);
+    this.ai = new EnemyAI(this.enemyEnergy, this.units, this.flag, this.castles, this.matchFlow);
 
     this.ui.onCardSelect = (kind) => this.selectCard(kind);
     this.bindInput();
@@ -245,9 +249,13 @@ export class GameController {
 
   private handleFlagDelivered(team: Team): void {
     this.audio.play('flag');
+    // Atomic, once-only phase transition: the flag is consumed and the match permanently enters
+    // castle assault. Repeated delivery callbacks return false here and can never re-run it.
+    if (!this.matchFlow.enterCastleAssault(team)) return;
     this.lastFlagDeliveredBy = team;
-    this.castles.grantAssaultWindow(team);
+    this.units.beginCastleAssault(team);
     this.ui.showBanner(team === 'blue' ? 'FLAG SECURED — ASSAULT THE ENEMY CASTLE' : 'ENEMY FLAG SECURED — DEFEND NOW', team === 'blue' ? 'success' : 'danger', 2.4);
+    this.updateHud();
   }
 
   private handleGateOpened(castleTeam: Team): void {
@@ -274,6 +282,7 @@ export class GameController {
   private finishMatch(winner: Team): void {
     if (this.ended) return;
     this.ended = true;
+    this.matchFlow.finish();
     this.selectedKind = null;
     this.arena.deployMarker.setEnabled(false);
     this.audio.play(winner === 'blue' ? 'victory' : 'defeat');
@@ -332,10 +341,10 @@ export class GameController {
   }
 
   private updateHud(): void {
-    // The flag is secured in a castle only while it is delivered (resetting status); it lands in
-    // the castle of whichever team delivered it.
-    const flagSecuredAt: Team | null = this.flag.currentStatus === 'resetting' && this.lastFlagDeliveredBy
-      ? (this.lastFlagDeliveredBy === 'blue' ? 'red' : 'blue')
+    // A delivered flag is permanently secured in the delivering team's own castle and never
+    // returns to the field.
+    const flagSecuredAt: Team | null = this.flag.currentStatus === 'consumed'
+      ? this.lastFlagDeliveredBy
       : null;
     this.ui.update({
       playerEnergy: this.playerEnergy.value,
@@ -344,8 +353,8 @@ export class GameController {
       overtime: this.overtime,
       flagStatus: this.flag.currentStatus,
       flagCarrier: this.flag.currentCarrier?.team ?? null,
-      blueGateTime: this.castles.getAttackWindowRemaining('blue'),
-      redGateTime: this.castles.getAttackWindowRemaining('red'),
+      blueGateTime: 0,
+      redGateTime: 0,
       breachedTeam: this.castles.getBreachedTeam(),
       breachCountdown: this.castles.getBreachCountdown(),
       selectedKind: this.selectedKind,

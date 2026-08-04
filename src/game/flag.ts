@@ -11,7 +11,7 @@ import { squaredDistanceXZ } from '../core/math';
 import { MaterialLibrary } from '../render/materials';
 import type { UnitEntity } from './unit';
 
-export type FlagStatus = 'neutral' | 'carried' | 'dropped' | 'resetting';
+export type FlagStatus = 'neutral' | 'carried' | 'dropped' | 'consumed';
 
 export class FlagController {
   readonly root: TransformNode;
@@ -20,7 +20,6 @@ export class FlagController {
   private readonly carrierRing: Mesh;
   private carrier: UnitEntity | null = null;
   private status: FlagStatus = 'neutral';
-  private resetTimer = 0;
   private lastDeliveredTeamField: Team | null = null;
 
   constructor(
@@ -120,7 +119,7 @@ export class FlagController {
     return this.carrier;
   }
 
-  /** The team whose carrier delivered the flag most recently; cleared when the flag resets. */
+  /** The team whose carrier delivered the flag. Set on delivery and never cleared for this match. */
   get lastDeliveredTeam(): Team | null {
     return this.lastDeliveredTeamField;
   }
@@ -130,14 +129,6 @@ export class FlagController {
   }
 
   canBePickedUp(): boolean {
-    return this.status === 'neutral' || this.status === 'dropped';
-  }
-
-  /**
-   * True while the flag is a live field objective teams must capture again (on the tower or dropped).
-   * While false the flag is in hand or freshly delivered, so a team with an open gate may assault.
-   */
-  isFieldObjectiveActive(): boolean {
     return this.status === 'neutral' || this.status === 'dropped';
   }
 
@@ -168,11 +159,10 @@ export class FlagController {
     if (squaredDistanceXZ(unit.position, deliveryPoint) > 1.7 ** 2) return false;
     unit.carryingFlag = false;
     this.carrier = null;
-    this.status = 'resetting';
-    // The delivered flag stays secured (invisible, not pickable) for the whole gate window: castle
-    // assault is only legal while it is delivered, and it becomes a live objective again exactly
-    // when the gate closes, so both teams return to flag duty at the same moment.
-    this.resetTimer = CONFIG.match.gateOpenSeconds;
+    // The flag is permanently consumed for this match. It is hidden, detached from the carrier,
+    // and never re-enabled: no timer, update branch or reset step can bring it back to the tower.
+    // A flag can only exist again when a completely new match builds a fresh FlagController.
+    this.status = 'consumed';
     this.lastDeliveredTeamField = unit.team;
     this.root.parent = null;
     this.root.setEnabled(false);
@@ -198,7 +188,10 @@ export class FlagController {
     this.onDropped();
   }
 
-  update(deltaSeconds: number, elapsed: number): void {
+  update(_deltaSeconds: number, elapsed: number): void {
+    // A consumed flag is gone for this match: no cloth drift, no timer, no reset. Nothing here can
+    // reactivate it.
+    if (this.status === 'consumed') return;
     // Subtle, lightweight cloth motion: a gentle horizontal sway on the root strip plus a
     // travelling ripple (phased z-rotations) down the chain, and a soft flutter on the free
     // edge. All values are absolute so nothing accumulates, and there is no mesh deformation.
@@ -213,28 +206,6 @@ export class FlagController {
     seg3.rotation.z = Math.sin(ripple - 1.9) * 0.095;
     seg3.scaling.y = 1 + Math.sin(elapsed * 5.5) * 0.03;
     this.tail.rotation.z = -0.34 + Math.sin(ripple - 2.6) * 0.1;
-    if (this.status !== 'resetting') return;
-    this.resetTimer -= deltaSeconds;
-    if (this.resetTimer <= 0) this.resetToCenter();
-  }
-
-  resetToCenter(): void {
-    if (this.carrier) this.carrier.carryingFlag = false;
-    this.carrier = null;
-    this.status = 'neutral';
-    this.lastDeliveredTeamField = null;
-    this.root.parent = null;
-    this.root.position.set(
-      CENTRAL_TOWER.safeFlagDrops.towerTop.x,
-      CENTRAL_TOWER.safeFlagDrops.towerTop.y,
-      CENTRAL_TOWER.safeFlagDrops.towerTop.z,
-    );
-    this.root.scaling.setAll(1);
-    this.root.setEnabled(true);
-    this.setClothMaterial(this.materials.objectiveCloth);
-    this.tail.material = this.materials.objectiveCloth;
-    this.carrierRing.parent = null;
-    this.carrierRing.setEnabled(false);
   }
 
   private setClothMaterial(material: Mesh['material']): void {

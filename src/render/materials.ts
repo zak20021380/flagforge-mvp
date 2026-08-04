@@ -119,8 +119,8 @@ export class MaterialLibrary {
     this.ladderWoodDark = pbr('mat-ladder-wood-dark', Color3.FromHexString('#5a3418'), 0.88);
     this.ladderWoodDark.albedoTexture = createWoodGrainTexture(scene, 'tex-ladder-wood-dark', 0.2);
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
-    this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
-    this.metal = pbr('mat-metal', Color3.FromHexString('#687478'), 0.34, 0.72);
+    this.wood = pbr('mat-wood', Color3.FromHexString('#7d4c32'), 0.86);
+    this.metal = pbr('mat-metal', Color3.FromHexString('#7a8690'), 0.28, 0.78);
     this.gold = pbr('mat-gold', Color3.FromHexString('#dca83c'), 0.28, 0.8);
     this.water = pbr('mat-water', Color3.FromHexString('#2a7185'), 0.25, 0.05);
     this.water.alpha = 0.92;
@@ -130,15 +130,15 @@ export class MaterialLibrary {
     this.foliageDeep = pbr('mat-foliage-deep', Color3.FromHexString('#193c2a'));
     this.foliageDark = pbr('mat-foliage-dark', Color3.FromHexString('#20452f'));
     this.trunk = pbr('mat-trunk', Color3.FromHexString('#59402f'));
-    this.blue = pbr('mat-blue', Color3.FromHexString('#1f86f2'), 0.52, 0.08);
-    this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#0e438f'), 0.58, 0.12);
-    this.red = pbr('mat-red', Color3.FromHexString('#ee3f4b'), 0.52, 0.08);
-    this.redDark = pbr('mat-red-dark', Color3.FromHexString('#8a1b29'), 0.58, 0.12);
-    this.skin = pbr('mat-skin', Color3.FromHexString('#d69a72'));
-    this.leather = pbr('mat-leather', Color3.FromHexString('#563321'), 0.93);
-    this.cloth = pbr('mat-cloth', Color3.FromHexString('#d7c5a3'), 0.95);
-    this.black = pbr('mat-black', Color3.FromHexString('#17202a'), 0.75, 0.12);
-    this.white = pbr('mat-white', Color3.FromHexString('#dfe8e5'), 0.9);
+    this.blue = pbr('mat-blue', Color3.FromHexString('#2b9aff'), 0.45, 0.10);
+    this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#1456a8'), 0.50, 0.14);
+    this.red = pbr('mat-red', Color3.FromHexString('#ff4d58'), 0.45, 0.10);
+    this.redDark = pbr('mat-red-dark', Color3.FromHexString('#a82438'), 0.50, 0.14);
+    this.skin = pbr('mat-skin', Color3.FromHexString('#e0a882'), 0.82);
+    this.leather = pbr('mat-leather', Color3.FromHexString('#6b4030'), 0.88);
+    this.cloth = pbr('mat-cloth', Color3.FromHexString('#dccba8'), 0.92);
+    this.black = pbr('mat-black', Color3.FromHexString('#1e2830'), 0.70, 0.14);
+    this.white = pbr('mat-white', Color3.FromHexString('#e8f0ec'), 0.85);
 
     this.glowBlue = new StandardMaterial('mat-glow-blue', scene);
     this.glowBlue.diffuseColor = Color3.FromHexString('#239cff');

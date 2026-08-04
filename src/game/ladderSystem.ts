@@ -16,6 +16,7 @@ interface ActiveClimb extends QueueEntry {
   pathIndex: number;
   climbDistance: number;
   dismountProgress: number;
+  exitClearance: number;
 }
 
 interface LadderRuntime {
@@ -27,17 +28,20 @@ interface LadderRuntime {
   readonly topQueue: readonly Vector3[];
   readonly queue: QueueEntry[];
   active: ActiveClimb | null;
+  activeDirection: ClimbDirection | null;
 }
 
 const point = (value: { readonly x: number; readonly y: number; readonly z: number }): Vector3 => (
   new Vector3(value.x, value.y, value.z)
 );
 
+const EXIT_CLEARANCE_SECONDS = 0.35;
+
 export class LadderSystem {
   private readonly ladders: Record<LadderId, LadderRuntime>;
   private readonly ladderList: readonly LadderRuntime[];
-  /** Units standing on the tower top, tracked so the shared occupancy cap stays exact. */
   private readonly towerTopUnits = new Set<UnitEntity>();
+  private readonly unitLadderAssignment = new Map<UnitEntity, LadderId>();
 
   constructor() {
     this.ladders = {
@@ -51,9 +55,13 @@ export class LadderSystem {
     for (const ladder of this.ladderList) {
       for (let index = ladder.queue.length - 1; index >= 0; index -= 1) {
         const unit = ladder.queue[index].unit;
-        if (!unit.active || unit.state === 'dead') ladder.queue.splice(index, 1);
+        if (!unit.active || unit.state === 'dead') {
+          this.unitLadderAssignment.delete(unit);
+          ladder.queue.splice(index, 1);
+        }
       }
       if (ladder.active && (!ladder.active.unit.active || ladder.active.unit.state === 'dead')) {
+        this.unitLadderAssignment.delete(ladder.active.unit);
         this.cancelActive(ladder, ladder.active.unit, true);
       }
     }
@@ -65,13 +73,7 @@ export class LadderSystem {
   }
 
   isRegistered(unit: UnitEntity): boolean {
-    for (const ladder of this.ladderList) {
-      if (ladder.active?.unit === unit) return true;
-      for (const entry of ladder.queue) {
-        if (entry.unit === unit) return true;
-      }
-    }
-    return false;
+    return this.unitLadderAssignment.has(unit);
   }
 
   requestIfNeeded(unit: UnitEntity, goal: Vector3): boolean {
@@ -81,31 +83,25 @@ export class LadderSystem {
     if (goalIsTop === unitIsTop) return false;
     if (unit.navigationArea !== 'ground' && unit.navigationArea !== 'towerTop') return true;
 
-    const ladder = this.ladders[this.preferredLadder(unit.team)];
-    // Queueing walks a straight line to the tower base, so a unit with a river still in front of it
-    // keeps normal movement and queues after it has crossed a bridge. Descents are never held back:
-    // the tower top is on no river's bank, and gating it would strand units up there.
+    const ladderId = this.preferredLadder(unit.team);
+    const ladder = this.ladders[ladderId];
     if (!unitIsTop && blocksApproach(unit, ladder.groundQueue[0].z)) return false;
 
     if (unitIsTop) {
-      // A unit already on the tower may always descend: it leaves the tower and frees a slot.
       if (unit.carryingFlag) {
-        // The flag carrier owns its ladder while on the tower: every queued or mid-climb ascender
-        // falls back to the ground and the carrier takes the head of the queue, so nothing blocks
-        // its exit and it starts the return run immediately.
         this.cedeLadderToCarrier(ladder);
         this.insertDescending(ladder, unit, true);
       } else {
+        if (ladder.activeDirection === 'ascending') return false;
         this.insertDescending(ladder, unit, false);
       }
     } else {
-      // The tower is reserved for exactly maximumTowerOccupancy units at any time (occupants plus
-      // committed ascenders, both teams combined). Everyone else stays on the ground around the
-      // tower and holds a reserved standoff position instead of queueing at the ladders.
+      if (ladder.activeDirection === 'descending') return false;
       if (this.towerOccupancy() + this.pendingAscenders() >= CENTRAL_TOWER.maximumTowerOccupancy) return false;
       if (ladder.queue.length >= CENTRAL_TOWER.maximumQueuePerLadder) return false;
       ladder.queue.push({ unit, direction: 'ascending' });
     }
+    this.unitLadderAssignment.set(unit, ladderId);
     unit.target = null;
     unit.attackClock = 0;
     unit.attackHitApplied = false;
@@ -140,14 +136,17 @@ export class LadderSystem {
   private cedeLadderToCarrier(ladder: LadderRuntime): void {
     const active = ladder.active;
     if (active && active.direction === 'ascending') {
+      this.unitLadderAssignment.delete(active.unit);
       this.cancelActive(ladder, active.unit, true);
       this.returnToGround(active.unit);
     }
     for (let index = ladder.queue.length - 1; index >= 0; index -= 1) {
       if (ladder.queue[index].direction !== 'ascending') continue;
       const [evicted] = ladder.queue.splice(index, 1);
+      this.unitLadderAssignment.delete(evicted.unit);
       this.returnToGround(evicted.unit);
     }
+    ladder.activeDirection = null;
   }
 
   /** Stop ladder involvement for a unit so normal ground movement resumes next frame. */
@@ -176,7 +175,10 @@ export class LadderSystem {
     ladder.queue.splice(insertAt, 0, { unit, direction: 'descending' });
     while (ladder.queue.length > CENTRAL_TOWER.maximumQueuePerLadder) {
       const evicted = ladder.queue.pop();
-      if (evicted) this.returnToGround(evicted.unit);
+      if (evicted) {
+        this.unitLadderAssignment.delete(evicted.unit);
+        this.returnToGround(evicted.unit);
+      }
     }
   }
 
@@ -199,7 +201,8 @@ export class LadderSystem {
 
       if (queueIndex === 0 && !ladder.active && reached) {
         ladder.queue.shift();
-        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0 };
+        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0, exitClearance: 0 };
+        ladder.activeDirection = entry.direction;
         if (entry.direction === 'descending') this.towerTopUnits.delete(entry.unit);
         unit.navigationArea = ladder.id === 'player' ? 'playerLadder' : 'enemyLadder';
         unit.state = 'climbing';
@@ -210,10 +213,21 @@ export class LadderSystem {
   }
 
   remove(unit: UnitEntity, snapActiveToSafety: boolean): void {
-    for (const ladder of this.ladderList) {
+    const assignedId = this.unitLadderAssignment.get(unit);
+    if (assignedId !== undefined) {
+      const ladder = this.ladders[assignedId];
       const queuedIndex = this.findQueuedIndex(ladder, unit);
       if (queuedIndex >= 0) ladder.queue.splice(queuedIndex, 1);
-      if (ladder.active?.unit === unit) this.cancelActive(ladder, unit, snapActiveToSafety);
+      if (ladder.active?.unit === unit) {
+        this.cancelActive(ladder, unit, snapActiveToSafety);
+      }
+      this.unitLadderAssignment.delete(unit);
+    } else {
+      for (const ladder of this.ladderList) {
+        const queuedIndex = this.findQueuedIndex(ladder, unit);
+        if (queuedIndex >= 0) ladder.queue.splice(queuedIndex, 1);
+        if (ladder.active?.unit === unit) this.cancelActive(ladder, unit, snapActiveToSafety);
+      }
     }
     this.towerTopUnits.delete(unit);
   }
@@ -242,6 +256,7 @@ export class LadderSystem {
       topQueue,
       queue: [],
       active: null,
+      activeDirection: null,
     };
   }
 
@@ -257,25 +272,37 @@ export class LadderSystem {
     const moveStep = CENTRAL_TOWER.climbSpeed * deltaSeconds;
     const reached = this.moveToward(unit, path[active.pathIndex], moveStep, false);
 
+    const climbSegmentStartIdx = active.direction === 'ascending' ? 1 : 1;
+    const climbSegmentEndIdx = active.direction === 'ascending' ? 2 : 2;
+    const isOnClimbSegment = active.pathIndex >= climbSegmentStartIdx && active.pathIndex <= climbSegmentEndIdx;
+
     if (active.direction === 'ascending') {
-      const climbSegmentStart = path[1];
-      const climbSegmentEnd = path[2];
-      const dx = unit.position.x - climbSegmentStart.x;
-      const dy = unit.position.y - climbSegmentStart.y;
-      const dz = unit.position.z - climbSegmentStart.z;
+      const segStart = path[1];
+      const dx = unit.position.x - segStart.x;
+      const dy = unit.position.y - segStart.y;
+      const dz = unit.position.z - segStart.z;
       const distAlongClimb = Math.hypot(dx, dy, dz);
-      const totalClimbLen = Math.hypot(
-        climbSegmentEnd.x - climbSegmentStart.x,
-        climbSegmentEnd.y - climbSegmentStart.y,
-        climbSegmentEnd.z - climbSegmentStart.z,
-      );
       const phase = (distAlongClimb / mountData.rungSpacing) % 1;
-      const isOnClimbSegment = active.pathIndex >= 1 && active.pathIndex <= 2;
       if (isOnClimbSegment) {
         unit.rig.applyClimbCycle(phase, 0.19, unit.age);
       }
     } else {
-      unit.rig.clearInteractionPose();
+      const segStart = path[1];
+      const segEnd = path[0];
+      const dx = unit.position.x - segStart.x;
+      const dy = unit.position.y - segStart.y;
+      const dz = unit.position.z - segStart.z;
+      const totalLen = Math.hypot(
+        segEnd.x - segStart.x,
+        segEnd.y - segStart.y,
+        segEnd.z - segStart.z,
+      );
+      const distFromTop = Math.hypot(dx, dy, dz);
+      const remaining = Math.max(0, totalLen - distFromTop);
+      const phase = (remaining / mountData.rungSpacing) % 1;
+      if (isOnClimbSegment) {
+        unit.rig.applyClimbCycle(phase, 0.19, unit.age);
+      }
     }
 
     if (!reached) return;
@@ -295,14 +322,23 @@ export class LadderSystem {
       unit.target = null;
       unit.targetRefreshClock = 0.04;
       this.towerTopUnits.add(unit);
+      this.unitLadderAssignment.delete(unit);
       ladder.active = null;
+      ladder.activeDirection = null;
     } else {
+      active.exitClearance += deltaSeconds;
+      if (active.exitClearance < EXIT_CLEARANCE_SECONDS) {
+        active.pathIndex = path.length - 1;
+        return;
+      }
       unit.rig.clearInteractionPose();
       unit.navigationArea = 'ground';
       unit.state = 'idle';
       unit.target = null;
       unit.targetRefreshClock = 0.04;
+      this.unitLadderAssignment.delete(unit);
       ladder.active = null;
+      ladder.activeDirection = null;
     }
   }
 
@@ -330,6 +366,7 @@ export class LadderSystem {
     if (snapToSafety) unit.position.copyFrom(ladder.ascentPath[0]);
     unit.navigationArea = 'ground';
     ladder.active = null;
+    ladder.activeDirection = null;
   }
 
   private directionIndex(queue: readonly QueueEntry[], targetIndex: number, direction: ClimbDirection): number {

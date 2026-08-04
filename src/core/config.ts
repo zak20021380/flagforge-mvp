@@ -599,14 +599,24 @@ export const CONFIG = {
     targetRefreshMin: 0.18,
     targetRefreshMax: 0.34,
   },
-  // Display-only tuning for the castle integrity HUD (src/game/castleHealth.ts). Nothing here
-  // feeds gameplay: match outcome still comes from the breach countdown in castleLogic.
+  castle: {
+    maxHp: 3000,
+    damagePerUnitHit: 18,
+    rangerDamageMultiplier: 1.4,
+    ironGuardDamageMultiplier: 1.6,
+    attackRange: 2.2,
+    destructionDurationSeconds: 2.5,
+    assaultSlots: [
+      { x: -3.5, z: 0, label: 'gate-left' },
+      { x: 0, z: 0, label: 'gate-center' },
+      { x: 3.5, z: 0, label: 'gate-right' },
+      { x: -5.3, z: -1.2, label: 'wall-left' },
+      { x: 5.3, z: -1.2, label: 'wall-right' },
+    ],
+  },
   hud: {
     castleIntegrityMax: 1000,
-    // Fraction of full integrity lost per second while the castle gate stays open.
     castleAssaultDrainPerSecond: 0.02,
-    // Assault pressure alone can never take a castle below this fraction; only a breach (the
-    // existing victory condition) drains the rest, down to zero with its own countdown.
     castleAssaultFloorRatio: 0.4,
   },
 } as const;

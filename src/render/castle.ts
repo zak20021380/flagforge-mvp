@@ -21,6 +21,18 @@ import { MaterialLibrary } from './materials';
 
 type BoxOptions = { receiveShadow?: boolean };
 
+export type CastleDamageStage = 'intact' | 'light' | 'moderate' | 'heavy' | 'destroyed';
+
+interface DamagePiece {
+  readonly mesh: Mesh;
+  readonly originalParent: TransformNode;
+  readonly originalPosition: Vector3;
+  readonly originalRotation: Vector3;
+  fallVelocity: number;
+  rotationSpeed: number;
+  fallen: boolean;
+}
+
 export class CastleVisual {
   readonly team: Team;
   readonly root: TransformNode;
@@ -34,6 +46,11 @@ export class CastleVisual {
   private readonly baseX: number;
   private readonly baseZ: number;
   private readonly facing: number;
+  private damageStage: CastleDamageStage = 'intact';
+  private readonly damageMeshes: Mesh[] = [];
+  private readonly destructionPieces: DamagePiece[] = [];
+  private destructionActive = false;
+  private shakeOffset = new Vector3(0, 0, 0);
 
   constructor(scene: Scene, materials: MaterialLibrary, team: Team) {
     this.team = team;
@@ -173,14 +190,140 @@ export class CastleVisual {
     this.breachGlow.setEnabled(breached);
   }
 
+  setDamageStage(stage: CastleDamageStage): void {
+    if (stage === this.damageStage) return;
+    this.damageStage = stage;
+    this.applyDamageVisuals(stage);
+  }
+
+  triggerDestruction(): void {
+    if (this.destructionActive) return;
+    this.destructionActive = true;
+    this.prepareDestructionPieces();
+  }
+
+  updateDestruction(deltaSeconds: number, progress: number): void {
+    if (!this.destructionActive) return;
+    for (const piece of this.destructionPieces) {
+      if (piece.fallen) continue;
+      piece.mesh.position.y -= piece.fallVelocity * deltaSeconds;
+      piece.mesh.rotation.x += piece.rotationSpeed * deltaSeconds;
+      piece.mesh.rotation.z += piece.rotationSpeed * 0.7 * deltaSeconds;
+      if (piece.mesh.position.y < -2) piece.fallen = true;
+    }
+    if (progress > 0.3) {
+      this.gate.position.y = Math.max(0, this.gate.position.y - deltaSeconds * 4);
+    }
+  }
+
+  applyShake(intensity: number): void {
+    if (intensity <= 0.01) {
+      this.shakeOffset.set(0, 0, 0);
+      return;
+    }
+    this.shakeOffset.set(
+      (Math.random() - 0.5) * intensity * 0.15,
+      (Math.random() - 0.5) * intensity * 0.08,
+      (Math.random() - 0.5) * intensity * 0.15,
+    );
+    this.root.position.x = this.baseX + this.shakeOffset.x;
+    this.root.position.y = this.shakeOffset.y;
+    this.root.position.z = this.baseZ + this.shakeOffset.z;
+  }
+
   update(deltaSeconds: number, elapsed: number): void {
     const speed = 1.8;
     this.gateProgress += (this.gateTarget - this.gateProgress) * Math.min(1, deltaSeconds * speed);
     const eased = this.gateProgress * this.gateProgress * (3 - 2 * this.gateProgress);
-    this.gate.position.y = eased * 5.35;
+    if (!this.destructionActive) {
+      this.gate.position.y = eased * 5.35;
+    }
     if (this.breachGlow.isEnabled()) {
       this.breachGlow.scaling.setAll(1 + Math.sin(elapsed * 5) * 0.05);
       this.breachGlow.rotation.z += deltaSeconds * 0.65;
+    }
+  }
+
+  private applyDamageVisuals(stage: CastleDamageStage): void {
+    for (const mesh of this.damageMeshes) mesh.setEnabled(false);
+    this.damageMeshes.length = 0;
+    if (stage === 'intact') return;
+
+    const childMeshes = this.root.getChildMeshes().filter((m): m is Mesh => m instanceof Mesh);
+    const crackTargets = childMeshes.filter((m) =>
+      m.name.includes('wall') || m.name.includes('keep') || m.name.includes('gate-pillar'),
+    );
+
+    if (stage === 'light') {
+      for (let i = 0; i < Math.min(3, crackTargets.length); i += 1) {
+        const target = crackTargets[i];
+        if (!target) break;
+        const crack = MeshBuilder.CreateBox(`${this.team}-crack-${i}`, { width: 0.4, height: 0.08, depth: 0.15 }, this.root.getScene());
+        crack.parent = this.root;
+        crack.position = new Vector3(
+          target.position.x + (Math.random() - 0.5) * 2,
+          target.position.y + (Math.random() - 0.5),
+          target.position.z + this.facing * 1.2,
+        );
+        crack.material = target.material;
+        crack.receiveShadows = false;
+        this.damageMeshes.push(crack);
+      }
+    } else if (stage === 'moderate') {
+      for (let i = 0; i < Math.min(5, crackTargets.length); i += 1) {
+        const target = crackTargets[i];
+        if (!target) break;
+        const crack = MeshBuilder.CreateBox(`${this.team}-crack-mod-${i}`, { width: 0.6, height: 0.12, depth: 0.2 }, this.root.getScene());
+        crack.parent = this.root;
+        crack.position = new Vector3(
+          target.position.x + (Math.random() - 0.5) * 2.5,
+          target.position.y + (Math.random() - 0.5) * 1.5,
+          target.position.z + this.facing * 1.3,
+        );
+        crack.rotation.z = (Math.random() - 0.5) * 0.5;
+        crack.material = target.material;
+        crack.receiveShadows = false;
+        this.damageMeshes.push(crack);
+      }
+    } else if (stage === 'heavy') {
+      for (let i = 0; i < Math.min(7, crackTargets.length); i += 1) {
+        const target = crackTargets[i];
+        if (!target) break;
+        const crack = MeshBuilder.CreateBox(`${this.team}-crack-heavy-${i}`, { width: 0.9, height: 0.18, depth: 0.28 }, this.root.getScene());
+        crack.parent = this.root;
+        crack.position = new Vector3(
+          target.position.x + (Math.random() - 0.5) * 3,
+          target.position.y + (Math.random() - 0.5) * 2,
+          target.position.z + this.facing * 1.4,
+        );
+        crack.rotation.z = (Math.random() - 0.5) * 0.8;
+        crack.rotation.y = (Math.random() - 0.5) * 0.3;
+        crack.material = target.material;
+        crack.receiveShadows = false;
+        this.damageMeshes.push(crack);
+      }
+    }
+  }
+
+  private prepareDestructionPieces(): void {
+    const childMeshes = this.root.getChildMeshes().filter((m): m is Mesh => m instanceof Mesh);
+    const candidates = childMeshes.filter((m) =>
+      m.name.includes('battlement') || m.name.includes('merlon') || m.name.includes('gate-plank'),
+    );
+    const selected = candidates.slice(0, 12);
+    for (const mesh of selected) {
+      const absPos = mesh.getAbsolutePosition();
+      this.destructionPieces.push({
+        mesh,
+        originalParent: mesh.parent as TransformNode,
+        originalPosition: mesh.position.clone(),
+        originalRotation: mesh.rotation.clone(),
+        fallVelocity: 2 + Math.random() * 3,
+        rotationSpeed: (Math.random() - 0.5) * 4,
+        fallen: false,
+      });
+      mesh.parent = null;
+      mesh.position.copyFrom(absPos);
     }
   }
 }

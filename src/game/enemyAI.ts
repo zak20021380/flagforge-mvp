@@ -88,8 +88,10 @@ export class EnemyAI {
    * and only while the flag is not a live field objective again (dropped, or reset to the tower).
    */
   private canAssaultCastle(team: Team): boolean {
+    if (this.castles.getHealth(oppositeTeam(team)).destroyed) return false;
     if (!this.castles.isAttackWindow(team)) return false;
     if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
+    if (this.castles.isAssaultActive(team)) return true;
     return !this.flag.isFieldObjectiveActive();
   }
 }

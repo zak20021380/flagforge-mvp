@@ -187,10 +187,24 @@ export class UnitManager {
   }
 
   private updateAliveUnit(unit: UnitEntity, deltaSeconds: number, elapsed: number): void {
-    if (this.canAssaultCastle(unit.team) && this.castles.tryInfiltrate(unit)) {
+    const enemyTeam = unit.team === 'blue' ? 'red' : 'blue';
+    const enemyHealth = this.castles.getHealth(enemyTeam);
+    if (enemyHealth.destroyed) {
+      unit.state = 'idle';
+      unit.target = null;
+      unit.attackClock = 0;
+      unit.rig.updateAnimation('idle', elapsed, 0, 0, 0, false);
+      return;
+    }
+
+    if (this.canAssaultCastle(unit.team) && !this.castles.isAssaultActive(unit.team) && this.castles.tryInfiltrate(unit)) {
       this.engagements.release(unit);
       unit.state = 'idle';
       unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+      return;
+    }
+
+    if (this.castles.isAssaultActive(unit.team) && this.tryAttackCastle(unit, enemyTeam, deltaSeconds, elapsed)) {
       return;
     }
 
@@ -312,9 +326,17 @@ export class UnitManager {
       return;
     }
 
-    // While the unit's bridge is contested its pursuit pauses: keep the strategic target and let the
-    // bridge system pick the nearest enemy on the deck. Without a target yet, adopt the bridge one so
-    // the unit fights instead of standing idle at the frontline.
+    const enemyTeam = unit.team === 'blue' ? 'red' : 'blue';
+    if (this.castles.getHealth(enemyTeam).destroyed) {
+      unit.target = null;
+      return;
+    }
+
+    if (this.castles.isAssaultActive(unit.team)) {
+      unit.target = null;
+      return;
+    }
+
     if (this.bridges.isInCombat(unit)) {
       if (!unit.target || !unit.target.active || unit.target.state === 'dead') {
         unit.target = this.bridges.contestedTarget(unit);
@@ -386,8 +408,10 @@ export class UnitManager {
    * checkmate push is never interrupted. While the gate is closed every unit falls back to the flag.
    */
   private canAssaultCastle(team: Team): boolean {
+    if (this.castles.getHealth(oppositeTeam(team)).destroyed) return false;
     if (!this.castles.isAttackWindow(team)) return false;
     if (this.castles.getBreachedTeam() === oppositeTeam(team)) return true;
+    if (this.castles.isAssaultActive(team)) return true;
     return !this.flag.isFieldObjectiveActive();
   }
 
@@ -458,7 +482,16 @@ export class UnitManager {
   }
 
   private getAttackRoutePoint(unit: UnitEntity): Vector3 {
-    const enemyCastle = this.castles.getCastle(unit.team === 'blue' ? 'red' : 'blue');
+    const enemyTeam = unit.team === 'blue' ? 'red' : 'blue';
+    const enemyCastle = this.castles.getCastle(enemyTeam);
+    const enemyHealth = this.castles.getHealth(enemyTeam);
+    if (enemyHealth.destroyed) return unit.position;
+
+    if (this.castles.isAssaultActive(unit.team)) {
+      if (unit.kind === 'ranger') return this.castleLadders.getRangerSupportPoint(unit);
+      return this.castles.getAssaultSlot(unit);
+    }
+
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue') {
       if (unit.kind === 'ranger') return this.castleLadders.getRangerSupportPoint(unit);
@@ -890,6 +923,38 @@ export class UnitManager {
     this.ladders.remove(unit, true);
     this.castleLadders.remove(unit, true);
     this.audio.play('death');
+  }
+
+  private tryAttackCastle(unit: UnitEntity, enemyTeam: Team, deltaSeconds: number, elapsed: number): boolean {
+    if (unit.carryingFlag || unit.navigationArea === 'enemyWallTop') return false;
+    const enemyCastle = this.castles.getCastle(enemyTeam);
+    const slot = this.castles.getAssaultSlot(unit);
+    const distSquared = squaredDistanceXZ(unit.position, slot);
+    const attackRange = CONFIG.castle.attackRange;
+    if (distSquared <= attackRange * attackRange) {
+      unit.state = 'attacking';
+      this.faceUnit(unit, enemyCastle.gatePoint, deltaSeconds * 1.8);
+      unit.attackClock += deltaSeconds;
+      if (!unit.attackHitApplied && unit.attackClock >= unit.stats.windup) {
+        unit.attackHitApplied = true;
+        let damage = CONFIG.castle.damagePerUnitHit;
+        if (unit.kind === 'ranger') damage *= CONFIG.castle.rangerDamageMultiplier;
+        if (unit.kind === 'ironGuard') damage *= CONFIG.castle.ironGuardDamageMultiplier;
+        const strong = unit.kind === 'ironGuard' || unit.kind === 'vanguard';
+        const hitY = enemyCastle.gatePoint.y + 2.5 + Math.random() * 3;
+        const hitPos = new Vector3(slot.x, hitY, enemyCastle.gatePoint.z);
+        this.castles.applyCastleDamage(enemyTeam, damage, hitPos, strong);
+        this.effects.castleHit(hitPos);
+        this.audio.play('swing');
+      }
+      if (unit.attackClock >= unit.stats.attackCooldown) {
+        unit.attackClock = 0;
+        unit.attackHitApplied = false;
+      }
+      unit.rig.updateAnimation('attacking', elapsed, Math.min(1, unit.attackClock / unit.stats.attackCooldown), 0, 0, false);
+      return true;
+    }
+    return false;
   }
 
   private canAttackTarget(unit: UnitEntity, target: UnitEntity): boolean {

@@ -1,7 +1,9 @@
+import { Vector3 } from '@babylonjs/core';
 import { CONFIG } from '../core/config';
 import { oppositeTeam } from '../core/math';
 import type { Team } from '../core/types';
 import type { CastleVisual } from '../render/castle';
+import { CastleHealthModel } from './castleHealth';
 import type { FlagController } from './flag';
 import type { UnitEntity } from './unit';
 
@@ -9,7 +11,6 @@ interface GateReturnState {
   open: boolean;
   closeTimer: number;
   openRemaining: number;
-  /** Distance from the carrier to the gate on the previous frame; -1 before the first measurement. */
   prevApproachDistance: number;
 }
 
@@ -18,10 +19,15 @@ export class CastleLogic {
   private breachedTeam: Team | null = null;
   private breachTimer = 0;
   private winner: Team | null = null;
+  private assaultActive: Record<Team, boolean> = { blue: false, red: false };
   private readonly gateReturn: Record<Team, GateReturnState> = {
     blue: { open: false, closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
     red: { open: false, closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
   };
+  readonly blueHealth: CastleHealthModel;
+  readonly redHealth: CastleHealthModel;
+  private destructionPending: Team | null = null;
+  private destructionComplete = false;
 
   constructor(
     private readonly blueCastle: CastleVisual,
@@ -30,7 +36,10 @@ export class CastleLogic {
     private readonly onGateOpened: (castleTeam: Team) => void,
     private readonly onBreach: (attacker: Team, defender: Team) => void,
     private readonly onVictory: (winner: Team) => void,
-  ) {}
+  ) {
+    this.blueHealth = new CastleHealthModel();
+    this.redHealth = new CastleHealthModel();
+  }
 
   /**
    * Single shared gate condition, based only on the authoritative flag carrier and flag state. It
@@ -86,8 +95,41 @@ export class CastleLogic {
    * carrier-return condition in updateGateReturn.
    */
   grantAssaultWindow(attacker: Team): void {
-    if (this.winner || this.breachedTeam === oppositeTeam(attacker)) return;
+    if (this.winner || this.destructionComplete) return;
     this.attackWindow[attacker] = CONFIG.match.gateOpenSeconds;
+    this.assaultActive[attacker] = true;
+  }
+
+  isAssaultActive(team: Team): boolean {
+    return this.assaultActive[team];
+  }
+
+  getHealth(team: Team): CastleHealthModel {
+    return team === 'blue' ? this.blueHealth : this.redHealth;
+  }
+
+  applyCastleDamage(defender: Team, amount: number, hitPoint: Vector3, strong: boolean): void {
+    if (this.winner || this.destructionComplete) return;
+    const health = this.getHealth(defender);
+    if (health.destroyed) return;
+    health.applyDamage(amount, hitPoint.x, hitPoint.y, hitPoint.z, strong);
+    if (health.hp <= 0 && !health.destroyed) {
+      health.triggerDestruction();
+      this.destructionPending = defender;
+    }
+  }
+
+  getAssaultSlot(unit: UnitEntity): Vector3 {
+    const enemy = unit.team === 'blue' ? 'red' : 'blue';
+    const castle = this.getCastle(enemy);
+    const slots = CONFIG.castle.assaultSlots;
+    const slotIndex = unit.id % slots.length;
+    const slot = slots[slotIndex];
+    return new Vector3(
+      castle.root.position.x + slot.x,
+      0.16,
+      castle.gatePoint.z + slot.z * (unit.team === 'blue' ? -1 : 1),
+    );
   }
 
   isAttackWindow(team: Team): boolean {
@@ -205,7 +247,19 @@ export class CastleLogic {
 
     this.updateGateReturn(deltaSeconds);
 
-    if (this.breachedTeam && !this.winner) {
+    this.blueHealth.update(deltaSeconds);
+    this.redHealth.update(deltaSeconds);
+
+    if (this.destructionPending && !this.destructionComplete) {
+      const health = this.getHealth(this.destructionPending);
+      if (health.destructionProgress >= 1) {
+        this.destructionComplete = true;
+        this.winner = oppositeTeam(this.destructionPending);
+        this.onVictory(this.winner);
+      }
+    }
+
+    if (this.breachedTeam && !this.winner && !this.destructionPending) {
       this.breachTimer -= deltaSeconds;
       if (this.breachTimer <= 0) {
         this.winner = oppositeTeam(this.breachedTeam);

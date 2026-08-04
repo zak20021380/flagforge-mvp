@@ -1,20 +1,25 @@
 import { CONFIG } from '../core/config';
 
-/**
- * Display-only castle integrity for the health HUD. Purely cosmetic — no gameplay system reads
- * these values, and match outcome is still decided entirely by the breach countdown in
- * CastleLogic. The two derived rules keep the bar honest without adding mechanics:
- *
- *  - While the enemy gate is open (underAssault) the castle chips slowly, but assault pressure
- *    alone can never take it below the assault floor.
- *  - A breach drains the remaining integrity to zero exactly as the victory countdown expires,
- *    so the bar bottoms out at the same moment the match actually ends.
- */
+export type CastleDamageStage = 'intact' | 'light' | 'moderate' | 'heavy' | 'destroyed';
+
+export interface CastleHitReaction {
+  x: number;
+  y: number;
+  z: number;
+  strong: boolean;
+  age: number;
+}
+
 export class CastleHealthModel {
   hp: number;
   readonly maxHp: number;
+  stage: CastleDamageStage = 'intact';
+  destroyed = false;
+  destructionTimer = 0;
+  readonly hitReactions: CastleHitReaction[] = [];
+  shakeIntensity = 0;
 
-  constructor(maxHp: number = CONFIG.hud.castleIntegrityMax) {
+  constructor(maxHp: number = CONFIG.castle.maxHp) {
     this.maxHp = maxHp;
     this.hp = maxHp;
   }
@@ -23,14 +28,46 @@ export class CastleHealthModel {
     return this.hp / this.maxHp;
   }
 
-  update(deltaSeconds: number, underAssault: boolean, breached: boolean, breachCountdownSeconds: number): void {
-    if (breached) {
-      const drained = Math.min(this.hp, this.maxHp * (breachCountdownSeconds / CONFIG.match.breachCountdownSeconds));
-      this.hp = Math.max(0, drained);
-      return;
+  applyDamage(amount: number, hitX: number, hitY: number, hitZ: number, strong: boolean): void {
+    if (this.destroyed) return;
+    this.hp = Math.max(0, this.hp - amount);
+    this.updateStage();
+    if (this.hitReactions.length < 6) {
+      this.hitReactions.push({ x: hitX, y: hitY, z: hitZ, strong, age: 0 });
     }
-    if (!underAssault) return;
-    const floor = this.maxHp * CONFIG.hud.castleAssaultFloorRatio;
-    this.hp = Math.max(floor, this.hp - this.maxHp * CONFIG.hud.castleAssaultDrainPerSecond * deltaSeconds);
+    if (strong) this.shakeIntensity = Math.min(1, this.shakeIntensity + 0.35);
+  }
+
+  update(deltaSeconds: number): void {
+    this.shakeIntensity = Math.max(0, this.shakeIntensity - deltaSeconds * 3.2);
+    for (let i = this.hitReactions.length - 1; i >= 0; i -= 1) {
+      this.hitReactions[i].age += deltaSeconds;
+      if (this.hitReactions[i].age > 0.4) this.hitReactions.splice(i, 1);
+    }
+    if (this.destroyed) {
+      this.destructionTimer += deltaSeconds;
+    }
+  }
+
+  triggerDestruction(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.hp = 0;
+    this.stage = 'destroyed';
+    this.destructionTimer = 0;
+  }
+
+  get destructionProgress(): number {
+    if (!this.destroyed) return 0;
+    return Math.min(1, this.destructionTimer / CONFIG.castle.destructionDurationSeconds);
+  }
+
+  private updateStage(): void {
+    const r = this.ratio;
+    if (r > 0.75) this.stage = 'intact';
+    else if (r > 0.50) this.stage = 'light';
+    else if (r > 0.25) this.stage = 'moderate';
+    else if (r > 0) this.stage = 'heavy';
+    else this.stage = 'destroyed';
   }
 }

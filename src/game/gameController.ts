@@ -282,21 +282,42 @@ export class GameController {
   }
 
   private updateCastleHealth(deltaSeconds: number): void {
-    const breachedTeam = this.castles.getBreachedTeam();
-    const breachCountdown = this.castles.getBreachCountdown();
-    // The blue castle is under assault while red holds an attack window; the red castle while blue does.
-    this.playerCastleHealth.update(
-      deltaSeconds,
-      this.castles.getAttackWindowRemaining('red') > 0,
-      breachedTeam === 'blue',
-      breachCountdown,
-    );
-    this.enemyCastleHealth.update(
-      deltaSeconds,
-      this.castles.getAttackWindowRemaining('blue') > 0,
-      breachedTeam === 'red',
-      breachCountdown,
-    );
+    const playerHealth = this.castles.getHealth('blue');
+    const enemyHealth = this.castles.getHealth('red');
+
+    this.arena.blueCastle.setDamageStage(playerHealth.stage);
+    this.arena.redCastle.setDamageStage(enemyHealth.stage);
+
+    if (enemyHealth.destroyed) {
+      this.arena.redCastle.triggerDestruction();
+      this.arena.redCastle.updateDestruction(deltaSeconds, enemyHealth.destructionProgress);
+    }
+    if (playerHealth.destroyed) {
+      this.arena.blueCastle.triggerDestruction();
+      this.arena.blueCastle.updateDestruction(deltaSeconds, playerHealth.destructionProgress);
+    }
+
+    for (const reaction of enemyHealth.hitReactions) {
+      if (reaction.age < 0.05) this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+    }
+    for (const reaction of playerHealth.hitReactions) {
+      if (reaction.age < 0.05) this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+    }
+
+    this.arena.blueCastle.applyShake(playerHealth.shakeIntensity);
+    this.arena.redCastle.applyShake(enemyHealth.shakeIntensity);
+
+    if (enemyHealth.destroyed && enemyHealth.destructionProgress > 0.4 && enemyHealth.destructionProgress < 0.45) {
+      this.effects.castleDebris(this.arena.redCastle.gatePoint);
+    }
+    if (playerHealth.destroyed && playerHealth.destructionProgress > 0.4 && playerHealth.destructionProgress < 0.45) {
+      this.effects.castleDebris(this.arena.blueCastle.gatePoint);
+    }
+
+    (this.playerCastleHealth as { hp: number; maxHp: number }).hp = playerHealth.hp;
+    (this.playerCastleHealth as { hp: number; maxHp: number }).maxHp = playerHealth.maxHp;
+    (this.enemyCastleHealth as { hp: number; maxHp: number }).hp = enemyHealth.hp;
+    (this.enemyCastleHealth as { hp: number; maxHp: number }).maxHp = enemyHealth.maxHp;
   }
 
   private castleStateFor(team: Team): CastleState {

@@ -13,6 +13,12 @@ export class UnitRig {
   readonly root: TransformNode;
   readonly flagSocket: TransformNode;
   readonly shadow: Mesh;
+  /**
+   * True while a scripted interaction (the central-tower ladder mount) owns the limb pose.
+   * updateAnimation skips the walk/run cycle in this mode so the scripted pose is never
+   * overwritten, and only applies the gentle idle bob on top.
+   */
+  interactionPoseActive = false;
   private readonly visualRoot: TransformNode;
   private readonly torso: TransformNode;
   private readonly head: TransformNode;
@@ -123,12 +129,45 @@ export class UnitRig {
     this.setHealthRatio(1);
   }
 
+  /**
+   * Scripted ladder-mount pose, blended in by progress (0 = neutral idle, 1 = fully mounted):
+   * the torso leans onto the ladder, one hand reaches up to grip the first rung overhead, the
+   * other stays low on the rail, one leg steps up onto the rung and the other braced leg trails.
+   * Everything is written absolutely each frame, so a single call per frame owns the pose and no
+   * reset ordering matters afterward.
+   */
+  applyMountPose(progress: number, lean: number, elapsed: number): void {
+    this.interactionPoseActive = true;
+    const p = Math.max(0, Math.min(1, progress));
+    const settle = p * p * (3 - 2 * p);
+    const sway = Math.sin(elapsed * 9) * (1 - settle) * 0.04;
+    this.torso.rotation.x = -lean * p;
+    this.torso.rotation.z = sway * 0.4;
+    // Reaching arm climbs overhead; the low arm folds onto the rail beside the hip.
+    this.leftArm.rotation.x = -0.2 - (1.62 * p);
+    this.leftArm.rotation.z = -0.3 * p;
+    this.rightArm.rotation.x = -0.08 - (0.42 * p);
+    this.rightArm.rotation.z = 0.18 * p;
+    // Lead leg steps up onto the first rung; the trailing leg pushes off mid-stride and settles.
+    this.leftLeg.rotation.x = -0.2 - (0.95 * p);
+    this.rightLeg.rotation.x = (0.55 - 0.35 * p);
+    this.head.rotation.x = -(0.12 + 0.14 * p);
+    this.head.rotation.y = sway;
+    this.weaponRoot.rotation.z = 0.22 * p;
+    this.shieldRoot.rotation.x = 0.15 * p;
+  }
+
+  /** Release the scripted-pose lock so walk/run and idle animation drive the limbs again. */
+  clearInteractionPose(): void {
+    this.interactionPoseActive = false;
+  }
+
   updateAnimation(state: UnitState, elapsed: number, attackProgress: number, hitProgress: number, deathProgress: number, carryingFlag: boolean): void {
     const idleBob = Math.sin(elapsed * 3.4) * 0.035;
     this.torso.position.y = 1.35 + idleBob;
     this.head.rotation.y = Math.sin(elapsed * 1.5) * 0.04;
 
-    if (state === 'moving' || state === 'climbing') {
+    if ((state === 'moving' || state === 'climbing') && !this.interactionPoseActive) {
       const speed = this.kind === 'raider' ? 10.5 : this.kind === 'ironGuard' ? 6.8 : 8.5;
       const swing = Math.sin(elapsed * speed);
       const legArc = state === 'climbing' ? 0.48 : 0.66;
@@ -139,7 +178,7 @@ export class UnitRig {
       this.rightArm.rotation.x = swing * armArc;
       this.visualRoot.position.y = Math.abs(Math.sin(elapsed * speed)) * (state === 'climbing' ? 0.035 : 0.07);
       this.torso.rotation.z = Math.sin(elapsed * speed * 0.5) * (state === 'climbing' ? 0.018 : 0.035);
-    } else {
+    } else if (!this.interactionPoseActive) {
       this.leftLeg.rotation.x *= 0.75;
       this.rightLeg.rotation.x *= 0.75;
       this.leftArm.rotation.x *= 0.75;

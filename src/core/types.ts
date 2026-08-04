@@ -3,6 +3,13 @@ import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 export type Team = 'blue' | 'red';
 export type UnitKind = 'vanguard' | 'ranger' | 'raider' | 'ironGuard';
 export type UnitState = 'idle' | 'moving' | 'queued' | 'climbing' | 'falling' | 'attacking' | 'hit' | 'dead';
+/**
+ * Central-tower ladder mount sequence (src/game/ladderSystem.ts): a queued ascender walks to the
+ * ladder front (approaching), swings onto the centreline and turns to face the rungs (aligning),
+ * plants one hand and one foot on the first rung (mounting), then holds at the base, posed and
+ * ready for the rung-by-rung climb (readyToClimb). Null when the unit is not in the sequence.
+ */
+export type LadderMountState = 'approaching' | 'aligning' | 'mounting' | 'readyToClimb';
 /** Bridge traffic state, shared by every team and unit type (see src/game/bridgeTraffic.ts). */
 export type BridgeState = 'none' | 'approaching' | 'queued' | 'entering' | 'crossing' | 'exiting' | 'cleared';
 export type NavigationArea =

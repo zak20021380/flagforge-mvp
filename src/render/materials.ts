@@ -1,5 +1,38 @@
-import { Color3, PBRMaterial, Scene, StandardMaterial } from '@babylonjs/core';
+import { Color3, DynamicTexture, PBRMaterial, Scene, StandardMaterial, Texture } from '@babylonjs/core';
 import type { Team } from '../core/types';
+
+/**
+ * Small tiling wood-grain albedo map, drawn once per material at build time. It is deliberately
+ * low-contrast: the ladder silhouette has to come from geometry, and this only stops the timber
+ * from reading as a flat painted strip. `strength` is the darkest grain-line alpha.
+ */
+function createWoodGrainTexture(scene: Scene, name: string, strength: number): DynamicTexture {
+  const size = 128;
+  const texture = new DynamicTexture(name, { width: size, height: size }, scene, false);
+  const context = texture.getContext();
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, size, size);
+  // Grain runs along the plank length (V), so lines are drawn as vertical streaks of varying width.
+  for (let index = 0; index < 26; index += 1) {
+    const x = (index / 26) * size + Math.sin(index * 2.7) * 1.8;
+    const width = 1 + ((index * 7) % 3);
+    const alpha = strength * (0.35 + ((index * 13) % 7) / 10);
+    context.fillStyle = `rgba(0, 0, 0, ${alpha.toFixed(3)})`;
+    context.fillRect(x, 0, width, size);
+  }
+  // A couple of soft cross-cut bands break the streaks up so the grain does not look like stripes.
+  for (let index = 0; index < 3; index += 1) {
+    const y = ((index + 0.5) / 3) * size;
+    context.fillStyle = `rgba(0, 0, 0, ${(strength * 0.3).toFixed(3)})`;
+    context.fillRect(0, y, size, 2);
+  }
+  texture.update(false);
+  texture.wrapU = Texture.WRAP_ADDRESSMODE;
+  texture.wrapV = Texture.WRAP_ADDRESSMODE;
+  texture.uScale = 1;
+  texture.vScale = 3;
+  return texture;
+}
 
 export class MaterialLibrary {
   readonly grass: PBRMaterial;
@@ -18,6 +51,8 @@ export class MaterialLibrary {
   readonly roofRedLight: PBRMaterial;
   readonly gateWood: PBRMaterial;
   readonly gateWoodLight: PBRMaterial;
+  readonly ladderWood: PBRMaterial;
+  readonly ladderWoodDark: PBRMaterial;
   readonly road: PBRMaterial;
   readonly wood: PBRMaterial;
   readonly metal: PBRMaterial;
@@ -75,6 +110,14 @@ export class MaterialLibrary {
     this.roofRedLight = pbr('mat-roof-red-light', Color3.FromHexString('#c04c50'), 0.64, 0.06);
     this.gateWood = pbr('mat-gate-wood', Color3.FromHexString('#5b3925'), 0.92);
     this.gateWoodLight = pbr('mat-gate-wood-light', Color3.FromHexString('#6d452a'), 0.9);
+    // Siege-ladder timber: a warm mid oak for the stiles and a brighter, more saturated tone for
+    // the rungs. The one value step between them is what makes each step read as a separate plank
+    // from the gameplay camera; both carry the same hand-painted grain so they read as sawn wood
+    // rather than flat brown strips. Matte, never metallic.
+    this.ladderWood = pbr('mat-ladder-wood', Color3.FromHexString('#8a5a2f'), 0.86);
+    this.ladderWood.albedoTexture = createWoodGrainTexture(scene, 'tex-ladder-wood', 0.16);
+    this.ladderWoodDark = pbr('mat-ladder-wood-dark', Color3.FromHexString('#5a3418'), 0.88);
+    this.ladderWoodDark.albedoTexture = createWoodGrainTexture(scene, 'tex-ladder-wood-dark', 0.2);
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#6e4028'), 0.9);
     this.metal = pbr('mat-metal', Color3.FromHexString('#687478'), 0.34, 0.72);

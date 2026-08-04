@@ -311,14 +311,14 @@ export class LadderSystem {
         const dist = Math.hypot(dx, dy, dz);
         active.mountProgress = Math.min(1, dist / Math.max(0.01, totalLen));
         unit.rig.applyMountPose(active.mountProgress, lean, unit.age);
-      } else if (isOnClimbSegment) {
+      } else       if (isOnClimbSegment) {
         const segStart = path[1];
         const dx = unit.position.x - segStart.x;
         const dy = unit.position.y - segStart.y;
         const dz = unit.position.z - segStart.z;
         const distAlongClimb = Math.hypot(dx, dy, dz);
         const phase = (distAlongClimb / mountData.rungSpacing) % 1;
-        unit.rig.applyClimbCycle(phase, lean, unit.age);
+        unit.rig.applyClimbCycle(phase, lean, unit.age, false);
       }
     } else {
       if (isOnClimbSegment) {
@@ -331,7 +331,7 @@ export class LadderSystem {
         const distFromTop = Math.hypot(dx, dy, dz);
         const remaining = Math.max(0, totalLen - distFromTop);
         const phase = (remaining / mountData.rungSpacing) % 1;
-        unit.rig.applyClimbCycle(phase, lean, unit.age);
+        unit.rig.applyClimbCycle(phase, lean, unit.age, true);
       } else if (active.pathIndex >= 2) {
         const segStart = path[2];
         const segEnd = path[3];

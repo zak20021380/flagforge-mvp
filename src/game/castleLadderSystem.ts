@@ -454,7 +454,7 @@ export class CastleLadderSystem {
       );
       const rungSpacing = totalClimbLen / 12;
       const phase = (distAlongClimb / rungSpacing) % 1;
-      unit.rig.applyClimbCycle(phase, lean, unit.age);
+      unit.rig.applyClimbCycle(phase, lean, unit.age, false);
     }
 
     if (!reached) return;

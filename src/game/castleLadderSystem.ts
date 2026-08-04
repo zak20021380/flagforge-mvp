@@ -34,6 +34,8 @@ interface LadderRuntime {
   activeClimber: UnitEntity | null;
   climbPathIndex: number;
   dismountProgress: number;
+  mountProgress: number;
+  speedRamp: number;
   defender: UnitEntity | null;
 }
 
@@ -236,6 +238,8 @@ export class CastleLadderSystem {
         ladder.queue.shift();
         ladder.activeClimber = unit;
         ladder.climbPathIndex = 0;
+        ladder.mountProgress = 0;
+        ladder.speedRamp = 0;
         unit.navigationArea = ladder.id === 'left' ? 'enemyCastleLadderLeft' : 'enemyCastleLadderRight';
         unit.state = 'climbing';
         this.updateClimber(ladder, deltaSeconds);
@@ -334,7 +338,9 @@ export class CastleLadderSystem {
       if (queuedIndex >= 0) ladder.queue.splice(queuedIndex, 1);
       if (ladder.activeClimber === unit) {
         ladder.dismountProgress = 0;
-        this.clearActiveClimber(ladder, unit, snapActiveToSafety);
+        ladder.mountProgress = 0;
+        ladder.speedRamp = 0;
+        this.clearActiveClimber(ladder, unit, snapToSafety);
       }
       if (ladder.defender === unit) ladder.defender = null;
     }
@@ -389,6 +395,8 @@ export class CastleLadderSystem {
       activeClimber: null,
       climbPathIndex: 0,
       dismountProgress: 0,
+      mountProgress: 0,
+      speedRamp: 0,
       defender: null,
     };
   }
@@ -397,9 +405,21 @@ export class CastleLadderSystem {
     const unit = ladder.activeClimber;
     if (!unit) return;
     unit.state = 'climbing';
-    unit.rig.root.rotation.y = this.rotateToward(unit.rig.root.rotation.y, 0, deltaSeconds * 11);
+    unit.rig.root.rotation.y = this.rotateToward(unit.rig.root.rotation.y, 0, deltaSeconds * 8);
 
-    const moveStep = ENEMY_CASTLE_ASSAULT.climbSpeed * deltaSeconds;
+    const lean = 0.18;
+    let targetSpeed: number;
+    if (ladder.climbPathIndex <= 0) {
+      targetSpeed = ENEMY_CASTLE_ASSAULT.mountTransitionSpeed;
+    } else if (ladder.climbPathIndex === 1) {
+      targetSpeed = ENEMY_CASTLE_ASSAULT.climbUpSpeed;
+    } else {
+      targetSpeed = ENEMY_CASTLE_ASSAULT.dismountTransitionSpeed;
+    }
+
+    const rampRate = 4.5 * deltaSeconds;
+    ladder.speedRamp += (targetSpeed - ladder.speedRamp) * Math.min(1, rampRate);
+    const moveStep = ladder.speedRamp * deltaSeconds;
     const reached = this.moveToward(
       unit,
       ladder.ascentPath[ladder.climbPathIndex],
@@ -407,29 +427,41 @@ export class CastleLadderSystem {
       false,
     );
 
-    const climbStart = ladder.ascentPath[1];
-    const climbEnd = ladder.ascentPath[2];
-    const dx = unit.position.x - climbStart.x;
-    const dy = unit.position.y - climbStart.y;
-    const dz = unit.position.z - climbStart.z;
-    const distAlongClimb = Math.hypot(dx, dy, dz);
-    const totalClimbLen = Math.hypot(
-      climbEnd.x - climbStart.x,
-      climbEnd.y - climbStart.y,
-      climbEnd.z - climbStart.z,
-    );
-    const rungSpacing = totalClimbLen / 12;
-    const phase = (distAlongClimb / rungSpacing) % 1;
+    const isOnMountSegment = ladder.climbPathIndex === 0;
     const isOnClimbSegment = ladder.climbPathIndex >= 1 && ladder.climbPathIndex <= 2;
-    if (isOnClimbSegment) {
-      unit.rig.applyClimbCycle(phase, 0.19, unit.age);
+
+    if (isOnMountSegment) {
+      const segStart = ladder.ascentPath[0];
+      const segEnd = ladder.ascentPath[1];
+      const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
+      const dx = unit.position.x - segStart.x;
+      const dy = unit.position.y - segStart.y;
+      const dz = unit.position.z - segStart.z;
+      const dist = Math.hypot(dx, dy, dz);
+      ladder.mountProgress = Math.min(1, dist / Math.max(0.01, totalLen));
+      unit.rig.applyMountPose(ladder.mountProgress, lean, unit.age);
+    } else if (isOnClimbSegment) {
+      const climbStart = ladder.ascentPath[1];
+      const climbEnd = ladder.ascentPath[2];
+      const dx = unit.position.x - climbStart.x;
+      const dy = unit.position.y - climbStart.y;
+      const dz = unit.position.z - climbStart.z;
+      const distAlongClimb = Math.hypot(dx, dy, dz);
+      const totalClimbLen = Math.hypot(
+        climbEnd.x - climbStart.x,
+        climbEnd.y - climbStart.y,
+        climbEnd.z - climbStart.z,
+      );
+      const rungSpacing = totalClimbLen / 12;
+      const phase = (distAlongClimb / rungSpacing) % 1;
+      unit.rig.applyClimbCycle(phase, lean, unit.age);
     }
 
     if (!reached) return;
     ladder.climbPathIndex += 1;
     if (ladder.climbPathIndex < ladder.ascentPath.length) return;
 
-    ladder.dismountProgress += deltaSeconds * 1.8;
+    ladder.dismountProgress += deltaSeconds * 1.4;
     if (ladder.dismountProgress < 1) {
       unit.rig.applyTopDismount(ladder.dismountProgress, unit.age);
       ladder.climbPathIndex = ladder.ascentPath.length - 1;
@@ -444,6 +476,8 @@ export class CastleLadderSystem {
     ladder.activeClimber = null;
     ladder.climbPathIndex = 0;
     ladder.dismountProgress = 0;
+    ladder.mountProgress = 0;
+    ladder.speedRamp = 0;
   }
 
   private updateTransit(transit: ActiveTransit, deltaSeconds: number): void {
@@ -499,6 +533,8 @@ export class CastleLadderSystem {
     unit.navigationArea = 'ground';
     ladder.activeClimber = null;
     ladder.climbPathIndex = 0;
+    ladder.mountProgress = 0;
+    ladder.speedRamp = 0;
     this.wallAttackers.delete(unit);
   }
 

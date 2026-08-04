@@ -139,66 +139,70 @@ export class UnitRig {
   applyMountPose(progress: number, lean: number, elapsed: number): void {
     this.interactionPoseActive = true;
     const p = Math.max(0, Math.min(1, progress));
-    const settle = p * p * (3 - 2 * p);
-    const sway = Math.sin(elapsed * 9) * (1 - settle) * 0.04;
-    this.torso.rotation.x = -lean * p;
-    this.torso.rotation.z = sway * 0.4;
-    // Reaching arm climbs overhead; the low arm folds onto the rail beside the hip.
-    this.leftArm.rotation.x = -0.2 - (1.62 * p);
-    this.leftArm.rotation.z = -0.3 * p;
-    this.rightArm.rotation.x = -0.08 - (0.42 * p);
-    this.rightArm.rotation.z = 0.18 * p;
-    // Lead leg steps up onto the first rung; the trailing leg pushes off mid-stride and settles.
-    this.leftLeg.rotation.x = -0.2 - (0.95 * p);
-    this.rightLeg.rotation.x = (0.55 - 0.35 * p);
-    this.head.rotation.x = -(0.12 + 0.14 * p);
+    const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+    const sway = Math.sin(elapsed * 6) * (1 - ease) * 0.025;
+    this.torso.rotation.x = -lean * ease;
+    this.torso.rotation.z = sway * 0.3;
+    this.leftArm.rotation.x = -0.15 - 1.55 * ease;
+    this.leftArm.rotation.z = -0.25 * ease;
+    this.rightArm.rotation.x = -0.1 - 0.5 * ease;
+    this.rightArm.rotation.z = 0.15 * ease;
+    this.leftLeg.rotation.x = -0.15 - 0.85 * ease;
+    this.rightLeg.rotation.x = 0.45 - 0.3 * ease;
+    this.head.rotation.x = -(0.1 + 0.12 * ease);
     this.head.rotation.y = sway;
-    this.weaponRoot.rotation.z = 0.22 * p;
-    this.shieldRoot.rotation.x = 0.15 * p;
+    this.visualRoot.position.y = ease * 0.04;
+    this.weaponRoot.rotation.z = 0.2 * ease;
+    this.shieldRoot.rotation.x = 0.12 * ease;
   }
 
   applyClimbCycle(phase: number, lean: number, elapsed: number): void {
     this.interactionPoseActive = true;
     const p = ((phase % 1) + 1) % 1;
-    const sway = Math.sin(elapsed * 7) * 0.02;
+    const sway = Math.sin(elapsed * 4.5) * 0.012;
     this.torso.rotation.x = -lean;
-    this.torso.rotation.z = sway * 0.3;
-    const leftHandUp = Math.sin(p * Math.PI * 2);
-    const rightHandUp = Math.sin((p + 0.5) * Math.PI * 2);
-    const leftFootUp = Math.sin((p + 0.5) * Math.PI * 2);
-    const rightFootUp = Math.sin(p * Math.PI * 2);
-    this.leftArm.rotation.x = -1.2 - leftHandUp * 0.45;
-    this.leftArm.rotation.z = -0.18;
-    this.rightArm.rotation.x = -1.2 - rightHandUp * 0.45;
-    this.rightArm.rotation.z = 0.18;
-    this.leftLeg.rotation.x = -0.35 - leftFootUp * 0.38;
-    this.rightLeg.rotation.x = -0.35 - rightFootUp * 0.38;
-    this.head.rotation.x = -0.18;
+    this.torso.rotation.z = sway * 0.2;
+    const cycle = p * Math.PI * 2;
+    const leftHandReach = Math.sin(cycle);
+    const rightHandReach = Math.sin(cycle + Math.PI);
+    const leftFootStep = Math.sin(cycle + Math.PI);
+    const rightFootStep = Math.sin(cycle);
+    const handArc = 0.38;
+    const footArc = 0.32;
+    this.leftArm.rotation.x = -1.25 - leftHandReach * handArc;
+    this.leftArm.rotation.z = -0.14 - leftHandReach * 0.04;
+    this.rightArm.rotation.x = -1.25 - rightHandReach * handArc;
+    this.rightArm.rotation.z = 0.14 + rightHandReach * 0.04;
+    this.leftLeg.rotation.x = -0.3 - leftFootStep * footArc;
+    this.rightLeg.rotation.x = -0.3 - rightFootStep * footArc;
+    this.head.rotation.x = -0.16;
     this.head.rotation.y = sway;
-    this.visualRoot.position.y = Math.abs(Math.sin(p * Math.PI * 2)) * 0.03;
-    this.weaponRoot.rotation.z = 0.15;
-    this.shieldRoot.rotation.x = 0.1;
+    this.visualRoot.position.y = Math.abs(Math.sin(cycle)) * 0.018;
+    this.weaponRoot.rotation.z = 0.12;
+    this.shieldRoot.rotation.x = 0.08;
   }
 
   applyTopDismount(progress: number, elapsed: number): void {
     this.interactionPoseActive = true;
     const p = Math.max(0, Math.min(1, progress));
-    const settle = p * p * (3 - 2 * p);
-    this.torso.rotation.x = -0.35 * (1 - settle);
+    const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+    this.torso.rotation.x = -0.28 * (1 - ease);
     this.torso.rotation.z = 0;
-    this.leftArm.rotation.x = -1.6 + settle * 1.2;
-    this.leftArm.rotation.z = -0.18 * (1 - settle);
-    this.rightArm.rotation.x = -1.6 + settle * 1.2;
-    this.rightArm.rotation.z = 0.18 * (1 - settle);
-    const leftFootPlace = Math.min(1, p * 2);
-    const rightFootPlace = Math.max(0, (p - 0.4) * 1.667);
-    this.leftLeg.rotation.x = -0.7 + leftFootPlace * 0.7;
-    this.rightLeg.rotation.x = -0.7 + rightFootPlace * 0.7;
-    this.visualRoot.position.y = settle * 0.15;
-    this.head.rotation.x = -0.18 * (1 - settle);
-    this.head.rotation.y = Math.sin(elapsed * 5) * 0.02 * (1 - settle);
-    this.weaponRoot.rotation.z = 0.15 * (1 - settle);
-    this.shieldRoot.rotation.x = 0.1 * (1 - settle);
+    this.leftArm.rotation.x = -1.5 + ease * 1.15;
+    this.leftArm.rotation.z = -0.14 * (1 - ease);
+    this.rightArm.rotation.x = -1.5 + ease * 1.15;
+    this.rightArm.rotation.z = 0.14 * (1 - ease);
+    const leadFoot = Math.min(1, p * 2.2);
+    const trailFoot = Math.max(0, (p - 0.35) * 1.538);
+    const leadEase = leadFoot < 0.5 ? 2 * leadFoot * leadFoot : 1 - (-2 * leadFoot + 2) ** 2 / 2;
+    const trailEase = trailFoot < 0.5 ? 2 * trailFoot * trailFoot : 1 - (-2 * trailFoot + 2) ** 2 / 2;
+    this.leftLeg.rotation.x = -0.6 + leadEase * 0.6;
+    this.rightLeg.rotation.x = -0.6 + trailEase * 0.6;
+    this.visualRoot.position.y = ease * 0.12;
+    this.head.rotation.x = -0.15 * (1 - ease);
+    this.head.rotation.y = Math.sin(elapsed * 3.5) * 0.012 * (1 - ease);
+    this.weaponRoot.rotation.z = 0.12 * (1 - ease);
+    this.shieldRoot.rotation.x = 0.08 * (1 - ease);
   }
 
   /** Release the scripted-pose lock so walk/run and idle animation drive the limbs again. */

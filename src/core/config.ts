@@ -290,7 +290,11 @@ export const CENTRAL_TOWER = {
   flagRootOffsetY: 0.03,
   flagPickupHeightTolerance: 0.9,
   ladderBaseDropRadius: 1.65,
-  climbSpeed: 3.45,
+  climbSpeed: 1.9,
+  climbUpSpeed: 1.9,
+  climbDownSpeed: 1.65,
+  mountTransitionSpeed: 1.2,
+  dismountTransitionSpeed: 1.4,
   /** Ladder-interaction movement scales (fractions of the unit's own ground speed). */
   approachMoveScale: 0.9,
   alignMoveScale: 0.5,
@@ -299,8 +303,9 @@ export const CENTRAL_TOWER = {
   /** Angular approach speeds (radians per second): entry-yaw blend while walking in, body turn onto the ladder. */
   mountEntryTurnRate: 5,
   mountAlignTurnRate: 5.5,
-  /** Torso lean (radians) toward the ladder while mounting. */
-  mountTorsoLean: 0.19,
+  /** Torso lean (radians) toward the ladder while mounting and climbing. */
+  mountTorsoLean: 0.22,
+  climbTorsoLean: 0.18,
   /** Fixed mount-beat durations, tuned to the slow mount speed; distances drag below stretch these. */
   mountAlignSeconds: 0.78,
   mountSeconds: 1.02,
@@ -500,7 +505,11 @@ const enemyCastlePoint = (x: number, y: number, z: number) => ({
 // offsets from the castle root so its queues, access points and collision bounds move as one group.
 export const ENEMY_CASTLE_ASSAULT = {
   wallTopY: 4.78,
-  climbSpeed: 2.8,
+  climbSpeed: 1.54,
+  climbUpSpeed: 1.54,
+  climbDownSpeed: 1.34,
+  mountTransitionSpeed: 0.98,
+  dismountTransitionSpeed: 1.12,
   accessSpeed: 3.2,
   queueMoveScale: 0.86,
   queueArrivalRadius: 0.2,

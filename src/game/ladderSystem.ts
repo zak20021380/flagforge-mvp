@@ -17,6 +17,8 @@ interface ActiveClimb extends QueueEntry {
   climbDistance: number;
   dismountProgress: number;
   exitClearance: number;
+  mountProgress: number;
+  speedRamp: number;
 }
 
 interface LadderRuntime {
@@ -201,7 +203,7 @@ export class LadderSystem {
 
       if (queueIndex === 0 && !ladder.active && reached) {
         ladder.queue.shift();
-        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0, exitClearance: 0 };
+        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0, exitClearance: 0, mountProgress: 0, speedRamp: 0 };
         ladder.activeDirection = entry.direction;
         if (entry.direction === 'descending') this.towerTopUnits.delete(entry.unit);
         unit.navigationArea = ladder.id === 'player' ? 'playerLadder' : 'enemyLadder';
@@ -266,42 +268,80 @@ export class LadderSystem {
     const unit = active.unit;
     const path = active.direction === 'ascending' ? ladder.ascentPath : ladder.descentPath;
     unit.state = 'climbing';
-    unit.rig.root.rotation.y = this.rotateToward(unit.rig.root.rotation.y, ladder.facingYaw, deltaSeconds * 11);
+    unit.rig.root.rotation.y = this.rotateToward(unit.rig.root.rotation.y, ladder.facingYaw, deltaSeconds * 8);
 
     const mountData = CENTRAL_TOWER_LADDER_MOUNT[ladder.id];
-    const moveStep = CENTRAL_TOWER.climbSpeed * deltaSeconds;
-    const reached = this.moveToward(unit, path[active.pathIndex], moveStep, false);
+    const lean = CENTRAL_TOWER.climbTorsoLean;
 
-    const climbSegmentStartIdx = active.direction === 'ascending' ? 1 : 1;
-    const climbSegmentEndIdx = active.direction === 'ascending' ? 2 : 2;
-    const isOnClimbSegment = active.pathIndex >= climbSegmentStartIdx && active.pathIndex <= climbSegmentEndIdx;
-
+    let targetSpeed: number;
     if (active.direction === 'ascending') {
-      const segStart = path[1];
-      const dx = unit.position.x - segStart.x;
-      const dy = unit.position.y - segStart.y;
-      const dz = unit.position.z - segStart.z;
-      const distAlongClimb = Math.hypot(dx, dy, dz);
-      const phase = (distAlongClimb / mountData.rungSpacing) % 1;
-      if (isOnClimbSegment) {
-        unit.rig.applyClimbCycle(phase, 0.19, unit.age);
+      if (active.pathIndex <= 0) {
+        targetSpeed = CENTRAL_TOWER.mountTransitionSpeed;
+      } else if (active.pathIndex === 1) {
+        targetSpeed = CENTRAL_TOWER.climbUpSpeed;
+      } else {
+        targetSpeed = CENTRAL_TOWER.dismountTransitionSpeed;
       }
     } else {
-      const segStart = path[1];
-      const segEnd = path[0];
-      const dx = unit.position.x - segStart.x;
-      const dy = unit.position.y - segStart.y;
-      const dz = unit.position.z - segStart.z;
-      const totalLen = Math.hypot(
-        segEnd.x - segStart.x,
-        segEnd.y - segStart.y,
-        segEnd.z - segStart.z,
-      );
-      const distFromTop = Math.hypot(dx, dy, dz);
-      const remaining = Math.max(0, totalLen - distFromTop);
-      const phase = (remaining / mountData.rungSpacing) % 1;
+      if (active.pathIndex <= 0) {
+        targetSpeed = CENTRAL_TOWER.dismountTransitionSpeed;
+      } else if (active.pathIndex === 1) {
+        targetSpeed = CENTRAL_TOWER.climbDownSpeed;
+      } else {
+        targetSpeed = CENTRAL_TOWER.mountTransitionSpeed;
+      }
+    }
+
+    const rampRate = 4.5 * deltaSeconds;
+    active.speedRamp += (targetSpeed - active.speedRamp) * Math.min(1, rampRate);
+    const moveStep = active.speedRamp * deltaSeconds;
+    const reached = this.moveToward(unit, path[active.pathIndex], moveStep, false);
+
+    const isOnMountSegment = active.pathIndex === 0;
+    const isOnClimbSegment = active.pathIndex >= 1 && active.pathIndex <= 2;
+
+    if (active.direction === 'ascending') {
+      if (isOnMountSegment) {
+        const segStart = path[0];
+        const segEnd = path[1];
+        const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
+        const dx = unit.position.x - segStart.x;
+        const dy = unit.position.y - segStart.y;
+        const dz = unit.position.z - segStart.z;
+        const dist = Math.hypot(dx, dy, dz);
+        active.mountProgress = Math.min(1, dist / Math.max(0.01, totalLen));
+        unit.rig.applyMountPose(active.mountProgress, lean, unit.age);
+      } else if (isOnClimbSegment) {
+        const segStart = path[1];
+        const dx = unit.position.x - segStart.x;
+        const dy = unit.position.y - segStart.y;
+        const dz = unit.position.z - segStart.z;
+        const distAlongClimb = Math.hypot(dx, dy, dz);
+        const phase = (distAlongClimb / mountData.rungSpacing) % 1;
+        unit.rig.applyClimbCycle(phase, lean, unit.age);
+      }
+    } else {
       if (isOnClimbSegment) {
-        unit.rig.applyClimbCycle(phase, 0.19, unit.age);
+        const segStart = path[1];
+        const segEnd = path[2];
+        const dx = unit.position.x - segStart.x;
+        const dy = unit.position.y - segStart.y;
+        const dz = unit.position.z - segStart.z;
+        const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
+        const distFromTop = Math.hypot(dx, dy, dz);
+        const remaining = Math.max(0, totalLen - distFromTop);
+        const phase = (remaining / mountData.rungSpacing) % 1;
+        unit.rig.applyClimbCycle(phase, lean, unit.age);
+      } else if (active.pathIndex >= 2) {
+        const segStart = path[2];
+        const segEnd = path[3];
+        const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
+        const dx = unit.position.x - segStart.x;
+        const dy = unit.position.y - segStart.y;
+        const dz = unit.position.z - segStart.z;
+        const dist = Math.hypot(dx, dy, dz);
+        const dismountP = Math.min(1, dist / Math.max(0.01, totalLen));
+        unit.rig.applyTopDismount(dismountP, unit.age);
       }
     }
 
@@ -310,7 +350,7 @@ export class LadderSystem {
     if (active.pathIndex < path.length) return;
 
     if (active.direction === 'ascending') {
-      active.dismountProgress += deltaSeconds * 1.8;
+      active.dismountProgress += deltaSeconds * 1.4;
       if (active.dismountProgress < 1) {
         unit.rig.applyTopDismount(active.dismountProgress, unit.age);
         active.pathIndex = path.length - 1;

@@ -27,8 +27,9 @@ npm run preview
 ## Win condition
 
 - Capture the central flag and return it to the blue castle.
-- Delivery opens the red gate for 13 seconds.
-- Get any surviving blue unit through the open gate and into the red castle interior.
+- The blue gate only opens once the blue carrier reaches the gate carrying the flag, and closes a moment after the flag is secured. The same rule is mirrored for the red castle.
+- Securing the flag starts the 13-second assault phase.
+- Get any surviving blue unit past the red defences and into the red castle interior.
 - Infiltration permanently locks all red deployment.
 - Killing the infiltrator does not cancel the breach.
 - The final five-second breach countdown ends the match.
@@ -51,7 +52,7 @@ The same rules apply to the enemy AI.
 - `src/render/unitRig.ts` — original articulated 3D unit rigs and runtime animations
 - `src/game/unitManager.ts` — pooling, movement, separation, targeting, combat, death recycling
 - `src/game/flag.ts` — capture, carry, exact-position drop, delivery, reset
-- `src/game/castleLogic.ts` — attack windows, irreversible infiltration, deployment lock, countdown
+- `src/game/castleLogic.ts` — shared flag-return gate condition, assault windows, irreversible infiltration, deployment lock, countdown
 - `src/game/enemyAI.ts` — weighted lightweight AI using the same cards and energy rules
 - `src/game/projectiles.ts` — pooled 3D arrows
 - `src/game/effects.ts` — pooled spawn and impact effects
@@ -103,7 +104,7 @@ Edit `src/core/config.ts`:
 4. Confirm units use left, center, and right routes without heavy overlap.
 5. Confirm Rangers fire visible 3D arrows and arrows recycle after impact.
 6. Kill a flag carrier and confirm the flag drops at the death position.
-7. Return the flag and confirm the enemy gate opens temporarily.
+7. Return the flag and confirm your own castle gate opens only as the carrier reaches the gate with the flag, then closes shortly after delivery.
 8. Enter the enemy castle and confirm all enemy spawning stops permanently.
 9. Kill the infiltrator during the countdown and confirm the breach continues.
 10. Background and restore the Mini App; confirm the match resumes without duplicate loops.

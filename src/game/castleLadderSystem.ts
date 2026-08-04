@@ -340,7 +340,7 @@ export class CastleLadderSystem {
         ladder.dismountProgress = 0;
         ladder.mountProgress = 0;
         ladder.speedRamp = 0;
-        this.clearActiveClimber(ladder, unit, snapToSafety);
+        this.clearActiveClimber(ladder, unit, snapActiveToSafety);
       }
       if (ladder.defender === unit) ladder.defender = null;
     }

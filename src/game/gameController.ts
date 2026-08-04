@@ -43,19 +43,20 @@ export class GameController {
     private readonly audio: AudioManager,
   ) {
     this.effects = new EffectPool(arena.scene, arena.materials);
-    this.castles = new CastleLogic(
-      arena.blueCastle,
-      arena.redCastle,
-      (attacker) => this.handleGateOpened(attacker),
-      (attacker, defender) => this.handleBreach(attacker, defender),
-      (winner) => this.finishMatch(winner),
-    );
     this.flag = new FlagController(
       arena.scene,
       arena.materials,
       (team) => this.handleFlagPickup(team),
       (team) => this.handleFlagDelivered(team),
       () => this.ui.showBanner('FLAG DROPPED — RECOVER IT', 'neutral'),
+    );
+    this.castles = new CastleLogic(
+      arena.blueCastle,
+      arena.redCastle,
+      this.flag,
+      (castleTeam) => this.handleGateOpened(castleTeam),
+      (attacker, defender) => this.handleBreach(attacker, defender),
+      (winner) => this.finishMatch(winner),
     );
 
     let unitManager: UnitManager | null = null;
@@ -245,15 +246,16 @@ export class GameController {
   private handleFlagDelivered(team: Team): void {
     this.audio.play('flag');
     this.lastFlagDeliveredBy = team;
-    this.castles.openEnemyGateFor(team);
-    this.ui.showBanner(team === 'blue' ? 'ENEMY GATE OPEN — ATTACK NOW' : 'YOUR GATE IS OPEN — DEFEND', team === 'blue' ? 'success' : 'danger', 2.4);
+    this.castles.grantAssaultWindow(team);
+    this.ui.showBanner(team === 'blue' ? 'FLAG SECURED — ASSAULT THE ENEMY CASTLE' : 'ENEMY FLAG SECURED — DEFEND NOW', team === 'blue' ? 'success' : 'danger', 2.4);
   }
 
-  private handleGateOpened(attacker: Team): void {
+  private handleGateOpened(castleTeam: Team): void {
     this.audio.play('gate');
     this.cameraKick = Math.max(this.cameraKick, 0.85);
     this.cameraPush = Math.max(this.cameraPush, 0.85);
-    if (attacker === 'red') this.ui.showBanner('BLUE GATE OPEN — STOP THE RAIDERS', 'danger', 2.3);
+    if (castleTeam === 'blue') this.ui.showBanner('BLUE GATE OPEN — CARRIER RETURNING', 'success');
+    else this.ui.showBanner('RED GATE OPEN — ENEMY CARRIER RETURNING', 'danger');
   }
 
   private handleBreach(attacker: Team, defender: Team): void {
@@ -299,19 +301,13 @@ export class GameController {
 
   private castleStateFor(team: Team): CastleState {
     if (this.castles.getBreachedTeam() === team) return 'breached';
-    return this.castleThreatWindow(team) > 0 ? 'open' : 'secure';
-  }
-
-  private castleThreatWindow(team: Team): number {
-    return team === 'blue'
-      ? this.castles.getAttackWindowRemaining('red')
-      : this.castles.getAttackWindowRemaining('blue');
+    return this.castles.isGateOpen(team) ? 'open' : 'secure';
   }
 
   private castleThreatCountdown(team: Team): number {
     return this.castles.getBreachedTeam() === team
       ? this.castles.getBreachCountdown()
-      : this.castleThreatWindow(team);
+      : this.castles.getGateOpenRemaining(team);
   }
 
   private updateHud(): void {

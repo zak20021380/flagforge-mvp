@@ -573,6 +573,14 @@ export const CONFIG = {
     gateOpenSeconds: 13,
     breachCountdownSeconds: 5,
     maxActiveUnits: 24,
+    // A castle gate opens only while its OWN living flag carrier approaches the gate with the flag.
+    // These tune the shared flag-return gate condition in CastleLogic.
+    // Small proximity trigger centered directly in front of the castle gate.
+    flagReturnGateTriggerRadius: 3.0,
+    // A carrier this close to the gate is "at the door" and keeps it open while it stands to deliver.
+    flagReturnGateDoorReach: 1.5,
+    // Short controlled delay after delivery before the gate starts closing again.
+    flagReturnGateCloseDelaySeconds: 1.6,
   },
   energy: {
     maximum: 10,

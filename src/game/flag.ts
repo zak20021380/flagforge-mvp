@@ -21,6 +21,7 @@ export class FlagController {
   private carrier: UnitEntity | null = null;
   private status: FlagStatus = 'neutral';
   private resetTimer = 0;
+  private lastDeliveredTeamField: Team | null = null;
 
   constructor(
     scene: Scene,
@@ -119,6 +120,11 @@ export class FlagController {
     return this.carrier;
   }
 
+  /** The team whose carrier delivered the flag most recently; cleared when the flag resets. */
+  get lastDeliveredTeam(): Team | null {
+    return this.lastDeliveredTeamField;
+  }
+
   get position(): Vector3 {
     return this.carrier ? this.carrier.position : this.root.getAbsolutePosition();
   }
@@ -167,6 +173,7 @@ export class FlagController {
     // assault is only legal while it is delivered, and it becomes a live objective again exactly
     // when the gate closes, so both teams return to flag duty at the same moment.
     this.resetTimer = CONFIG.match.gateOpenSeconds;
+    this.lastDeliveredTeamField = unit.team;
     this.root.parent = null;
     this.root.setEnabled(false);
     this.carrierRing.parent = null;
@@ -215,6 +222,7 @@ export class FlagController {
     if (this.carrier) this.carrier.carryingFlag = false;
     this.carrier = null;
     this.status = 'neutral';
+    this.lastDeliveredTeamField = null;
     this.root.parent = null;
     this.root.position.set(
       CENTRAL_TOWER.safeFlagDrops.towerTop.x,

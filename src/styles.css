@@ -486,22 +486,27 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .energy-track i { display: block; width: 50%; height: 100%; background: linear-gradient(90deg, #2b73f1, #58c5ff); border-radius: inherit; box-shadow: 0 0 12px #39a9ff; transition: width .16s linear; }
 
 /* ===== CASTLE INTEGRITY HUD =====
-   The player fortress (blue) sits directly above the energy bar; the rival castle (red) gets a
-   strip under the match banner. Both share one visual vocabulary: a machined keep emblem with a
-   lit status core, a recessed track, tabular HP readout, a gate/breach state label and a
-   flag-secured pennant.
+   The player fortress (blue) sits directly above the energy bar; the rival castle (red) is a
+   centered strip just under the match banner. Both share one visual vocabulary: a machined keep
+   emblem with a lit status core, a recessed integrity bar, a tabular HP readout and a
+   gate/breach state label.
 
-   Both widgets idle as a compact pill showing only the emblem and its status core — no bar, no
-   numbers. Damage, a gate-open state or a breach expands them into the full readout (bar + HP +
-   state) with a smooth slide; once the damage pauses they settle back into the compact pill. */
+   Both widgets idle as a compact, perfectly centered emblem pill — no bar, no numbers. Damage,
+   a gate-open state or a breach slides a folder open with a state/HP row over a clean bar; once
+   the damage pauses they settle back into the compact pill. The emblem never shifts: collapsed
+   the folder is a zero-width, zero-gap flex item and the pill padding is symmetric, so the coin
+   stays dead-centered while the readout animates only width and gap. */
+
+/* --- Player fortress pill (bottom HUD, above ENERGY) --- */
 .castle-panel {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   width: max-content;
-  min-height: 36px;
-  padding: 4px 10px 4px 5px;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 6px 9px;
   color: #d6e6f8;
   background: linear-gradient(180deg, rgba(13, 26, 44, .96), rgba(6, 13, 25, .98));
   border: 1px solid rgba(122, 190, 255, .34);
@@ -511,13 +516,13 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   overflow: hidden;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: width .38s cubic-bezier(.22, 1, .36, 1), min-height .34s ease, border-radius .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
+  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), border-radius .38s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
 }
 
 .castle-panel.expanded {
-  width: 100%;
-  min-height: 50px;
-  border-radius: 14px;
+  min-height: 52px;
+  gap: 11px;
+  border-radius: 16px;
   border-color: rgba(132, 196, 255, .5);
   box-shadow: 0 10px 26px rgba(0, 0, 0, .52), inset 0 1px rgba(255, 255, 255, .09);
 }
@@ -533,30 +538,30 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   80% { transform: translateX(1px); }
 }
 
-/* Keep emblem: a machined coin, the only element left in the compact pill. */
+/* Machined emblem coin — the only element in the compact pill, perfectly centered. */
 .castle-sigil {
   position: relative;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .15), transparent 42%),
-    radial-gradient(circle at 50% 50%, #2e5f9e, #132a4c 74%);
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .16), transparent 44%),
+    radial-gradient(circle at 50% 50%, #2e5f9e, #122a4c 74%);
   border: 1px solid rgba(255, 255, 255, .22);
   border-radius: 50%;
   box-shadow: inset 0 1px rgba(255, 255, 255, .16), inset 0 -3px 6px rgba(0, 0, 0, .42), 0 2px 7px rgba(0, 0, 0, .4);
   transition: border-color .3s ease, box-shadow .3s ease;
 }
-.castle-sigil svg { width: 17px; height: 17px; }
+.castle-sigil svg { width: 18px; height: 18px; }
 .castle-sigil .castle-body { fill: #f6d489; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
 .castle-sigil .castle-door { fill: rgba(4, 13, 25, .82); }
 .castle-sigil .castle-grate { fill: none; stroke: rgba(246, 212, 137, .65); stroke-width: 1.1; }
 .castle-panel.open .castle-sigil { border-color: rgba(255, 209, 138, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .16), 0 0 10px rgba(255, 190, 80, .3); }
 .castle-panel.breached .castle-sigil { border-color: rgba(255, 120, 130, .55); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 12px rgba(255, 70, 90, .4); }
 
-/* Status core: the compact pill still whispers castle state through its LED. */
+/* Status core: a corner LED that keeps whispering castle state in the compact pill. */
 .castle-core {
   position: absolute;
   right: -1px;
@@ -575,23 +580,28 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .castle-strip.breached .castle-core { background: radial-gradient(circle at 35% 30%, #ffd7d2, #ff4d5e 68%); box-shadow: 0 0 8px rgba(255, 70, 90, .95); animation: castle-breach-pulse .8s ease-in-out infinite alternate; }
 @keyframes castle-breach-pulse { to { box-shadow: 0 0 13px rgba(255, 70, 90, 1); } }
 
-/* Expanding folder: the readout slides out of the pill without ever moving the page. */
+/* Expanding folder: the readout slides out of the pill without ever moving the page.
+   Collapsed it is a zero-width, zero-gap flex item; expanded it opens to a fixed-width column
+   with a state/HP row over a full-width bar. Both fortresses share the same grid layout. */
 .castle-folder {
   min-width: 0;
-  max-width: 0;
-  flex: 1 1 auto;
+  width: 0;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 6px;
   overflow: hidden;
   opacity: 0;
-  transform: translateX(-8px);
-  transition: opacity .3s ease, transform .38s cubic-bezier(.22, 1, .36, 1), max-width .38s cubic-bezier(.22, 1, .36, 1);
+  transform: translateX(-6px);
+  transition: opacity .3s ease, transform .38s cubic-bezier(.22, 1, .36, 1), width .38s cubic-bezier(.22, 1, .36, 1);
 }
 .castle-panel.expanded .castle-folder,
-.castle-strip.expanded .castle-folder { opacity: 1; max-width: 480px; transform: none; }
-.castle-panel .castle-folder { display: grid; gap: 5px; }
-.castle-strip .castle-folder { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
+.castle-strip.expanded .castle-folder { opacity: 1; width: clamp(168px, 44vw, 232px); transform: none; }
+.castle-strip.expanded .castle-folder { width: clamp(150px, 38vw, 200px); }
 
-.castle-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.castle-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
 
+/* Recessed integrity bar — the folder column sets its width so it reads as one clean band. */
 .castle-bar {
   position: relative;
   display: block;
@@ -627,10 +637,10 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 
 .castle-state {
   overflow: hidden;
-  font-size: 8.5px;
+  font-size: 9px;
   font-weight: 900;
   line-height: 1;
-  letter-spacing: .16em;
+  letter-spacing: .15em;
   color: #9bc4ef;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -642,7 +652,7 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .castle-strip.breached .castle-state { color: #ff7a80; }
 
 .castle-hp {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
@@ -652,9 +662,12 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 }
 .castle-panel.breached .castle-hp,
 .castle-strip.breached .castle-hp { color: #ffb3b8; }
-.castle-panel:not(.expanded) .flag-chip { display: none; }
 
-/* Rival castle: the same pill, red-tinted, pinned under the match banner. */
+/* Compact pill shows the emblem only; the flag pennant appears once expanded. */
+.castle-panel:not(.expanded) .flag-chip,
+.castle-strip:not(.expanded) .flag-chip { display: none; }
+
+/* --- Rival fortress strip (top HUD, centered under the match banner) --- */
 .castle-strip {
   position: absolute;
   z-index: 9;
@@ -668,15 +681,23 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .castle-strip-inner {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 26px;
-  padding: 3px 11px 3px 5px;
+  gap: 0;
+  width: max-content;
+  max-width: 96vw;
+  min-height: 42px;
+  padding: 6px 9px;
+  color: #f4e0e2;
   background: linear-gradient(180deg, rgba(39, 22, 37, .96), rgba(18, 10, 17, .98));
   border: 1px solid rgba(255, 150, 158, .34);
   border-radius: 999px;
   box-shadow: 0 5px 16px rgba(2, 7, 14, .5), inset 0 1px rgba(255, 255, 255, .07);
   backdrop-filter: blur(8px);
-  transition: border-color .3s ease, box-shadow .3s ease;
+  transition: min-height .34s cubic-bezier(.22, 1, .36, 1), border-radius .38s cubic-bezier(.22, 1, .36, 1), gap .38s cubic-bezier(.22, 1, .36, 1), border-color .3s ease, box-shadow .3s ease;
+}
+.castle-strip.expanded .castle-strip-inner {
+  min-height: 50px;
+  gap: 10px;
+  border-radius: 16px;
 }
 .castle-strip.open .castle-strip-inner { border-color: rgba(255, 209, 138, .5); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 14px rgba(255, 190, 80, .22), inset 0 1px rgba(255, 255, 255, .08); }
 .castle-strip.breached .castle-strip-inner { border-color: rgba(255, 110, 120, .62); box-shadow: 0 5px 16px rgba(2, 7, 14, .5), 0 0 16px rgba(255, 60, 80, .3), inset 0 1px rgba(255, 255, 255, .07); }
@@ -690,33 +711,33 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   position: relative;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   background:
-    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .12), transparent 42%),
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .14), transparent 44%),
     radial-gradient(circle at 50% 50%, #5e2c38, #2a1019 74%);
   border: 1px solid rgba(255, 170, 178, .3);
   border-radius: 50%;
   box-shadow: inset 0 1px rgba(255, 255, 255, .14), inset 0 -3px 6px rgba(0, 0, 0, .44), 0 2px 7px rgba(0, 0, 0, .45);
   transition: border-color .3s ease, box-shadow .3s ease;
 }
-.castle-strip-sigil svg { width: 15px; height: 15px; }
+.castle-strip-sigil svg { width: 18px; height: 18px; }
 .castle-strip-sigil .castle-body { fill: #ffc2b8; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
 .castle-strip-sigil .castle-door { fill: rgba(26, 5, 11, .8); }
 .castle-strip.open .castle-strip-sigil { border-color: rgba(255, 209, 138, .45); box-shadow: inset 0 1px rgba(255, 255, 255, .14), 0 0 10px rgba(255, 190, 80, .28); }
 .castle-strip.breached .castle-strip-sigil { border-color: rgba(255, 120, 130, .5); box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 0 12px rgba(255, 70, 90, .36); }
 
-.castle-strip .castle-bar { height: 5px; width: clamp(54px, 21vw, 132px); }
+/* The rival bar runs red; its copy stays a touch tighter to fit the top strip. */
 .castle-strip .castle-bar i { background: linear-gradient(90deg, #d0343e, #ff8f5f); box-shadow: 0 0 8px rgba(255, 100, 110, .5); }
-.castle-strip .castle-state { font-size: 7.5px; letter-spacing: .14em; color: #e8b3b8; }
-.castle-strip .castle-hp { font-size: 8.5px; color: #f9e8ea; }
-.castle-strip .flag-chip { width: 16px; height: 11px; }
-.castle-strip .flag-chip svg { width: 12px; height: 10px; }
+.castle-strip .castle-state { font-size: 8.5px; letter-spacing: .14em; color: #e8b3b8; }
+.castle-strip .castle-hp { font-size: 10px; color: #f9e8ea; }
+.castle-strip .flag-chip { width: 18px; height: 13px; }
+.castle-strip .flag-chip svg { width: 13px; height: 11px; }
 
 /* Flag pennant: lit gold while the flag is secured in the castle, dim steel otherwise. */
-.flag-chip { display: grid; place-items: center; width: 24px; height: 15px; }
-.flag-chip svg { width: 17px; height: 14px; }
+.flag-chip { display: grid; place-items: center; width: 22px; height: 15px; flex: 0 0 auto; }
+.flag-chip svg { width: 16px; height: 13px; }
 .flag-chip .pole { fill: #8fa8c2; }
 .flag-chip .cloth { fill: #45586e; transition: fill .2s ease, filter .2s ease; }
 .flag-chip.secured .cloth {
@@ -804,14 +825,15 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .loading-copy { margin-block: 6px 10px; }
   .bottom-hud { gap: 4px; }
   .energy-panel { min-height: 28px; padding-block: 4px; }
-  .castle-panel { min-height: 30px; padding-block: 3px; }
-  .castle-panel.expanded { min-height: 44px; }
-  .castle-sigil { width: 25px; height: 25px; flex-basis: 25px; }
-  .castle-sigil svg { width: 15px; height: 15px; }
+  .castle-panel { min-height: 36px; padding: 5px 8px; }
+  .castle-panel.expanded { min-height: 46px; }
+  .castle-sigil { width: 26px; height: 26px; flex-basis: 26px; }
+  .castle-sigil svg { width: 16px; height: 16px; }
   .castle-bar { height: 8px; }
-  .castle-strip-inner { min-height: 23px; }
-  .castle-strip-sigil { width: 23px; height: 23px; flex-basis: 23px; }
-  .castle-strip-sigil svg { width: 13px; height: 13px; }
+  .castle-strip-inner { min-height: 36px; padding: 5px 8px; }
+  .castle-strip.expanded .castle-strip-inner { min-height: 44px; }
+  .castle-strip-sigil { width: 26px; height: 26px; flex-basis: 26px; }
+  .castle-strip-sigil svg { width: 16px; height: 16px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }
   .card-portrait { width: 38px; height: 38px; }
   .card-portrait svg { width: 36px; height: 36px; }

@@ -252,12 +252,14 @@ export class GameUI {
             <i class="castle-core"></i>
           </span>
           <span class="castle-folder">
-            <small id="enemy-castle-state" class="castle-state">SECURE</small>
-            <span class="castle-bar"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
-            <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
-            <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
-              <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
+            <span class="castle-meta">
+              <small id="enemy-castle-state" class="castle-state">SECURE</small>
+              <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
             </span>
+            <span class="castle-bar"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
+          </span>
+          <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
+            <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
           </span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { Vector3 } from '@babylonjs/core';
-import { CENTRAL_TOWER } from '../core/config';
+import { CENTRAL_TOWER, CENTRAL_TOWER_LADDER_MOUNT } from '../core/config';
 import type { Team } from '../core/types';
 import { blocksApproach } from './riverCrossing';
 import type { UnitEntity } from './unit';
@@ -14,6 +14,8 @@ interface QueueEntry {
 
 interface ActiveClimb extends QueueEntry {
   pathIndex: number;
+  climbDistance: number;
+  dismountProgress: number;
 }
 
 interface LadderRuntime {
@@ -197,7 +199,7 @@ export class LadderSystem {
 
       if (queueIndex === 0 && !ladder.active && reached) {
         ladder.queue.shift();
-        ladder.active = { ...entry, pathIndex: 0 };
+        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0 };
         if (entry.direction === 'descending') this.towerTopUnits.delete(entry.unit);
         unit.navigationArea = ladder.id === 'player' ? 'playerLadder' : 'enemyLadder';
         unit.state = 'climbing';
@@ -251,17 +253,57 @@ export class LadderSystem {
     unit.state = 'climbing';
     unit.rig.root.rotation.y = this.rotateToward(unit.rig.root.rotation.y, ladder.facingYaw, deltaSeconds * 11);
 
-    const reached = this.moveToward(unit, path[active.pathIndex], CENTRAL_TOWER.climbSpeed * deltaSeconds, false);
+    const mountData = CENTRAL_TOWER_LADDER_MOUNT[ladder.id];
+    const moveStep = CENTRAL_TOWER.climbSpeed * deltaSeconds;
+    const reached = this.moveToward(unit, path[active.pathIndex], moveStep, false);
+
+    if (active.direction === 'ascending') {
+      const climbSegmentStart = path[1];
+      const climbSegmentEnd = path[2];
+      const dx = unit.position.x - climbSegmentStart.x;
+      const dy = unit.position.y - climbSegmentStart.y;
+      const dz = unit.position.z - climbSegmentStart.z;
+      const distAlongClimb = Math.hypot(dx, dy, dz);
+      const totalClimbLen = Math.hypot(
+        climbSegmentEnd.x - climbSegmentStart.x,
+        climbSegmentEnd.y - climbSegmentStart.y,
+        climbSegmentEnd.z - climbSegmentStart.z,
+      );
+      const phase = (distAlongClimb / mountData.rungSpacing) % 1;
+      const isOnClimbSegment = active.pathIndex >= 1 && active.pathIndex <= 2;
+      if (isOnClimbSegment) {
+        unit.rig.applyClimbCycle(phase, 0.19, unit.age);
+      }
+    } else {
+      unit.rig.clearInteractionPose();
+    }
+
     if (!reached) return;
     active.pathIndex += 1;
     if (active.pathIndex < path.length) return;
 
-    unit.navigationArea = active.direction === 'ascending' ? 'towerTop' : 'ground';
-    unit.state = 'idle';
-    unit.target = null;
-    unit.targetRefreshClock = 0.04;
-    if (active.direction === 'ascending') this.towerTopUnits.add(unit);
-    ladder.active = null;
+    if (active.direction === 'ascending') {
+      active.dismountProgress += deltaSeconds * 1.8;
+      if (active.dismountProgress < 1) {
+        unit.rig.applyTopDismount(active.dismountProgress, unit.age);
+        active.pathIndex = path.length - 1;
+        return;
+      }
+      unit.rig.clearInteractionPose();
+      unit.navigationArea = 'towerTop';
+      unit.state = 'idle';
+      unit.target = null;
+      unit.targetRefreshClock = 0.04;
+      this.towerTopUnits.add(unit);
+      ladder.active = null;
+    } else {
+      unit.rig.clearInteractionPose();
+      unit.navigationArea = 'ground';
+      unit.state = 'idle';
+      unit.target = null;
+      unit.targetRefreshClock = 0.04;
+      ladder.active = null;
+    }
   }
 
   private moveToward(unit: UnitEntity, target: Vector3, maxDistance: number, faceMovement: boolean): boolean {

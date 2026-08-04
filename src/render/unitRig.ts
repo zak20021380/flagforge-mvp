@@ -157,6 +157,50 @@ export class UnitRig {
     this.shieldRoot.rotation.x = 0.15 * p;
   }
 
+  applyClimbCycle(phase: number, lean: number, elapsed: number): void {
+    this.interactionPoseActive = true;
+    const p = ((phase % 1) + 1) % 1;
+    const sway = Math.sin(elapsed * 7) * 0.02;
+    this.torso.rotation.x = -lean;
+    this.torso.rotation.z = sway * 0.3;
+    const leftHandUp = Math.sin(p * Math.PI * 2);
+    const rightHandUp = Math.sin((p + 0.5) * Math.PI * 2);
+    const leftFootUp = Math.sin((p + 0.5) * Math.PI * 2);
+    const rightFootUp = Math.sin(p * Math.PI * 2);
+    this.leftArm.rotation.x = -1.2 - leftHandUp * 0.45;
+    this.leftArm.rotation.z = -0.18;
+    this.rightArm.rotation.x = -1.2 - rightHandUp * 0.45;
+    this.rightArm.rotation.z = 0.18;
+    this.leftLeg.rotation.x = -0.35 - leftFootUp * 0.38;
+    this.rightLeg.rotation.x = -0.35 - rightFootUp * 0.38;
+    this.head.rotation.x = -0.18;
+    this.head.rotation.y = sway;
+    this.visualRoot.position.y = Math.abs(Math.sin(p * Math.PI * 2)) * 0.03;
+    this.weaponRoot.rotation.z = 0.15;
+    this.shieldRoot.rotation.x = 0.1;
+  }
+
+  applyTopDismount(progress: number, elapsed: number): void {
+    this.interactionPoseActive = true;
+    const p = Math.max(0, Math.min(1, progress));
+    const settle = p * p * (3 - 2 * p);
+    this.torso.rotation.x = -0.35 * (1 - settle);
+    this.torso.rotation.z = 0;
+    this.leftArm.rotation.x = -1.6 + settle * 1.2;
+    this.leftArm.rotation.z = -0.18 * (1 - settle);
+    this.rightArm.rotation.x = -1.6 + settle * 1.2;
+    this.rightArm.rotation.z = 0.18 * (1 - settle);
+    const leftFootPlace = Math.min(1, p * 2);
+    const rightFootPlace = Math.max(0, (p - 0.4) * 1.667);
+    this.leftLeg.rotation.x = -0.7 + leftFootPlace * 0.7;
+    this.rightLeg.rotation.x = -0.7 + rightFootPlace * 0.7;
+    this.visualRoot.position.y = settle * 0.15;
+    this.head.rotation.x = -0.18 * (1 - settle);
+    this.head.rotation.y = Math.sin(elapsed * 5) * 0.02 * (1 - settle);
+    this.weaponRoot.rotation.z = 0.15 * (1 - settle);
+    this.shieldRoot.rotation.x = 0.1 * (1 - settle);
+  }
+
   /** Release the scripted-pose lock so walk/run and idle animation drive the limbs again. */
   clearInteractionPose(): void {
     this.interactionPoseActive = false;

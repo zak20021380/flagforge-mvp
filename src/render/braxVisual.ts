@@ -55,12 +55,21 @@ export const BRAX_ANIMATION_CLIPS: Readonly<Record<BraxAnimationState, string | 
 };
 
 const containers = new WeakMap<Scene, AssetContainer>();
-const pendingLoads = new WeakMap<Scene, Promise<AssetContainer>>();
+const pendingLoads = new WeakMap<Scene, Promise<void>>();
 
-/** Loads the source GLB once for a scene and keeps it out of the live scene as an AssetContainer. */
-export function preloadBraxModel(scene: Scene): Promise<AssetContainer> {
-  const cached = containers.get(scene);
-  if (cached) return Promise.resolve(cached);
+/** True once the source GLB has been successfully loaded for the scene and cached as an AssetContainer. */
+export function hasBraxModel(scene: Scene): boolean {
+  return containers.has(scene);
+}
+
+/**
+ * Loads the source GLB once for a scene and keeps it out of the live scene as an AssetContainer.
+ *
+ * Never rejects: a failed load logs a single diagnostic error, leaves the cache empty, and lets the
+ * unit rig fall back to the procedural BRAX visual so the logical unit is never invisible on screen.
+ */
+export function preloadBraxModel(scene: Scene): Promise<void> {
+  if (containers.has(scene)) return Promise.resolve();
 
   const pending = pendingLoads.get(scene);
   if (pending) return pending;
@@ -73,11 +82,14 @@ export function preloadBraxModel(scene: Scene): Promise<AssetContainer> {
         if (containers.get(scene) === container) containers.delete(scene);
         container.dispose();
       });
-      return container;
     })
     .catch((error: unknown) => {
       pendingLoads.delete(scene);
-      throw error;
+      // One clear diagnostic. The game keeps running with the procedural emergency visual.
+      console.error(
+        `[BRAX] Failed to load ${BRAX_VISUAL_CONFIG.assetUrl}. Falling back to the procedural BRAX visual.`,
+        error,
+      );
     });
 
   pendingLoads.set(scene, load);

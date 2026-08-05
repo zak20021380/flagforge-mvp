@@ -9,7 +9,7 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
-import { BraxVisualInstance } from './braxVisual';
+import { BraxVisualInstance, hasBraxModel } from './braxVisual';
 import { MaterialLibrary } from './materials';
 
 /**
@@ -184,10 +184,15 @@ export class UnitRig {
     // BRAX is the broadest, FUSE is compact but bulky, NYX is slim and VEX is the smallest.
     this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
     this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
-    this.braxVisual = kind === 'brax'
+    // BRAX renders the imported GLB rig only when it actually loaded. If the GLB failed to load (or
+    // for every other unit kind) we build the shared procedural body so the logical unit is never
+    // shown as an invisible placeholder. The GLB path is what normally runs; the procedural body is
+    // the emergency runtime fallback and MUST stay reachable.
+    const braxLoaded = kind === 'brax' && hasBraxModel(scene);
+    this.braxVisual = braxLoaded
       ? new BraxVisualInstance(scene, this.visualRoot, this.root, team, id, materials.teamCloth(team))
       : null;
-    if (kind !== 'brax') this.buildBody(scene, materials);
+    if (!this.braxVisual) this.buildBody(scene, materials);
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;

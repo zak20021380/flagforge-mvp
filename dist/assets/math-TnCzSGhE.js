@@ -1,0 +1,1 @@
+import{P as s}from"./index-Bwrcsdck.js";const r=a=>a==="blue"?"red":"blue",c=(a,t,e)=>Math.max(t,Math.min(e,a)),l=(a,t)=>a+Math.random()*(t-a),m=(a,t)=>{const e=a.x-t.x,n=a.z-t.z;return e*e+n*n},d=a=>a<-2.7?"left":a>s.arena.laneBoundary?"right":"center",f=a=>a==="left"?-6.25:a==="right"?s.arena.laneOffset:0;export{f as a,c,d as l,r as o,l as r,m as s};

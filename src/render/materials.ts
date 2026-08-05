@@ -34,6 +34,216 @@ function createWoodGrainTexture(scene: Scene, name: string, strength: number): D
   return texture;
 }
 
+/**
+ * Flag cloth palettes. All states share the same design language (gold trim, ivory field shield
+ * with a crown and a fortress device) and differ only in the cloth colour: strong royal blue for
+ * the neutral objective, rich blue and deep crimson for the carried team states.
+ */
+interface FlagPalette {
+  cloth: string;
+  trim: string;
+  trimDark: string;
+  emblemField: string;
+  emblem: string;
+  emblemDetail: string;
+}
+
+const FLAG_NEUTRAL_PALETTE: FlagPalette = {
+  cloth: '#2b4cc0',
+  trim: '#d8a93f',
+  trimDark: '#8a6a1f',
+  emblemField: '#f2e7cd',
+  emblem: '#16234a',
+  emblemDetail: '#0b1530',
+};
+
+const FLAG_BLUE_PALETTE: FlagPalette = {
+  cloth: '#2857c7',
+  trim: '#d8a93f',
+  trimDark: '#8a6a1f',
+  emblemField: '#f2e7cd',
+  emblem: '#1e43a8',
+  emblemDetail: '#102a6b',
+};
+
+const FLAG_RED_PALETTE: FlagPalette = {
+  cloth: '#a22038',
+  trim: '#d8a93f',
+  trimDark: '#8a6a1f',
+  emblemField: '#f2e7cd',
+  emblem: '#7e1426',
+  emblemDetail: '#4a0a14',
+};
+
+function drawFlagTrim(texture: DynamicTexture, palette: FlagPalette, width: number, height: number): void {
+  const ctx = texture.getContext();
+  const band = 9;
+  ctx.fillStyle = palette.trim;
+  ctx.fillRect(0, 0, width, band);
+  ctx.fillRect(0, height - band, width, band);
+  ctx.fillRect(0, 0, band, height);
+  ctx.fillRect(width - band, 0, band, height);
+  ctx.fillStyle = palette.trimDark;
+  ctx.fillRect(band, band, width - band * 2, 1.5);
+  ctx.fillRect(band, height - band - 1.5, width - band * 2, 1.5);
+  ctx.fillRect(band, band, 1.5, height - band * 2);
+  ctx.fillRect(width - band - 1.5, band, 1.5, height - band * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(band + 4, band + 4, width - (band + 4) * 2, 1);
+  ctx.fillRect(band + 4, height - band - 5, width - (band + 4) * 2, 1);
+  ctx.fillRect(band + 4, band + 4, 1, height - (band + 4) * 2);
+  ctx.fillRect(width - band - 5, band + 4, 1, height - (band + 4) * 2);
+  ctx.fillStyle = palette.trimDark;
+  const corner = 4.5;
+  ctx.fillRect(band, band, corner, corner);
+  ctx.fillRect(width - band - corner, band, corner, corner);
+  ctx.fillRect(band, height - band - corner, corner, corner);
+  ctx.fillRect(width - band - corner, height - band - corner, corner, corner);
+}
+
+function drawFlagCrown(texture: DynamicTexture, palette: FlagPalette, cx: number, top: number, scale = 1): void {
+  const ctx = texture.getContext();
+  const half = 48 * scale;
+  const y = (offset: number): number => top + offset * scale;
+  ctx.beginPath();
+  ctx.moveTo(cx - half, y(50));
+  ctx.lineTo(cx - half + 4 * scale, y(6));
+  ctx.lineTo(cx - half + 23 * scale, y(27));
+  ctx.lineTo(cx - 5 * scale, top);
+  ctx.lineTo(cx + 5 * scale, y(27));
+  ctx.lineTo(cx + half - 4 * scale, y(6));
+  ctx.lineTo(cx + half, y(50));
+  ctx.closePath();
+  ctx.fillStyle = palette.trim;
+  ctx.fill();
+  ctx.strokeStyle = palette.trimDark;
+  ctx.lineWidth = 3 * scale;
+  ctx.stroke();
+  ctx.fillStyle = palette.trim;
+  ctx.beginPath();
+  ctx.arc(cx - half + 4 * scale, y(6), 5 * scale, 0, Math.PI * 2);
+  ctx.arc(cx, top, 5 * scale, 0, Math.PI * 2);
+  ctx.arc(cx + half - 4 * scale, y(6), 5 * scale, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = palette.trimDark;
+  ctx.lineWidth = 2 * scale;
+  ctx.stroke();
+  ctx.fillStyle = palette.trimDark;
+  ctx.fillRect(cx - half, y(42), half * 2, 7 * scale);
+  ctx.fillStyle = palette.emblemField;
+  ctx.fillRect(cx - half + 7 * scale, y(44), 9 * scale, 3 * scale);
+  ctx.fillRect(cx - 4.5 * scale, y(44), 9 * scale, 3 * scale);
+  ctx.fillRect(cx + half - 16 * scale, y(44), 9 * scale, 3 * scale);
+}
+
+function drawFlagShield(texture: DynamicTexture, palette: FlagPalette, cx: number, top: number, scale = 1): void {
+  const ctx = texture.getContext();
+  const outline: ReadonlyArray<readonly [number, number]> = [
+    [-54, 0], [-54, 66], [-20, 116], [20, 116], [54, 66], [54, 0],
+  ];
+  ctx.beginPath();
+  for (let index = 0; index < outline.length; index += 1) {
+    const [ox, oy] = outline[index];
+    if (index === 0) {
+      ctx.moveTo(cx + ox * scale, top + oy * scale);
+    } else if (index === 2 || index === 4) {
+      const sign = index === 2 ? -1 : 1;
+      ctx.quadraticCurveTo(cx + sign * 52 * scale, top + 108 * scale, cx + ox * scale, top + oy * scale);
+    } else {
+      ctx.lineTo(cx + ox * scale, top + oy * scale);
+    }
+  }
+  ctx.closePath();
+  ctx.fillStyle = palette.emblemField;
+  ctx.fill();
+  ctx.strokeStyle = palette.trim;
+  ctx.lineWidth = 7 * scale;
+  ctx.stroke();
+  ctx.strokeStyle = palette.trimDark;
+  ctx.lineWidth = 2.5 * scale;
+  ctx.stroke();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = palette.trimDark;
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  for (let index = 0; index < outline.length; index += 1) {
+    const [ox, oy] = outline[index];
+    const px = cx + ox * 0.84 * scale;
+    const py = top + (104 + (oy - 104) * 0.84) * scale;
+    if (index === 0) {
+      ctx.moveTo(px, py);
+    } else if (index === 2 || index === 4) {
+      const sign = index === 2 ? -1 : 1;
+      ctx.quadraticCurveTo(cx + sign * 44 * scale, top + 106 * scale, px, py);
+    } else {
+      ctx.lineTo(px, py);
+    }
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawFlagTower(texture: DynamicTexture, palette: FlagPalette, cx: number, top: number, scale = 1): void {
+  const ctx = texture.getContext();
+  const half = 31 * scale;
+  ctx.fillStyle = palette.emblem;
+  for (let index = 0; index < 4; index += 1) {
+    ctx.fillRect(cx - half + index * 15.5 * scale, top, 9 * scale, 8 * scale);
+  }
+  ctx.fillRect(cx - half, top + 6 * scale, half * 2, 44 * scale);
+  ctx.beginPath();
+  ctx.moveTo(cx - 16 * scale, top + 50 * scale);
+  ctx.lineTo(cx - 16 * scale, top + 30 * scale);
+  ctx.arc(cx, top + 30 * scale, 16 * scale, Math.PI, 0);
+  ctx.lineTo(cx + 16 * scale, top + 50 * scale);
+  ctx.closePath();
+  ctx.fillStyle = palette.emblemDetail;
+  ctx.fill();
+  ctx.strokeStyle = palette.trim;
+  ctx.lineWidth = 2.5 * scale;
+  ctx.stroke();
+  ctx.fillStyle = palette.trim;
+  ctx.fillRect(cx - 24 * scale, top + 13 * scale, 4.5 * scale, 10 * scale);
+  ctx.fillRect(cx + 19.5 * scale, top + 13 * scale, 4.5 * scale, 10 * scale);
+}
+
+/**
+ * 2:1 horizontal banner cloth with stitched gold trim and a centred gold crown-and-fortress
+ * device. The design is authored with the crown at the top of the canvas and the fortress at the
+ * bottom; the cloth grid maps canvas top to the upper pole edge, so the emblem always reads
+ * upright on the flying banner.
+ */
+function createFlagTexture(scene: Scene, name: string, palette: FlagPalette): DynamicTexture {
+  const width = 512;
+  const height = 256;
+  const texture = new DynamicTexture(name, { width, height }, scene, false);
+  const ctx = texture.getContext();
+  ctx.fillStyle = palette.cloth;
+  ctx.fillRect(0, 0, width, height);
+  const vignette = ctx.createRadialGradient(width / 2, height / 2, height * 0.32, width / 2, height / 2, height * 0.72);
+  vignette.addColorStop(0, 'rgba(255,255,255,0.05)');
+  vignette.addColorStop(0.6, 'rgba(0,0,0,0.03)');
+  vignette.addColorStop(1, 'rgba(0,0,0,0.10)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  for (let index = 0; index < 6; index += 1) {
+    const x = ((index + 0.5) / 6) * width + (index % 2 === 0 ? -12 : 12);
+    const fold = ctx.createLinearGradient(x - 26, 0, x + 26, 0);
+    fold.addColorStop(0, 'rgba(0,0,0,0)');
+    fold.addColorStop(0.5, index % 2 === 0 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.11)');
+    fold.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = fold;
+    ctx.fillRect(x - 26, 0, 52, height);
+  }
+  drawFlagTrim(texture, palette, width, height);
+  const emblemScale = 1.1;
+  drawFlagCrown(texture, palette, width / 2, 34, emblemScale);
+  drawFlagShield(texture, palette, width / 2, 102, emblemScale);
+  drawFlagTower(texture, palette, width / 2, 132, emblemScale);
+  texture.update(false);
+  return texture;
+}
+
 export class MaterialLibrary {
   readonly grass: PBRMaterial;
   readonly paving: PBRMaterial;
@@ -84,6 +294,9 @@ export class MaterialLibrary {
   readonly glowBlue: StandardMaterial;
   readonly glowRed: StandardMaterial;
   readonly objectiveCloth: PBRMaterial;
+  readonly flagNeutral: PBRMaterial;
+  readonly flagBlue: PBRMaterial;
+  readonly flagRed: PBRMaterial;
   readonly blobShadow: StandardMaterial;
 
   constructor(scene: Scene) {
@@ -173,6 +386,19 @@ export class MaterialLibrary {
 
     this.objectiveCloth = pbr('mat-objective-cloth', Color3.FromHexString('#d09a32'), 0.7, 0.08);
 
+    const flagMaterial = (name: string, palette: FlagPalette): PBRMaterial => {
+      const material = new PBRMaterial(name, scene);
+      material.albedoTexture = createFlagTexture(scene, `tex-${name}`, palette);
+      material.roughness = 0.86;
+      material.metallic = 0.02;
+      material.environmentIntensity = 0.42;
+      material.backFaceCulling = false;
+      return material;
+    };
+    this.flagNeutral = flagMaterial('mat-flag-neutral', FLAG_NEUTRAL_PALETTE);
+    this.flagBlue = flagMaterial('mat-flag-blue', FLAG_BLUE_PALETTE);
+    this.flagRed = flagMaterial('mat-flag-red', FLAG_RED_PALETTE);
+
     this.blobShadow = new StandardMaterial('mat-blob-shadow', scene);
     this.blobShadow.diffuseColor = Color3.Black();
     this.blobShadow.alpha = 0.22;
@@ -198,6 +424,11 @@ export class MaterialLibrary {
 
   teamDark(team: Team): PBRMaterial {
     return team === 'blue' ? this.blueDark : this.redDark;
+  }
+
+  /** Emblem-bearing banner cloth for the carried objective, matching the carrying team. */
+  flagTeam(team: Team): PBRMaterial {
+    return team === 'blue' ? this.flagBlue : this.flagRed;
   }
 
   roofTeam(team: Team): PBRMaterial {

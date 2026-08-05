@@ -4,6 +4,8 @@ import {
   Scene,
   TransformNode,
   Vector3,
+  VertexBuffer,
+  VertexData,
 } from '@babylonjs/core';
 import { CENTRAL_TOWER, CONFIG } from '../core/config';
 import type { Team } from '../core/types';
@@ -15,6 +17,27 @@ export type FlagStatus = 'neutral' | 'carried' | 'delivering' | 'dropped' | 'con
 
 const PLACEMENT_DURATION = 1.2;
 
+// Banner cloth dimensions. The cloth is horizontal: it flies out from the pole toward +X with its
+// front face toward the gameplay camera (-Z; the portrait camera sits south of the tower and the
+// sun lights that side). The fly end carries a subtle swallowtail V-cut.
+const BANNER_WIDTH = 3.0;
+const BANNER_HEIGHT = 1.8;
+const BANNER_COLUMNS = 8;
+const BANNER_ROWS = 4;
+const BANNER_CUT_DEPTH = 0.5;
+// Hoist edge sits just outside the pole surface (pole diameter 0.16).
+const BANNER_HOIST_OFFSET = 0.09;
+
+// Lightweight wind ripple: two travelling sine waves whose amplitude grows toward the fly end,
+// plus a whisper of vertical flutter. All displacement is pinned to zero at the hoist column.
+const WIND_SPEED = 3.0;
+const WIND_FREQUENCY = 8.0;
+const WIND_AMPLITUDE = 0.28;
+const FOLD_FREQUENCY = 13.0;
+const FOLD_AMPLITUDE = 0.08;
+const FLUTTER_SPEED = 2.3;
+const FLUTTER_AMPLITUDE = 0.055;
+
 function placementEase(t: number): number {
   const c = Math.max(0, Math.min(1, t));
   if (c < 0.5) return 4 * c * c * c;
@@ -24,9 +47,14 @@ function placementEase(t: number): number {
 
 export class FlagController {
   readonly root: TransformNode;
-  private readonly clothSegments: ReadonlyArray<Mesh>;
-  private readonly tail: Mesh;
+  private readonly banner: Mesh;
+  private readonly attach: TransformNode;
   private readonly carrierRing: Mesh;
+  private readonly bannerVertexCount: number;
+  private readonly bannerPositions: Float32Array;
+  private readonly bannerNormals: Float32Array;
+  private readonly bannerRest: Float32Array;
+  private readonly bannerIndices: number[];
   private carrier: UnitEntity | null = null;
   private status: FlagStatus = 'neutral';
   private lastDeliveredTeamField: Team | null = null;
@@ -49,8 +77,8 @@ export class FlagController {
       CENTRAL_TOWER.safeFlagDrops.towerTop.z,
     );
 
-    // Taller, cleaner flagpole with a gold base collar and a crossbar where the cloth attaches,
-    // so the main objective reads clearly above the tower crown from the portrait camera.
+    // Taller, cleaner flagpole with a gold base collar where the banner is bound, so the main
+    // objective reads clearly above the tower crown from the portrait camera.
     const poleHeight = 6.4;
     const pole = MeshBuilder.CreateCylinder('central-flag-pole', { height: poleHeight, diameter: 0.16, tessellation: 8 }, scene);
     pole.parent = this.root;
@@ -64,11 +92,11 @@ export class FlagController {
     poleCollar.material = materials.gold;
     poleCollar.isPickable = false;
 
-    const crossbar = MeshBuilder.CreateBox('central-flag-crossbar', { width: 0.62, height: 0.1, depth: 0.1 }, scene);
-    crossbar.parent = this.root;
-    crossbar.position.y = poleHeight - 0.42;
-    crossbar.material = materials.gold;
-    crossbar.isPickable = false;
+    const ferrule = MeshBuilder.CreateCylinder('central-flag-ferrule', { height: 0.16, diameter: 0.26, tessellation: 8 }, scene);
+    ferrule.parent = this.root;
+    ferrule.position.y = poleHeight - 0.05;
+    ferrule.material = materials.gold;
+    ferrule.isPickable = false;
 
     const finial = MeshBuilder.CreateSphere('central-flag-finial', { diameter: 0.36, segments: 7 }, scene);
     finial.parent = this.root;
@@ -82,40 +110,79 @@ export class FlagController {
     spear.material = materials.gold;
     spear.isPickable = false;
 
-    // High-quality cloth built as a short chain of vertical strips. Each strip parents to the
-    // previous one, so phased rotations propagate along the length like fabric rippling in wind
-    // while staying a handful of cheap boxes (no per-frame mesh deformation).
-    const clothTop = poleHeight - 0.42;
-    const segWidth = 0.98;
-    const segHeight = 1.7;
-    const clothCenterY = clothTop - segHeight / 2;
-    const seg1 = MeshBuilder.CreateBox('central-flag-cloth-1', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
-    seg1.parent = this.root;
-    seg1.position = new Vector3(segWidth / 2, clothCenterY, 0);
-    seg1.material = materials.objectiveCloth;
-    seg1.isPickable = false;
+    // The banner flies horizontally from the pole, bound along its hoist (left) edge. The attach
+    // node sits at the hoist midpoint so the whole cloth shares one pivot for carrying and scaling.
+    const clothTop = poleHeight - 0.38;
+    this.attach = new TransformNode('central-flag-attach', scene);
+    this.attach.parent = this.root;
+    this.attach.position.set(0, clothTop - BANNER_HEIGHT / 2, 0);
 
-    const seg2 = MeshBuilder.CreateBox('central-flag-cloth-2', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
-    seg2.parent = seg1;
-    seg2.position = new Vector3(segWidth, 0, 0);
-    seg2.material = materials.objectiveCloth;
-    seg2.isPickable = false;
+    // Coarse 8x4 vertex grid (45 vertices) so the whole cloth can be re-deformed every frame by a
+    // lightweight sine wave instead of cloth physics. The fly edge carries a subtle swallowtail
+    // V-cut; the hoist column stays pinned to the pole. Triangle winding puts the front face
+    // toward -Z (the gameplay camera and the sun) so the emblem can never render mirrored or
+    // fall in the unlit shadow side of the tower.
+    const bannerColumns = BANNER_COLUMNS + 1;
+    const bannerRows = BANNER_ROWS + 1;
+    this.bannerVertexCount = bannerColumns * bannerRows;
+    this.bannerPositions = new Float32Array(this.bannerVertexCount * 3);
+    this.bannerNormals = new Float32Array(this.bannerVertexCount * 3);
+    this.bannerRest = new Float32Array(this.bannerVertexCount * 2);
+    const bannerUvs: number[] = [];
+    this.bannerIndices = [];
+    for (let row = 0; row < bannerRows; row += 1) {
+      const s = row / BANNER_ROWS;
+      const notch = BANNER_CUT_DEPTH * (1 - Math.abs(2 * s - 1));
+      for (let column = 0; column < bannerColumns; column += 1) {
+        const t = column / BANNER_COLUMNS;
+        const index = row * bannerColumns + column;
+        const restX = (BANNER_WIDTH - notch) * t;
+        const restY = (s - 0.5) * BANNER_HEIGHT;
+        this.bannerRest[index * 2] = restX;
+        this.bannerRest[index * 2 + 1] = restY;
+        this.bannerPositions[index * 3] = restX;
+        this.bannerPositions[index * 3 + 1] = restY;
+        this.bannerPositions[index * 3 + 2] = 0;
+        // Canvas top (crown) maps to the cloth's upper edge along the pole, so the emblem reads
+        // upright from the camera: u runs hoist -> fly, v runs cloth top -> bottom (canvas bottom).
+        bannerUvs.push(t, 1 - s);
+      }
+    }
+    for (let row = 0; row < BANNER_ROWS; row += 1) {
+      for (let column = 0; column < BANNER_COLUMNS; column += 1) {
+        const a = row * bannerColumns + column;
+        const b = a + 1;
+        const c = a + bannerColumns;
+        const d = c + 1;
+        // Winding matches Babylon's ComputeNormals convention so the face toward the camera (-Z,
+        // the portrait camera sits south of the tower and the sun lights that side) is the front
+        // face and the emblem can never render mirrored.
+        this.bannerIndices.push(a, b, c, b, d, c);
+      }
+    }
+    const bannerData = new VertexData();
+    bannerData.positions = this.bannerPositions;
+    bannerData.normals = this.bannerNormals;
+    bannerData.uvs = bannerUvs;
+    bannerData.indices = this.bannerIndices;
+    VertexData.ComputeNormals(this.bannerPositions, this.bannerIndices, this.bannerNormals);
+    const banner = new Mesh('central-flag-banner', scene);
+    bannerData.applyToMesh(banner, false);
+    banner.parent = this.attach;
+    banner.position.set(BANNER_HOIST_OFFSET, 0, 0);
+    banner.material = materials.flagNeutral;
+    banner.isPickable = false;
+    this.banner = banner;
 
-    const seg3 = MeshBuilder.CreateBox('central-flag-cloth-3', { width: segWidth, height: segHeight, depth: 0.07 }, scene);
-    seg3.parent = seg2;
-    seg3.position = new Vector3(segWidth, 0, 0);
-    seg3.material = materials.objectiveCloth;
-    seg3.isPickable = false;
-
-    this.clothSegments = [seg1, seg2, seg3];
-
-    // Swallowtail fly end on the free segment so the cloth reads as a finished pennant.
-    this.tail = MeshBuilder.CreateBox('central-flag-tail', { width: 0.7, height: 1.18, depth: 0.085 }, scene);
-    this.tail.parent = seg3;
-    this.tail.position = new Vector3(segWidth / 2 + 0.18, -0.18, 0);
-    this.tail.rotation.z = -0.34;
-    this.tail.material = materials.objectiveCloth;
-    this.tail.isPickable = false;
+    // Gold binding collars pin the hoist edge of the cloth to the pole at the banner's upper and
+    // lower quarters, so the banner reads as properly mounted on the pole.
+    for (const offset of [0.45, 1.35]) {
+      const binding = MeshBuilder.CreateCylinder('central-flag-binding', { height: 0.16, diameter: 0.27, tessellation: 8 }, scene);
+      binding.parent = this.root;
+      binding.position.set(0, clothTop - offset, 0);
+      binding.material = materials.gold;
+      binding.isPickable = false;
+    }
 
     this.carrierRing = MeshBuilder.CreateTorus('flag-carrier-ring', { diameter: 2.15, thickness: 0.13, tessellation: 30 }, scene);
     this.carrierRing.rotation.x = Math.PI / 2;
@@ -161,8 +228,7 @@ export class FlagController {
     this.root.parent = unit.rig.flagSocket;
     this.root.position.set(0, -0.15, 0);
     this.root.scaling.setAll(0.76);
-    this.setClothMaterial(this.materials.team(unit.team));
-    this.tail.material = this.materials.team(unit.team);
+    this.setClothMaterial(this.materials.flagTeam(unit.team));
     this.carrierRing.parent = unit.rig.root;
     this.carrierRing.position.set(0, 0.12, 0);
     this.carrierRing.material = this.materials.teamGlow(unit.team);
@@ -216,8 +282,7 @@ export class FlagController {
       this.root.scaling.setAll(1);
       this.placeAtSafeDrop(unit);
       this.root.setEnabled(true);
-      this.setClothMaterial(this.materials.objectiveCloth);
-      this.tail.material = this.materials.objectiveCloth;
+      this.setClothMaterial(this.materials.flagNeutral);
       this.onDropped();
       return;
     }
@@ -229,8 +294,7 @@ export class FlagController {
     this.root.scaling.setAll(1);
     this.placeAtSafeDrop(unit);
     this.root.setEnabled(true);
-    this.setClothMaterial(this.materials.objectiveCloth);
-    this.tail.material = this.materials.objectiveCloth;
+    this.setClothMaterial(this.materials.flagNeutral);
     this.carrierRing.parent = null;
     this.carrierRing.setEnabled(false);
     this.onDropped();
@@ -249,31 +313,44 @@ export class FlagController {
       this.root.position.set(px, py, pz);
       const scaleDown = 0.76 + (1.0 - 0.76) * eased;
       this.root.scaling.setAll(scaleDown);
-      const settleRot = eased * 0.15;
-      this.clothSegments[0].rotation.z = settleRot;
-      this.clothSegments[1].rotation.z = settleRot * 0.7;
-      this.clothSegments[2].rotation.z = settleRot * 0.4;
+      this.updateClothWave(elapsed);
       if (progress >= 1) {
         this.finalizeDelivery();
       }
       return;
     }
 
-    const sway = Math.sin(elapsed * 2.1);
-    const ripple = elapsed * 3.3;
-    const seg1 = this.clothSegments[0];
-    seg1.rotation.y = sway * 0.05;
-    seg1.rotation.z = Math.sin(ripple) * 0.05;
-    const seg2 = this.clothSegments[1];
-    seg2.rotation.z = Math.sin(ripple - 0.95) * 0.075;
-    const seg3 = this.clothSegments[2];
-    seg3.rotation.z = Math.sin(ripple - 1.9) * 0.095;
-    seg3.scaling.y = 1 + Math.sin(elapsed * 5.5) * 0.03;
-    this.tail.rotation.z = -0.34 + Math.sin(ripple - 2.6) * 0.1;
+    this.updateClothWave(elapsed);
+  }
+
+  /**
+   * Wind ripple for the horizontal banner. The hoist column stays pinned to the pole while two
+   * travelling sine waves (a broad main swell and a tighter harmonic fold) grow toward the free
+   * end, plus a whisper of vertical flutter. Normals are recomputed on the fly so the smooth
+   * folds catch the sun — ~45 vertices, no cloth physics.
+   */
+  private updateClothWave(elapsed: number): void {
+    const wind = elapsed * WIND_SPEED;
+    const columns = BANNER_COLUMNS + 1;
+    for (let index = 0; index < this.bannerVertexCount; index += 1) {
+      const t = (index % columns) / BANNER_COLUMNS;
+      const grow = 0.55 + 0.45 * t;
+      const z = t * (
+        Math.sin(wind - t * WIND_FREQUENCY) * WIND_AMPLITUDE * grow
+        + Math.sin(wind * 1.8 - t * FOLD_FREQUENCY) * FOLD_AMPLITUDE * t
+      );
+      const y = this.bannerRest[index * 2 + 1] + Math.sin(elapsed * FLUTTER_SPEED + t * 3.3) * FLUTTER_AMPLITUDE * t;
+      this.bannerPositions[index * 3] = this.bannerRest[index * 2];
+      this.bannerPositions[index * 3 + 1] = y;
+      this.bannerPositions[index * 3 + 2] = z;
+    }
+    VertexData.ComputeNormals(this.bannerPositions, this.bannerIndices, this.bannerNormals);
+    this.banner.updateVerticesData(VertexBuffer.PositionKind, this.bannerPositions, true);
+    this.banner.updateVerticesData(VertexBuffer.NormalKind, this.bannerNormals, false);
   }
 
   private setClothMaterial(material: Mesh['material']): void {
-    for (const segment of this.clothSegments) segment.material = material;
+    this.banner.material = material;
   }
 
   private placeAtSafeDrop(unit: UnitEntity): void {

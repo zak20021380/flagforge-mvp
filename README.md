@@ -40,10 +40,10 @@ The same rules apply to the enemy AI.
 
 | Unit | Cost | Role |
 |---|---:|---|
-| Vanguard | 3 | Balanced front-line melee fighter |
-| Ranger | 3 | Long-range unit using pooled real 3D arrows |
-| Raider | 2 | Fast objective runner and gate attacker |
-| Iron Guard | 5 | High-health escort that reduces nearby ally damage |
+| BRAX | 3 | Durable frontline bruiser: high health, strong melee, slower advance |
+| NYX | 3 | Precision marksman: longest range, high single-target damage, fragile |
+| VEX | 2 | Fastest unit: objective runner, best at reaching and carrying the flag |
+| FUSE | 5 | Siege bomber: medium durability, strongest damage against gate and castle |
 
 ## Architecture
 
@@ -102,7 +102,7 @@ Edit `src/core/config.ts`:
 2. Prepare **Mobile Low**, start the battle, and deploy all four unit types.
 3. Confirm cards gray out when energy is insufficient.
 4. Confirm units use left, center, and right routes without heavy overlap.
-5. Confirm Rangers fire visible 3D arrows and arrows recycle after impact.
+5. Confirm NYX fires visible 3D arrows and arrows recycle after impact.
 6. Kill a flag carrier and confirm the flag drops at the death position.
 7. Return the flag and confirm your own castle gate opens only as the carrier reaches the gate with the flag, then closes shortly after delivery.
 8. Enter the enemy castle and confirm all enemy spawning stops permanently.

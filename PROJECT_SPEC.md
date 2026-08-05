@@ -165,37 +165,37 @@ Each unit must have:
 * Death animation
 * Lightweight spawn effect
 
-### 1. Vanguard — cost 3
+### 1. BRAX — cost 3
 
-* Muscular melee warrior
-* Sword or axe
-* Medium health, speed, and damage
-* General-purpose front-line fighter
-* Original, expressive, appealing fantasy design
+* Large armored warrior with shield and heavy weapon
+* Broad, tanky, powerful silhouette; steel with blue accents
+* High health and strong melee damage
+* Slower movement: arrives as frontline pressure, not a rush
+* Durable frontliner that holds the line and escorts the flag carrier
 
-### 2. Ranger — cost 3
+### 2. NYX — cost 3
 
-* Fantasy archer
-* Low health
-* Long attack range
-* Stays behind friendly melee units
-* Fires pooled 3D arrows
+* Sleek elite marksman: archer / crossbow sniper
+* Tall, slim, precise silhouette; dark armor with green accents
+* Lowest health in the roster
+* Longest attack range and highest single-target damage
+* Stays behind friendly melee units and fires pooled 3D arrows
 
-### 3. Raider — cost 2
+### 3. VEX — cost 2
 
-* Agile scout or rogue
-* Very fast
-* Lower health and combat power
-* Prioritizes the flag
+* Agile hooded rogue with twin daggers
+* Light, fast, stealthy silhouette; dark outfit with purple accents
+* Fastest unit in the roster, low health and combat power
+* Prioritizes the flag and keeps full speed while carrying it
 * Strong during the open-gate attack phase
 
-### 4. Iron Guard — cost 5
+### 4. FUSE — cost 5
 
-* Large armored fighter
-* Heavy shield and weapon
-* High health
-* Slow movement and attack speed
-* Protects nearby allies and escorts the flag carrier
+* Demolition expert with bombs and explosive gear
+* Compact but dangerous silhouette with a bulky bomb pack; dark leather and metal with orange/red accents
+* Medium durability
+* Heavy, slow explosive hits
+* By far the strongest damage against the gate and the castle
 
 ## Movement and targeting
 
@@ -234,7 +234,7 @@ Melee units must:
 * Apply damage at the correct animation moment
 * Use lightweight impact effects
 
-Rangers must:
+NYX must:
 
 * Face their target
 * Play the firing animation
@@ -255,8 +255,9 @@ Create a lightweight AI that:
 * Deploys from the red zone
 * Chooses between attack, defense, escort, and flag pressure
 * Reacts when the player carries the flag
-* Sometimes escorts Raiders with an Iron Guard
-* Uses Raiders during an open-gate opportunity
+* Sometimes escorts its flag carrier with a BRAX
+* Uses VEX during an open-gate opportunity
+* Leans on FUSE once the castle assault window opens
 * Stops spawning permanently after its castle is breached
 
 Use simple weighted decisions and cooldowns, not complex AI.

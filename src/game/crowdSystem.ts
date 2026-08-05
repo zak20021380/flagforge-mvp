@@ -154,7 +154,7 @@ export class CrowdSystem {
   ): Vector3 | null {
     if (
       !crowdPoint
-      || unit.kind === 'ranger'
+      || unit.kind === 'nyx'
       || unit.carryingFlag
       || unit.navigationArea !== 'ground'
       || unit.bridgeState === 'entering'

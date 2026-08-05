@@ -112,7 +112,7 @@ export class UnitRig {
     this.visualRoot = new TransformNode(`unit-${id}-visual`, scene);
     this.visualRoot.parent = this.root;
 
-    this.shadow = MeshBuilder.CreateDisc(`unit-${id}-shadow`, { radius: kind === 'ironGuard' ? 0.82 : 0.66, tessellation: 24 }, scene);
+    this.shadow = MeshBuilder.CreateDisc(`unit-${id}-shadow`, { radius: kind === 'brax' ? 0.82 : kind === 'fuse' ? 0.74 : 0.66, tessellation: 24 }, scene);
     this.shadow.parent = this.root;
     this.shadow.position.y = 0.045;
     this.shadow.rotation.x = Math.PI / 2;
@@ -175,20 +175,22 @@ export class UnitRig {
     this.flagSocket.parent = this.torso;
     this.flagSocket.position = new Vector3(0.55, 1.25, -0.22);
 
-    this.baseScale = (kind === 'ironGuard' ? 1.16 : kind === 'raider' ? 0.9 : kind === 'ranger' ? 0.94 : 1) * 1.15;
+    // Kept in step with UNIT_STATS[kind].scale so the collision body and the silhouette agree:
+    // BRAX is the broadest, FUSE is compact but bulky, NYX is slim and VEX is the smallest.
+    this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
     this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
     this.buildBody(scene, materials);
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;
-    this.healthBack.position = new Vector3(0, kind === 'ironGuard' ? 3.85 : 3.45, 0);
+    this.healthBack.position = new Vector3(0, kind === 'brax' ? 3.85 : 3.45, 0);
     this.healthBack.material = materials.black;
     this.healthBack.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.healthBack.isPickable = false;
 
     this.healthFill = MeshBuilder.CreateBox(`unit-${id}-health-fill`, { width: 1.14, height: 0.045, depth: 0.035 }, scene);
     this.healthFill.parent = this.root;
-    this.healthFill.position = new Vector3(0, kind === 'ironGuard' ? 3.85 : 3.45, -0.02);
+    this.healthFill.position = new Vector3(0, kind === 'brax' ? 3.85 : 3.45, -0.02);
     this.healthFill.material = materials.team(team);
     this.healthFill.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.healthFill.isPickable = false;
@@ -228,7 +230,7 @@ export class UnitRig {
 
   /**
    * Stow the weapon and shield on the torso's back for the whole climb. Both hands must grip the
-   * ladder, so sword/mace/bow and the iron guard's big round shield leave the forearms while the
+   * ladder, so daggers, bow, bomb charges and BRAX's big round shield leave the forearms while the
    * climb interaction owns the arms. The previous parent/position/rotation is stored and restored
    * exactly when the climb ends.
    */
@@ -490,7 +492,9 @@ export class UnitRig {
     this.head.rotation.y = Math.sin(elapsed * 1.5) * 0.05;
 
     if ((state === 'moving' || state === 'climbing') && !this.interactionPoseActive) {
-      const speed = this.kind === 'raider' ? 10.5 : this.kind === 'ironGuard' ? 6.8 : 8.5;
+      // VEX sprints, BRAX and FUSE plod. The cadence difference is one of the clearest identity
+      // cues from the gameplay camera, so it is deliberately wide.
+      const speed = this.kind === 'vex' ? 11.0 : this.kind === 'brax' ? 6.6 : this.kind === 'fuse' ? 7.0 : 8.5;
       const swing = Math.sin(elapsed * speed);
       const legArc = state === 'climbing' ? 0.52 : 0.74;
       const armArc = state === 'climbing' ? 0.78 : 0.52;
@@ -510,18 +514,29 @@ export class UnitRig {
 
     if (state === 'attacking') {
       const arc = Math.sin(Math.min(1, attackProgress) * Math.PI);
-      if (this.kind === 'ranger') {
+      if (this.kind === 'nyx') {
+        // Braced crossbow/bow aim: both arms lift level, the draw hand pulls back through the arc.
         this.leftArm.rotation.x = -1.22;
         this.leftArm.rotation.y = -0.38;
         this.rightArm.rotation.x = -1.25;
         this.rightArm.rotation.y = 0.82 - arc * 0.82;
         this.torso.rotation.y = -0.18;
+      } else if (this.kind === 'fuse') {
+        // Overhand bomb lob: the throwing arm winds up over the shoulder and snaps down and forward,
+        // reading as a thrown charge rather than a sword swing.
+        this.rightArm.rotation.x = -2.05 + arc * 2.75;
+        this.rightArm.rotation.z = 0.18 - arc * 0.42;
+        this.leftArm.rotation.x = -0.52 - arc * 0.28;
+        this.torso.rotation.y = -0.22 + arc * 0.5;
+        this.torso.rotation.x = -0.18 + arc * 0.3;
+        this.weaponRoot.rotation.z = arc * 0.4;
       } else {
         this.rightArm.rotation.x = -1.18 + arc * 2.20;
         this.rightArm.rotation.z = -0.34 + arc * 0.68;
         this.torso.rotation.y = -0.34 + arc * 0.65;
         this.weaponRoot.rotation.z = arc * 0.62;
-        if (this.kind === 'ironGuard') this.leftArm.rotation.x = -0.78;
+        // BRAX keeps the shield arm braced across the body through the whole swing.
+        if (this.kind === 'brax') this.leftArm.rotation.x = -0.78;
       }
     }
 
@@ -560,23 +575,25 @@ export class UnitRig {
     const teamCloth = materials.teamCloth(this.team);
     const teamArmor = materials.teamArmor(this.team);
     const teamAccent = materials.teamAccent(this.team);
-    const bodyWidth = this.kind === 'ironGuard' ? 1.38 : this.kind === 'raider' ? 0.88 : 1.12;
-    const bodyHeight = this.kind === 'ironGuard' ? 1.48 : 1.28;
+    // BRAX is the widest and tallest torso block; FUSE is nearly as wide but shorter, so it reads
+    // as a compact powder-keg next to BRAX's slab. VEX stays narrow.
+    const bodyWidth = this.kind === 'brax' ? 1.38 : this.kind === 'vex' ? 0.88 : this.kind === 'fuse' ? 1.24 : 1.12;
+    const bodyHeight = this.kind === 'brax' ? 1.48 : this.kind === 'fuse' ? 1.22 : 1.28;
 
     const torsoMesh = MeshBuilder.CreateCapsule(`${this.root.name}-body`, { height: bodyHeight, radius: bodyWidth * 0.44, tessellation: 8, subdivisions: 2 }, scene);
     torsoMesh.parent = this.torso;
     torsoMesh.position.y = 0.25;
     torsoMesh.scaling.x = 1.18;
-    // Every class wears the team tabard as its largest single block. Rangers keep their hood,
-    // quiver and bow; only the tunic material changes from leather to the team cloth.
+    // Every class wears the team tabard as its largest single block. NYX keeps the hood, quiver
+    // and bow; only the tunic material changes from leather to the team cloth.
     torsoMesh.material = teamCloth;
 
     const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth * 0.76, height: 0.74, depth: 0.54 }, scene);
     chest.parent = this.torso;
     chest.position = new Vector3(0, 0.36, -0.02);
-    // Armor plate over the tabard: silver for blue, dark iron for red. Raiders carry a cloth
-    // vest instead of plate, so their whole torso reads as one team-colored block.
-    chest.material = this.kind === 'raider' ? teamCloth : teamArmor;
+    // Armor plate over the tabard: silver for blue, dark iron for red. VEX carries a cloth vest
+    // instead of plate, so the whole torso reads as one team-colored block.
+    chest.material = this.kind === 'vex' ? teamCloth : teamArmor;
     chest.rotation.x = -0.05;
 
     const belt = MeshBuilder.CreateCylinder(`${this.root.name}-belt`, { height: 0.20, diameter: bodyWidth * 0.94, tessellation: 8 }, scene);
@@ -584,7 +601,7 @@ export class UnitRig {
     belt.position.y = -0.25;
     belt.material = materials.black;
 
-    const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'ironGuard' ? 0.92 : 0.82, segments: 8 }, scene);
+    const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'brax' ? 0.92 : 0.82, segments: 8 }, scene);
     headMesh.parent = this.head;
     headMesh.material = materials.skin;
 
@@ -594,14 +611,14 @@ export class UnitRig {
     this.buildShoulderPads(scene, teamArmor, teamAccent);
     this.buildCape(scene, materials, teamCloth);
 
-    if (this.kind === 'ironGuard') {
+    if (this.kind === 'brax') {
       const backPlate = MeshBuilder.CreateBox(`${this.root.name}-back-plate`, { width: 1.48, height: 1.42, depth: 0.26 }, scene);
       backPlate.parent = this.torso;
       backPlate.position = new Vector3(0, 0.24, 0.34);
       backPlate.material = teamArmor;
     }
 
-    if (this.kind === 'raider') {
+    if (this.kind === 'vex') {
       const scarf = MeshBuilder.CreateBox(`${this.root.name}-scarf`, { width: 0.30, height: 1.32, depth: 0.14 }, scene);
       scarf.parent = this.torso;
       scarf.position = new Vector3(0.38, 0.05, 0.36);
@@ -609,7 +626,7 @@ export class UnitRig {
       scarf.material = teamCloth;
     }
 
-    if (this.kind === 'ranger') {
+    if (this.kind === 'nyx') {
       const quiver = MeshBuilder.CreateCylinder(`${this.root.name}-quiver`, { height: 1.12, diameter: 0.44, tessellation: 8 }, scene);
       quiver.parent = this.torso;
       quiver.position = new Vector3(-0.42, 0.25, 0.36);
@@ -623,6 +640,40 @@ export class UnitRig {
         arrow.material = materials.wood;
       }
     }
+
+    if (this.kind === 'fuse') {
+      // Bomb pack: the whole point of FUSE's silhouette. A wide leather crate on the back with
+      // three bomb spheres proud of it and a short lit fuse on the top charge, so the outline is
+      // unmistakably "carrying explosives" even at portrait-camera distance.
+      const pack = MeshBuilder.CreateBox(`${this.root.name}-bomb-pack`, { width: 1.16, height: 0.86, depth: 0.52 }, scene);
+      pack.parent = this.torso;
+      pack.position = new Vector3(0, 0.2, 0.52);
+      pack.material = materials.leather;
+      const packStrap = MeshBuilder.CreateBox(`${this.root.name}-bomb-strap`, { width: 1.24, height: 0.18, depth: 0.6 }, scene);
+      packStrap.parent = this.torso;
+      packStrap.position = new Vector3(0, 0.46, 0.5);
+      packStrap.material = materials.black;
+      for (const [index, offset] of [-0.42, 0.0, 0.42].entries()) {
+        const bomb = MeshBuilder.CreateSphere(`${this.root.name}-bomb-${index}`, { diameter: 0.5, segments: 7 }, scene);
+        bomb.parent = this.torso;
+        bomb.position = new Vector3(offset, index === 1 ? 0.62 : 0.34, 0.82);
+        bomb.material = materials.black;
+        const cap = MeshBuilder.CreateCylinder(`${this.root.name}-bomb-cap-${index}`, { height: 0.16, diameter: 0.18, tessellation: 6 }, scene);
+        cap.parent = bomb;
+        cap.position.y = 0.28;
+        cap.material = materials.metal;
+      }
+      // Lit fuse on the centre charge, in the team accent so it reads as a hot spark.
+      const fuse = MeshBuilder.CreateCylinder(`${this.root.name}-bomb-fuse`, { height: 0.34, diameter: 0.07, tessellation: 5 }, scene);
+      fuse.parent = this.torso;
+      fuse.position = new Vector3(0.04, 1.02, 0.8);
+      fuse.rotation.z = -0.42;
+      fuse.material = teamAccent;
+      const spark = MeshBuilder.CreateSphere(`${this.root.name}-bomb-spark`, { diameter: 0.2, segments: 6 }, scene);
+      spark.parent = this.torso;
+      spark.position = new Vector3(0.16, 1.16, 0.79);
+      spark.material = materials.teamGlow(this.team);
+    }
   }
 
   /**
@@ -631,10 +682,10 @@ export class UnitRig {
    * clearly visible against both the silver (blue) and dark-iron (red) armor below.
    */
   private buildShoulderPads(scene: Scene, teamArmor: Material, teamAccent: Material): void {
-    const diameter = this.kind === 'ironGuard' ? 0.9 : this.kind === 'vanguard' ? 0.74 : this.kind === 'ranger' ? 0.58 : 0.54;
+    const diameter = this.kind === 'brax' ? 0.9 : this.kind === 'fuse' ? 0.7 : this.kind === 'nyx' ? 0.58 : 0.54;
     const capDiameter = diameter * 0.55;
-    const armY = this.kind === 'ironGuard' ? 0.62 : 0.56;
-    const armX = this.kind === 'ironGuard' ? 0.78 : this.kind === 'ranger' || this.kind === 'raider' ? 0.6 : 0.62;
+    const armY = this.kind === 'brax' ? 0.62 : 0.56;
+    const armX = this.kind === 'brax' ? 0.78 : this.kind === 'nyx' || this.kind === 'vex' ? 0.6 : 0.66;
     for (const side of [-1, 1] as const) {
       const pad = MeshBuilder.CreateSphere(`${this.root.name}-pad-${side}`, { diameter, segments: 7 }, scene);
       pad.parent = this.torso;
@@ -653,17 +704,19 @@ export class UnitRig {
    * Rigid back cloth in the team color with one bold white center stripe. A full-height block,
    * not a trim: it covers most of the back so player units (seen from behind by the portrait
    * camera) read as solid blue/red. The stripe doubles the marking for enemy units seen head-on.
-   * Rangers wear a half-cape clear of their quiver, offset to the free right side.
+   * NYX wears a half-cape clear of the quiver, offset to the free right side. FUSE gets none: the
+   * bomb pack already owns its whole back, and cloth over it would bury the charges.
    */
   private buildCape(scene: Scene, materials: MaterialLibrary, teamCloth: Material): void {
-    const iron = this.kind === 'ironGuard';
-    const ranger = this.kind === 'ranger';
-    const raider = this.kind === 'raider';
-    const width = iron ? 1.6 : ranger ? 0.7 : raider ? 1.0 : 1.3;
-    const height = iron ? 1.46 : ranger ? 1.3 : raider ? 1.28 : 1.38;
-    const depth = iron ? 0.16 : ranger ? 0.12 : 0.14;
-    const offsetX = ranger ? 0.15 : 0;
-    const backZ = iron ? 0.56 : ranger ? 0.52 : 0.5;
+    if (this.kind === 'fuse') return;
+    const heavy = this.kind === 'brax';
+    const marksman = this.kind === 'nyx';
+    const rogue = this.kind === 'vex';
+    const width = heavy ? 1.6 : marksman ? 0.7 : rogue ? 1.0 : 1.3;
+    const height = heavy ? 1.46 : marksman ? 1.3 : rogue ? 1.28 : 1.38;
+    const depth = heavy ? 0.16 : marksman ? 0.12 : 0.14;
+    const offsetX = marksman ? 0.15 : 0;
+    const backZ = heavy ? 0.56 : marksman ? 0.52 : 0.5;
     const cape = MeshBuilder.CreateBox(`${this.root.name}-cape`, { width, height, depth }, scene);
     cape.parent = this.torso;
     cape.position = new Vector3(offsetX, 0.08, backZ);
@@ -683,7 +736,7 @@ export class UnitRig {
     const teamArmor = materials.teamArmor(this.team);
     const teamAccent = materials.teamAccent(this.team);
 
-    if (this.kind === 'ranger') {
+    if (this.kind === 'nyx') {
       const hood = MeshBuilder.CreateCylinder(`${this.root.name}-hood`, { height: 0.88, diameterTop: 0.22, diameterBottom: 0.96, tessellation: 8 }, scene);
       hood.parent = this.head;
       hood.position.y = 0.22;
@@ -699,7 +752,7 @@ export class UnitRig {
       return;
     }
 
-    if (this.kind === 'ironGuard') {
+    if (this.kind === 'brax') {
       const helmet = MeshBuilder.CreateCylinder(`${this.root.name}-helmet`, { height: 0.82, diameter: 1.04, tessellation: 8 }, scene);
       helmet.parent = this.head;
       helmet.position.y = 0.14;
@@ -715,19 +768,28 @@ export class UnitRig {
       return;
     }
 
-    if (this.kind === 'vanguard') {
-      const hair = MeshBuilder.CreateCylinder(`${this.root.name}-hair`, { height: 0.48, diameterTop: 0.48, diameterBottom: 0.88, tessellation: 8 }, scene);
-      hair.parent = this.head;
-      hair.position.y = 0.30;
-      hair.material = teamCloth;
-      const brow = MeshBuilder.CreateBox(`${this.root.name}-brow`, { width: 0.80, height: 0.14, depth: 0.15 }, scene);
-      brow.parent = this.head;
-      brow.position = new Vector3(0, 0.05, -0.39);
-      brow.material = teamAccent;
-      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.15, height: 0.5, depth: 0.4 }, scene);
-      crest.parent = this.head;
-      crest.position = new Vector3(0, 0.74, 0.05);
-      crest.material = teamAccent;
+    if (this.kind === 'fuse') {
+      // Demolition head: low leather skullcap, two blast goggles and a breathing mask. The goggle
+      // pair is the read at distance — two bright discs where every other class has a flat brow.
+      const cap = MeshBuilder.CreateCylinder(`${this.root.name}-blast-cap`, { height: 0.42, diameterTop: 0.7, diameterBottom: 0.98, tessellation: 8 }, scene);
+      cap.parent = this.head;
+      cap.position.y = 0.26;
+      cap.material = materials.leather;
+      for (const side of [-1, 1] as const) {
+        const goggle = MeshBuilder.CreateCylinder(`${this.root.name}-goggle-${side}`, { height: 0.16, diameter: 0.34, tessellation: 8 }, scene);
+        goggle.parent = this.head;
+        goggle.position = new Vector3(side * 0.19, 0.06, -0.36);
+        goggle.rotation.x = Math.PI / 2;
+        goggle.material = teamAccent;
+      }
+      const strap = MeshBuilder.CreateBox(`${this.root.name}-goggle-strap`, { width: 0.94, height: 0.14, depth: 0.86 }, scene);
+      strap.parent = this.head;
+      strap.position = new Vector3(0, 0.06, 0);
+      strap.material = materials.black;
+      const respirator = MeshBuilder.CreateBox(`${this.root.name}-respirator`, { width: 0.5, height: 0.3, depth: 0.2 }, scene);
+      respirator.parent = this.head;
+      respirator.position = new Vector3(0, -0.24, -0.36);
+      respirator.material = materials.metal;
       return;
     }
 
@@ -747,8 +809,8 @@ export class UnitRig {
 
   private buildLimbs(scene: Scene, materials: MaterialLibrary, _teamDark: Material): void {
     const teamCloth = materials.teamCloth(this.team);
-    const armRadius = this.kind === 'ironGuard' ? 0.27 : 0.22;
-    const armLength = this.kind === 'ironGuard' ? 1.30 : 1.18;
+    const armRadius = this.kind === 'brax' ? 0.27 : this.kind === 'fuse' ? 0.25 : 0.22;
+    const armLength = this.kind === 'brax' ? 1.30 : 1.18;
     // The arm is now two bones (upper arm + forearm) so the climb IK can bend a real elbow. The
     // joint sits at -ARM_UPPER (matching the hand anchor at -1.06) and each capsule is split so
     // the overall silhouette matches the old single-bone arm.
@@ -773,8 +835,8 @@ export class UnitRig {
     }
     this.handRadiusWorld = armRadius * 1.75 * 0.5 * this.baseScale;
 
-    const legRadius = this.kind === 'ironGuard' ? 0.29 : 0.24;
-    const legLength = this.kind === 'ironGuard' ? 1.48 : 1.34;
+    const legRadius = this.kind === 'brax' ? 0.29 : this.kind === 'fuse' ? 0.27 : 0.24;
+    const legLength = this.kind === 'brax' ? 1.48 : this.kind === 'fuse' ? 1.26 : 1.34;
     for (const [node, side] of [[this.leftLeg, 'left'], [this.rightLeg, 'right']] as const) {
       const leg = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-leg-mesh`, { height: legLength, radius: legRadius, tessellation: 7, subdivisions: 1 }, scene);
       leg.parent = node;
@@ -790,7 +852,7 @@ export class UnitRig {
   private buildWeapon(scene: Scene, materials: MaterialLibrary, _teamMaterial: Material, _teamDark: Material): void {
     const teamArmor = materials.teamArmor(this.team);
     const teamAccent = materials.teamAccent(this.team);
-    if (this.kind === 'ranger') {
+    if (this.kind === 'nyx') {
       const upperLimb = MeshBuilder.CreateCylinder(`${this.root.name}-bow-upper`, { height: 1.06, diameter: 0.11, tessellation: 7 }, scene);
       upperLimb.parent = this.weaponRoot;
       upperLimb.position = new Vector3(0.22, 0.40, 0);
@@ -812,7 +874,7 @@ export class UnitRig {
       return;
     }
 
-    if (this.kind === 'ironGuard') {
+    if (this.kind === 'brax') {
       // Tower shield held out at the left flank, facing front/back (axis along Z after the
       // rotation), so the portrait camera sees a full roundel instead of a sliver buried in the
       // torso. The bright face carries a large white cross raised off the camera-side cap.
@@ -845,12 +907,48 @@ export class UnitRig {
       return;
     }
 
-    const bladeLength = this.kind === 'raider' ? 1.08 : 1.52;
+    if (this.kind === 'fuse') {
+      // Right hand: a big lit bomb on a short throwing grip — the thing that gets lobbed at the
+      // gate. Left hand: a bundled charge of three sticks. Neither is a blade, so FUSE never reads
+      // as another swordsman from the gameplay camera.
+      const grip = MeshBuilder.CreateCylinder(`${this.root.name}-bomb-grip`, { height: 0.44, diameter: 0.13, tessellation: 7 }, scene);
+      grip.parent = this.weaponRoot;
+      grip.position.y = -0.2;
+      grip.material = materials.leather;
+      const charge = MeshBuilder.CreateSphere(`${this.root.name}-hand-bomb`, { diameter: 0.72, segments: 8 }, scene);
+      charge.parent = this.weaponRoot;
+      charge.position.y = -0.74;
+      charge.material = materials.black;
+      const band = MeshBuilder.CreateCylinder(`${this.root.name}-hand-bomb-band`, { height: 0.16, diameter: 0.78, tessellation: 10 }, scene);
+      band.parent = charge;
+      band.rotation.x = Math.PI / 2;
+      band.material = teamAccent;
+      const wick = MeshBuilder.CreateCylinder(`${this.root.name}-hand-bomb-wick`, { height: 0.36, diameter: 0.07, tessellation: 5 }, scene);
+      wick.parent = charge;
+      wick.position = new Vector3(0.1, -0.44, 0);
+      wick.rotation.z = 0.5;
+      wick.material = materials.teamGlow(this.team);
+      for (const [index, offset] of [-0.16, 0, 0.16].entries()) {
+        const stick = MeshBuilder.CreateCylinder(`${this.root.name}-satchel-stick-${index}`, { height: 0.72, diameter: 0.19, tessellation: 7 }, scene);
+        stick.parent = this.shieldRoot;
+        stick.position = new Vector3(offset, -0.62, 0);
+        stick.material = index === 1 ? teamAccent : materials.leather;
+      }
+      const satchelStrap = MeshBuilder.CreateBox(`${this.root.name}-satchel-strap`, { width: 0.62, height: 0.14, depth: 0.24 }, scene);
+      satchelStrap.parent = this.shieldRoot;
+      satchelStrap.position = new Vector3(0, -0.5, 0);
+      satchelStrap.material = materials.black;
+      return;
+    }
+
+    // VEX: twin short daggers, one per hand. Slim blades and no guard bulk keep the silhouette
+    // light and fast next to BRAX's shield wall.
+    const bladeLength = 1.08;
     const handle = MeshBuilder.CreateCylinder(`${this.root.name}-weapon-handle`, { height: 0.64, diameter: 0.14, tessellation: 7 }, scene);
     handle.parent = this.weaponRoot;
     handle.position.y = -0.18;
     handle.material = materials.leather;
-    const blade = MeshBuilder.CreateBox(`${this.root.name}-blade`, { width: this.kind === 'raider' ? 0.20 : 0.30, height: bladeLength, depth: 0.09 }, scene);
+    const blade = MeshBuilder.CreateBox(`${this.root.name}-blade`, { width: 0.20, height: bladeLength, depth: 0.09 }, scene);
     blade.parent = this.weaponRoot;
     blade.position.y = -0.80;
     blade.material = materials.metal;
@@ -859,22 +957,12 @@ export class UnitRig {
     guard.position.y = -0.44;
     guard.material = teamArmor;
 
-    if (this.kind === 'vanguard') {
-      const axeBack = MeshBuilder.CreateBox(`${this.root.name}-axe-back`, { width: 0.50, height: 0.56, depth: 0.14 }, scene);
-      axeBack.parent = this.weaponRoot;
-      axeBack.position = new Vector3(0.34, -1.15, 0);
-      axeBack.rotation.z = 0.34;
-      axeBack.material = materials.metal;
-    }
-
-    if (this.kind === 'raider') {
-      const secondBlade = blade.clone(`${this.root.name}-second-blade`) as Mesh;
-      secondBlade.parent = this.shieldRoot;
-      secondBlade.position = new Vector3(0, -0.82, 0);
-      secondBlade.rotation.z = -0.15;
-      const secondHandle = handle.clone(`${this.root.name}-second-handle`) as Mesh;
-      secondHandle.parent = this.shieldRoot;
-      secondHandle.position = new Vector3(0, -0.20, 0);
-    }
+    const secondBlade = blade.clone(`${this.root.name}-second-blade`) as Mesh;
+    secondBlade.parent = this.shieldRoot;
+    secondBlade.position = new Vector3(0, -0.82, 0);
+    secondBlade.rotation.z = -0.15;
+    const secondHandle = handle.clone(`${this.root.name}-second-handle`) as Mesh;
+    secondHandle.parent = this.shieldRoot;
+    secondHandle.position = new Vector3(0, -0.20, 0);
   }
 }

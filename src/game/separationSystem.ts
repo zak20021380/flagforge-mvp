@@ -5,8 +5,8 @@ import type { UnitEntity } from './unit';
  * Lightweight local separation between nearby units, evaluated on the XZ plane only.
  *
  * Each unit claims a personal-space bubble sized from its own collision radius
- * (`bodyRadius`, derived from the unit scale, so an Iron Guard reserves slightly more room than a
- * Raider). Two units only repel while their bubbles actually intrude on each other. The push is
+ * (`bodyRadius`, derived from the unit scale, so a BRAX reserves slightly more room than a
+ * VEX). Two units only repel while their bubbles actually intrude on each other. The push is
  * strongest at very close range and fades smoothly to zero at the bubble edge (a quadratic
  * falloff), so clustered units ease apart into a loose formation instead of ever being kicked or
  * teleported.

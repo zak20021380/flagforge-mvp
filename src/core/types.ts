@@ -1,7 +1,13 @@
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 export type Team = 'blue' | 'red';
-export type UnitKind = 'vanguard' | 'ranger' | 'raider' | 'ironGuard';
+/**
+ * MVP roster, in deploy-card order: BRAX (armoured frontliner), NYX (precision marksman),
+ * VEX (fast objective raider), FUSE (explosive siege bomber). The literal is the registry key —
+ * it also generates the card DOM hooks (`data-card`, `portrait-*`), so renames must stay in sync
+ * with src/styles.css.
+ */
+export type UnitKind = 'brax' | 'nyx' | 'vex' | 'fuse';
 export type UnitState = 'idle' | 'moving' | 'queued' | 'climbing' | 'falling' | 'attacking' | 'hit' | 'dead';
 /**
  * Authoritative match flow. The match starts in FLAG_OBJECTIVE, advances once to CASTLE_ASSAULT

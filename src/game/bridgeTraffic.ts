@@ -42,7 +42,7 @@ import type { UnitEntity } from './unit';
  *   cleared     - released, finishing the run-out; next frame it is 'none'
  */
 
-const KIND_INDEX: Record<UnitKind, number> = { vanguard: 0, ranger: 1, raider: 2, ironGuard: 3 };
+const KIND_INDEX: Record<UnitKind, number> = { brax: 0, nyx: 1, vex: 2, fuse: 3 };
 /** Queue slot gap multiplier applied to the sum of the two unit body radii. */
 const AXIS_SPACING = 1.35;
 /** Fixed gap between queued bodies, on top of the radius-based spacing. */
@@ -92,7 +92,7 @@ export interface BridgeDeck {
 
 /** Largest body radius across every unit kind, used to size the lanes. */
 const MAX_BODY_RADIUS = Math.max(
-  ...(['vanguard', 'ranger', 'raider', 'ironGuard'] as const)
+  ...(['brax', 'nyx', 'vex', 'fuse'] as const)
     .map((kind) => CONFIG.unit.separationRadius * 0.5 * UNIT_STATS[kind].scale),
 );
 
@@ -112,7 +112,7 @@ export class BridgeTraffic {
     this.decks = ARENA_RIVERS.map((channel, channelIndex) => channel.bridges.map((bridge, bridgeIndex) => {
       const walkableWidth = bridge.walkMaxX - bridge.walkMinX;
       const capacityByKind: number[] = [];
-      for (const kind of ['vanguard', 'ranger', 'raider', 'ironGuard'] as const) {
+      for (const kind of ['brax', 'nyx', 'vex', 'fuse'] as const) {
         const radius = CONFIG.unit.separationRadius * 0.5 * UNIT_STATS[kind].scale;
         capacityByKind.push(Math.max(1, Math.floor(walkableWidth / (radius * 2 * CAPACITY_WIDTH_FACTOR))));
       }

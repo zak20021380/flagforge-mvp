@@ -106,7 +106,7 @@ export class CastleLadderSystem {
     if (this.isRegistered(unit)) return true;
     if (
       unit.team !== 'blue'
-      || unit.kind === 'ranger'
+      || unit.kind === 'nyx'
       || unit.carryingFlag
       || unit.navigationArea !== 'ground'
       || !this.prefersLadder(unit)
@@ -256,9 +256,9 @@ export class CastleLadderSystem {
       let eligible = false;
       if (unit.team === 'red' && unit.navigationArea === 'enemyWallTop') {
         eligible = candidate.navigationArea === 'enemyWallTop' || this.isAttackableClimber(candidate);
-      } else if (unit.team === 'red' && unit.kind === 'ranger' && unit.navigationArea === 'ground') {
+      } else if (unit.team === 'red' && unit.kind === 'nyx' && unit.navigationArea === 'ground') {
         eligible = candidate.navigationArea === 'enemyWallTop' || this.isCastleClimber(candidate);
-      } else if (unit.team === 'blue' && unit.kind === 'ranger' && unit.navigationArea === 'ground') {
+      } else if (unit.team === 'blue' && unit.kind === 'nyx' && unit.navigationArea === 'ground') {
         eligible = candidate.navigationArea === 'enemyWallTop';
       } else if (unit.team === 'blue' && unit.navigationArea === 'enemyWallTop') {
         eligible = candidate.navigationArea === 'enemyWallTop';
@@ -277,11 +277,11 @@ export class CastleLadderSystem {
     if (attacker.navigationArea === 'enemyWallTop' && target.navigationArea === 'enemyWallTop') return true;
     if (
       attacker.team === 'red'
-      && attacker.kind !== 'ranger'
+      && attacker.kind !== 'nyx'
       && attacker.navigationArea === 'enemyWallTop'
       && this.isAttackableClimber(target)
     ) return true;
-    if (attacker.kind !== 'ranger' || attacker.navigationArea !== 'ground') return false;
+    if (attacker.kind !== 'nyx' || attacker.navigationArea !== 'ground') return false;
     if (attacker.team === 'red') return this.isCastleClimber(target) || target.navigationArea === 'enemyWallTop';
     return target.navigationArea === 'enemyWallTop';
   }
@@ -289,7 +289,7 @@ export class CastleLadderSystem {
   tryKnockDown(target: UnitEntity, attacker: UnitEntity): boolean {
     if (
       attacker.team !== 'red'
-      || attacker.kind === 'ranger'
+      || attacker.kind === 'nyx'
       || attacker.navigationArea !== 'enemyWallTop'
       || !this.isAttackableClimber(target)
     ) return false;
@@ -317,9 +317,9 @@ export class CastleLadderSystem {
     return this.ladderList.find((ladder) => ladder.defender === unit)?.guardPoint ?? null;
   }
 
-  getRangerSupportPoint(unit: UnitEntity): Vector3 {
+  getNyxSupportPoint(unit: UnitEntity): Vector3 {
     const side = unit.lane === 'left' ? 'left' : unit.lane === 'right' ? 'right' : unit.id % 2 === 0 ? 'left' : 'right';
-    return point(ENEMY_CASTLE_ASSAULT.rangerSupport[side]);
+    return point(ENEMY_CASTLE_ASSAULT.nyxSupport[side]);
   }
 
   isWallDefender(unit: UnitEntity): boolean {
@@ -551,14 +551,17 @@ export class CastleLadderSystem {
   }
 
   private prefersLadder(unit: UnitEntity): boolean {
-    if (unit.kind === 'raider') return true;
-    if (unit.kind === 'vanguard') return unit.id % 3 !== 0;
-    return unit.kind === 'ironGuard' && unit.id % 2 === 0;
+    // VEX always goes over the wall — infiltration is its whole job. BRAX mostly climbs to contest
+    // the wall top. FUSE never climbs: its damage belongs on the gate/castle, so it stays on the
+    // ground assault route and sieges the structure.
+    if (unit.kind === 'vex') return true;
+    if (unit.kind === 'brax') return unit.id % 3 !== 0;
+    return false;
   }
 
   private canDefend(unit: UnitEntity): boolean {
     return unit.team === 'red'
-      && unit.kind !== 'ranger'
+      && unit.kind !== 'nyx'
       && !unit.carryingFlag
       && unit.navigationArea === 'ground'
       && !this.isWallDefender(unit);

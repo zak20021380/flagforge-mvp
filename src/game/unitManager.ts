@@ -66,7 +66,7 @@ export class UnitManager {
     private readonly audio: AudioManager,
   ) {
     for (const team of ['blue', 'red'] as const) {
-      for (const kind of ['vanguard', 'ranger', 'raider', 'ironGuard'] as const) {
+      for (const kind of ['brax', 'nyx', 'vex', 'fuse'] as const) {
         this.createUnit(team, kind);
       }
     }
@@ -325,7 +325,7 @@ export class UnitManager {
 
     if (!unit.attackHitApplied && unit.attackClock >= unit.stats.windup) {
       unit.attackHitApplied = true;
-      if (unit.kind === 'ranger') {
+      if (unit.kind === 'nyx') {
         this.projectiles.launch(
           unit.position.add(new Vector3(0, 1.75, 0)),
           target,
@@ -364,7 +364,7 @@ export class UnitManager {
       // The castle stays this unit's standing objective. Only an enemy already in immediate
       // engagement range may be adopted, so a blocker is fought without dragging the attacker off
       // the castle approach; the next refresh drops the target and the unit resumes advancing.
-      const engagementRange = unit.kind === 'ranger'
+      const engagementRange = unit.kind === 'nyx'
         ? unit.stats.attackRange
         : unit.stats.attackRange + 1.4;
       unit.target = this.findNearestEnemy(unit.position, unit.team, engagementRange, unit.navigationArea);
@@ -394,7 +394,7 @@ export class UnitManager {
 
     const enemyCarrier = this.flag.currentCarrier?.team !== unit.team ? this.flag.currentCarrier : null;
     if (enemyCarrier?.active && enemyCarrier.state !== 'climbing') {
-      const carrierPressureRange = Math.max(unit.stats.aggroRange, unit.kind === 'ranger' ? 13 : 10.5);
+      const carrierPressureRange = Math.max(unit.stats.aggroRange, unit.kind === 'nyx' ? 13 : 10.5);
       if (squaredDistanceXZ(unit.position, enemyCarrier.position) <= carrierPressureRange * carrierPressureRange) {
         unit.target = enemyCarrier;
         return;
@@ -410,7 +410,7 @@ export class UnitManager {
       }
     }
 
-    const aggro = unit.kind === 'raider' && this.flag.canBePickedUp()
+    const aggro = unit.kind === 'vex' && this.flag.canBePickedUp()
       ? Math.min(3.2, unit.stats.aggroRange)
       : unit.stats.aggroRange;
     unit.target = this.findNearestEnemy(unit.position, unit.team, aggro, unit.navigationArea);
@@ -472,9 +472,9 @@ export class UnitManager {
       const side = unit.id % 2 === 0 ? -1 : 1;
       const behind = unit.team === 'blue' ? -1 : 1;
       return new Vector3(
-        friendlyCarrier.position.x + side * (unit.kind === 'ironGuard' ? 1.45 : 1.95),
+        friendlyCarrier.position.x + side * (unit.kind === 'brax' ? 1.45 : 1.95),
         0.16,
-        friendlyCarrier.position.z + behind * (unit.kind === 'ironGuard' ? 1.25 : 2.05),
+        friendlyCarrier.position.z + behind * (unit.kind === 'brax' ? 1.25 : 2.05),
       );
     }
 
@@ -610,7 +610,7 @@ export class UnitManager {
     dz /= distance;
 
     let speed = unit.stats.speed;
-    if (unit.carryingFlag) speed *= unit.kind === 'raider' ? 1 : 0.9;
+    if (unit.carryingFlag) speed *= unit.kind === 'vex' ? 1 : 0.9;
     const step = speed * deltaSeconds;
     let moved = true;
     if (unit.navigationArea === 'towerTop') {
@@ -959,7 +959,7 @@ export class UnitManager {
         !candidate.active
         || candidate.state === 'dead'
         || candidate.team !== target.team
-        || candidate.kind !== 'ironGuard'
+        || candidate.kind !== 'brax'
         || candidate.navigationArea !== target.navigationArea
       ) continue;
       const distance = squaredDistanceXZ(target.position, candidate.position);
@@ -1001,9 +1001,9 @@ export class UnitManager {
         const gateStage = this.castles.isGateStage(enemyTeam);
         const table = gateStage ? CONFIG.gate : CONFIG.castle;
         let damage = table.damagePerUnitHit;
-        if (unit.kind === 'ranger') damage *= table.rangerDamageMultiplier;
-        if (unit.kind === 'ironGuard') damage *= table.ironGuardDamageMultiplier;
-        const strong = unit.kind === 'ironGuard' || unit.kind === 'vanguard';
+        if (unit.kind === 'nyx') damage *= table.nyxDamageMultiplier;
+        if (unit.kind === 'fuse') damage *= table.fuseDamageMultiplier;
+        const strong = unit.kind === 'fuse' || unit.kind === 'brax';
         // Gate hits land on the timber itself (low, centred on the doors); castle hits spread up the
         // masonry as before.
         const hitY = gateStage

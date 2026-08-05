@@ -45,40 +45,43 @@ export class EnemyAI {
     const aiHasFlag = this.flag.currentCarrier?.team === 'red';
 
     if (this.canAssaultCastle('red')) {
-      if (roll < 0.52) return 'raider';
-      if (roll < 0.72) return 'ironGuard';
-      if (roll < 0.88) return 'vanguard';
-      return 'ranger';
+      // Siege window: FUSE carries the structure damage, VEX still slips through, BRAX escorts.
+      if (roll < 0.38) return 'fuse';
+      if (roll < 0.68) return 'vex';
+      if (roll < 0.88) return 'brax';
+      return 'nyx';
     }
 
     if (playerHasFlag) {
-      if (roll < 0.4) return 'ranger';
-      if (roll < 0.76) return 'vanguard';
-      return roll < 0.9 ? 'raider' : 'ironGuard';
+      if (roll < 0.4) return 'nyx';
+      if (roll < 0.76) return 'brax';
+      return roll < 0.9 ? 'vex' : 'fuse';
     }
 
     if (aiHasFlag) {
-      if (!this.units.hasActiveKind('red', 'ironGuard') && roll < 0.58) return 'ironGuard';
-      return roll < 0.72 ? 'vanguard' : 'ranger';
+      // Escorting its own carrier: keep a BRAX bodyguard alive (UnitManager.findNearbyGuard reads
+      // BRAX as the damage-reducing guard), then screen with a runner or a marksman.
+      if (!this.units.hasActiveKind('red', 'brax') && roll < 0.58) return 'brax';
+      return roll < 0.72 ? 'vex' : 'nyx';
     }
 
-    if (!this.units.hasActiveKind('red', 'raider') && roll < 0.38) return 'raider';
-    if (roll < 0.35) return 'vanguard';
-    if (roll < 0.62) return 'ranger';
-    if (roll < 0.82) return 'raider';
-    return 'ironGuard';
+    if (!this.units.hasActiveKind('red', 'vex') && roll < 0.38) return 'vex';
+    if (roll < 0.35) return 'brax';
+    if (roll < 0.62) return 'nyx';
+    if (roll < 0.82) return 'vex';
+    return 'fuse';
   }
 
   private chooseAffordable(preferred: UnitKind): UnitKind | null {
     if (this.energy.canSpend(UNIT_STATS[preferred].cost)) return preferred;
-    const affordable = (['raider', 'vanguard', 'ranger', 'ironGuard'] as const)
+    const affordable = (['vex', 'brax', 'nyx', 'fuse'] as const)
       .filter((kind) => this.energy.canSpend(UNIT_STATS[kind].cost));
     if (affordable.length === 0) return null;
     return affordable[Math.floor(Math.random() * affordable.length)] ?? null;
   }
 
   private chooseLane(kind: UnitKind): Lane {
-    if (kind === 'raider' && this.flag.currentStatus === 'dropped') return laneFromX(this.flag.position.x);
+    if (kind === 'vex' && this.flag.currentStatus === 'dropped') return laneFromX(this.flag.position.x);
     const activeWindow = this.canAssaultCastle('red');
     if (activeWindow && Math.random() < 0.55) return 'center';
     const roll = Math.random();

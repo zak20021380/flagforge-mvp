@@ -559,7 +559,7 @@ export const ENEMY_CASTLE_ASSAULT = {
     minZ: ENEMY_CASTLE_Z - 2.3,
     maxZ: ENEMY_CASTLE_Z - 0.85,
   },
-  rangerSupport: {
+  nyxSupport: {
     left: enemyCastlePoint(-5.25, 0.16, ENEMY_CASTLE_Z - 5.15),
     right: enemyCastlePoint(5.25, 0.16, ENEMY_CASTLE_Z - 5.15),
   },
@@ -656,8 +656,8 @@ export const CONFIG = {
   gate: {
     maxHp: 900,
     damagePerUnitHit: 26,
-    rangerDamageMultiplier: 1.15,
-    ironGuardDamageMultiplier: 1.7,
+    nyxDamageMultiplier: 1.15,
+    fuseDamageMultiplier: 2.1,
     /** Shared tension thresholds: the bar turns amber here and the impact ladder steps up. */
     warningRatio: 0.35,
     /** Bar turns red, restrained warning pulse and the critical tick rhythm start. */
@@ -672,8 +672,8 @@ export const CONFIG = {
   castle: {
     maxHp: 3000,
     damagePerUnitHit: 18,
-    rangerDamageMultiplier: 1.4,
-    ironGuardDamageMultiplier: 1.6,
+    nyxDamageMultiplier: 1.4,
+    fuseDamageMultiplier: 2.0,
     attackRange: 2.2,
     destructionDurationSeconds: 2.5,
     assaultSlots: [
@@ -692,50 +692,58 @@ export const CONFIG = {
 } as const;
 
 export const UNIT_STATS: Record<UnitKind, UnitStats> = {
-  vanguard: {
+  // BRAX — durable melee frontliner. Highest sustained melee damage per swing of the two brawlers,
+  // deliberately slow so he arrives as pressure rather than as a rush.
+  brax: {
     cost: 3,
-    maxHealth: 170,
-    damage: 32,
-    speed: 3.25,
-    attackRange: 1.35,
+    maxHealth: 235,
+    damage: 38,
+    speed: 2.85,
+    attackRange: 1.4,
     aggroRange: 7.5,
-    attackCooldown: 1.05,
-    windup: 0.42,
-    scale: 1,
+    attackCooldown: 1.15,
+    windup: 0.46,
+    scale: 1.06,
   },
-  ranger: {
+  // NYX — precision marksman. Longest reach and the highest single-target hit in the roster, paid
+  // for with the lowest health pool and a slow cadence.
+  nyx: {
     cost: 3,
-    maxHealth: 92,
-    damage: 26,
+    maxHealth: 78,
+    damage: 34,
     speed: 3.05,
-    attackRange: 8.4,
-    aggroRange: 10.5,
-    attackCooldown: 1.3,
-    windup: 0.55,
-    projectileSpeed: 17,
+    attackRange: 9.2,
+    aggroRange: 11.4,
+    attackCooldown: 1.42,
+    windup: 0.58,
+    projectileSpeed: 19,
     scale: 0.94,
   },
-  raider: {
+  // VEX — fastest unit in the roster and the flag runner. Low health, short aggro so she keeps
+  // running for the objective instead of picking fights.
+  vex: {
     cost: 2,
-    maxHealth: 88,
-    damage: 20,
-    speed: 4.65,
+    maxHealth: 82,
+    damage: 19,
+    speed: 5.15,
     attackRange: 1.15,
-    aggroRange: 5.4,
-    attackCooldown: 0.82,
-    windup: 0.28,
-    scale: 0.9,
+    aggroRange: 5.0,
+    attackCooldown: 0.78,
+    windup: 0.26,
+    scale: 0.88,
   },
-  ironGuard: {
+  // FUSE — siege bomber. Medium durability, heavy but slow explosive hits, and by far the strongest
+  // damage against gate/castle structures (see CONFIG.gate/castle fuseDamageMultiplier).
+  fuse: {
     cost: 5,
-    maxHealth: 310,
-    damage: 41,
-    speed: 2.35,
-    attackRange: 1.5,
+    maxHealth: 185,
+    damage: 44,
+    speed: 2.6,
+    attackRange: 1.6,
     aggroRange: 8.3,
-    attackCooldown: 1.55,
-    windup: 0.62,
-    scale: 1.16,
+    attackCooldown: 1.6,
+    windup: 0.64,
+    scale: 1.02,
   },
 };
 
@@ -751,8 +759,8 @@ export const QUALITY_SETTINGS: Record<QualityTier, {
 };
 
 export const UNIT_LABELS: Record<UnitKind, string> = {
-  vanguard: 'Vanguard',
-  ranger: 'Ranger',
-  raider: 'Raider',
-  ironGuard: 'Iron Guard',
+  brax: 'BRAX',
+  nyx: 'NYX',
+  vex: 'VEX',
+  fuse: 'FUSE',
 };

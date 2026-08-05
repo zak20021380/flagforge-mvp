@@ -1,13 +1,33 @@
 import {
   Material,
+  Matrix,
   Mesh,
   MeshBuilder,
+  Quaternion,
   Scene,
   TransformNode,
   Vector3,
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
 import { MaterialLibrary } from './materials';
+
+/**
+ * World-space hand target on a real ladder surface. The ladder system derives these from the
+ * visible rung/rail geometry; the rig only solves the two-bone arm toward them.
+ */
+export interface ClimbGrip {
+  /** Point on the gripped surface (rung front face or rail head), in world space. */
+  readonly position: Vector3;
+  /** Surface normal pointing from the ladder toward the climber. */
+  readonly normal: Vector3;
+  /** Unit direction along the gripped bar (rail-to-rail), signed toward the gripping hand. */
+  readonly lateral: Vector3;
+}
+
+export interface ClimbGripPair {
+  readonly left: ClimbGrip;
+  readonly right: ClimbGrip;
+}
 
 export class UnitRig {
   readonly root: TransformNode;
@@ -24,6 +44,10 @@ export class UnitRig {
   private readonly head: TransformNode;
   private readonly leftArm: TransformNode;
   private readonly rightArm: TransformNode;
+  private readonly leftForearm: TransformNode;
+  private readonly rightForearm: TransformNode;
+  private readonly leftHandNode: TransformNode;
+  private readonly rightHandNode: TransformNode;
   private readonly leftLeg: TransformNode;
   private readonly rightLeg: TransformNode;
   private readonly weaponRoot: TransformNode;
@@ -32,6 +56,56 @@ export class UnitRig {
   private readonly healthFill: Mesh;
   private readonly baseScale: number;
   private deathRotation = 0;
+
+  // Arm bone lengths (local units; the visualRoot scale is applied at solve time). The elbow sits
+  // half-way down the arm so the two-bone IK can bend it while the hand stays at the original
+  // hand anchor (-1.06 local) for every unit kind.
+  private static readonly ARM_UPPER = 0.53;
+  private static readonly ARM_FORE = 0.53;
+  private static readonly ARM_DOWN = new Vector3(0, -1, 0);
+
+  /** World-space hand sphere radius, used to seat the palm ON the rung face instead of inside it. */
+  private handRadiusWorld = 0;
+
+  /** Persistent copies of the current climb grips (the ladder reuses its own scratch vectors). */
+  private readonly gripLeft = {
+    position: Vector3.Zero(),
+    normal: Vector3.Zero(),
+    lateral: Vector3.Zero(),
+  };
+  private readonly gripRight = {
+    position: Vector3.Zero(),
+    normal: Vector3.Zero(),
+    lateral: Vector3.Zero(),
+  };
+
+  /** Scratch buffers for the two-bone solve (no per-frame allocation). */
+  private readonly ik = {
+    target: Vector3.Zero(),
+    pole: Vector3.Zero(),
+    toTarget: Vector3.Zero(),
+    triDir: Vector3.Zero(),
+    poleDir: Vector3.Zero(),
+    bendAxis: Vector3.Zero(),
+    bendDir: Vector3.Zero(),
+    elbow: Vector3.Zero(),
+    upperDir: Vector3.Zero(),
+    foreDir: Vector3.Zero(),
+    qWorld: new Quaternion(),
+    qParent: new Quaternion(),
+    qLocal: new Quaternion(),
+    qInv: new Quaternion(),
+    rotMat: new Matrix(),
+    euler: Vector3.Zero(),
+  };
+
+  private weaponCarriedOnBack = false;
+  private weaponRestParent: TransformNode | null = null;
+  private readonly weaponRestPosition = Vector3.Zero();
+  private readonly weaponRestRotation = Vector3.Zero();
+  private shieldRestParent: TransformNode | null = null;
+  private readonly shieldRestPosition = Vector3.Zero();
+  private readonly shieldRestRotation = Vector3.Zero();
 
   constructor(scene: Scene, materials: MaterialLibrary, readonly kind: UnitKind, readonly team: Team, id: number) {
     this.root = new TransformNode(`unit-${id}-${team}-${kind}`, scene);
@@ -61,6 +135,22 @@ export class UnitRig {
     this.rightArm.parent = this.torso;
     this.rightArm.position = new Vector3(0.58, 0.62, 0);
 
+    this.leftForearm = new TransformNode(`unit-${id}-left-forearm`, scene);
+    this.leftForearm.parent = this.leftArm;
+    this.leftForearm.position.y = -UnitRig.ARM_UPPER;
+
+    this.rightForearm = new TransformNode(`unit-${id}-right-forearm`, scene);
+    this.rightForearm.parent = this.rightArm;
+    this.rightForearm.position.y = -UnitRig.ARM_UPPER;
+
+    this.leftHandNode = new TransformNode(`unit-${id}-left-hand`, scene);
+    this.leftHandNode.parent = this.leftForearm;
+    this.leftHandNode.position.y = -UnitRig.ARM_FORE;
+
+    this.rightHandNode = new TransformNode(`unit-${id}-right-hand`, scene);
+    this.rightHandNode.parent = this.rightForearm;
+    this.rightHandNode.position.y = -UnitRig.ARM_FORE;
+
     this.leftLeg = new TransformNode(`unit-${id}-left-leg`, scene);
     this.leftLeg.parent = this.visualRoot;
     this.leftLeg.position = new Vector3(-0.30, 1.03, 0);
@@ -69,13 +159,17 @@ export class UnitRig {
     this.rightLeg.parent = this.visualRoot;
     this.rightLeg.position = new Vector3(0.30, 1.03, 0);
 
+    // Weapons hang from the FOREARM now: the elbow joint sits at -ARM_UPPER, so the rest offsets
+    // are shifted by that amount to keep the exact same world attachment when the forearm is
+    // straight (all non-climb poses). During the climb the roots are re-parented to the torso's
+    // back so the gripping hands stay clear of sword, mace, bow and shield.
     this.weaponRoot = new TransformNode(`unit-${id}-weapon`, scene);
-    this.weaponRoot.parent = this.rightArm;
-    this.weaponRoot.position = new Vector3(0, -0.65, 0.02);
+    this.weaponRoot.parent = this.rightForearm;
+    this.weaponRoot.position = new Vector3(0, -0.65 + UnitRig.ARM_UPPER, 0.02);
 
     this.shieldRoot = new TransformNode(`unit-${id}-shield`, scene);
-    this.shieldRoot.parent = this.leftArm;
-    this.shieldRoot.position = new Vector3(0, -0.55, 0.1);
+    this.shieldRoot.parent = this.leftForearm;
+    this.shieldRoot.position = new Vector3(0, -0.55 + UnitRig.ARM_UPPER, 0.1);
 
     this.flagSocket = new TransformNode(`unit-${id}-flag-socket`, scene);
     this.flagSocket.parent = this.torso;
@@ -121,15 +215,50 @@ export class UnitRig {
     this.head.rotation.set(0, 0, 0);
     this.leftArm.rotation.set(0, 0, 0);
     this.rightArm.rotation.set(0, 0, 0);
+    this.leftForearm.rotation.set(0, 0, 0);
+    this.rightForearm.rotation.set(0, 0, 0);
     this.leftLeg.rotation.set(0, 0, 0);
     this.rightLeg.rotation.set(0, 0, 0);
     this.weaponRoot.rotation.set(0, 0, 0);
     this.shieldRoot.rotation.set(0, 0, 0);
     this.deathRotation = 0;
+    if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
     this.setHealthRatio(1);
   }
 
-  applyMountPose(progress: number, lean: number, elapsed: number): void {
+  /**
+   * Stow the weapon and shield on the torso's back for the whole climb. Both hands must grip the
+   * ladder, so sword/mace/bow and the iron guard's big round shield leave the forearms while the
+   * climb interaction owns the arms. The previous parent/position/rotation is stored and restored
+   * exactly when the climb ends.
+   */
+  setWeaponCarryOnBack(carry: boolean): void {
+    if (this.weaponCarriedOnBack === carry) return;
+    this.weaponCarriedOnBack = carry;
+    if (carry) {
+      this.weaponRestParent = this.weaponRoot.parent as TransformNode | null;
+      this.weaponRestPosition.copyFrom(this.weaponRoot.position);
+      this.weaponRestRotation.copyFrom(this.weaponRoot.rotation);
+      this.weaponRoot.parent = this.torso;
+      this.weaponRoot.position.set(0.18, 0.12, 0.56);
+      this.weaponRoot.rotation.set(0, 0, 0);
+      this.shieldRestParent = this.shieldRoot.parent as TransformNode | null;
+      this.shieldRestPosition.copyFrom(this.shieldRoot.position);
+      this.shieldRestRotation.copyFrom(this.shieldRoot.rotation);
+      this.shieldRoot.parent = this.torso;
+      this.shieldRoot.position.set(0.28, 0.5, 0.38);
+      this.shieldRoot.rotation.set(0, 0, 0);
+    } else {
+      if (this.weaponRestParent) this.weaponRoot.parent = this.weaponRestParent;
+      this.weaponRoot.position.copyFrom(this.weaponRestPosition);
+      this.weaponRoot.rotation.copyFrom(this.weaponRestRotation);
+      if (this.shieldRestParent) this.shieldRoot.parent = this.shieldRestParent;
+      this.shieldRoot.position.copyFrom(this.shieldRestPosition);
+      this.shieldRoot.rotation.copyFrom(this.shieldRestRotation);
+    }
+  }
+
+  applyMountPose(progress: number, lean: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1): void {
     this.interactionPoseActive = true;
     const p = Math.max(0, Math.min(1, progress));
     const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
@@ -149,9 +278,10 @@ export class UnitRig {
     this.visualRoot.position.y = ease * 0.06;
     this.weaponRoot.rotation.z = 0.25 * ease;
     this.shieldRoot.rotation.x = 0.15 * ease;
+    if (grips) this.solveClimbArms(grips, gripStrength);
   }
 
-  applyClimbCycle(phase: number, lean: number, elapsed: number, descending?: boolean): void {
+  applyClimbCycle(phase: number, lean: number, elapsed: number, descending = false, grips?: ClimbGripPair, gripStrength = 1): void {
     this.interactionPoseActive = true;
     const p = ((phase % 1) + 1) % 1;
     const dir = descending ? -1 : 1;
@@ -163,7 +293,9 @@ export class UnitRig {
     const rightGrip = Math.sin(cycle + Math.PI);
     const leftFoot = Math.sin(cycle + Math.PI);
     const rightFoot = Math.sin(cycle);
-    const handSlide = 0.22;
+    // With hand IK active the arms rest in one fixed grip-ready pose so the strength blend into
+    // the solved grips is steady; only the legs keep the swing cycle.
+    const handSlide = grips ? 0 : 0.22;
     const footLift = 0.28;
     const armBaseX = -1.35;
     this.leftArm.rotation.x = armBaseX - leftGrip * handSlide * dir;
@@ -180,9 +312,10 @@ export class UnitRig {
     this.visualRoot.position.y = Math.abs(Math.sin(cycle)) * 0.012;
     this.weaponRoot.rotation.z = 0.18;
     this.shieldRoot.rotation.x = 0.1;
+    if (grips) this.solveClimbArms(grips, gripStrength);
   }
 
-  applyTopDismount(progress: number, elapsed: number): void {
+  applyTopDismount(progress: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1): void {
     this.interactionPoseActive = true;
     const p = Math.max(0, Math.min(1, progress));
     const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
@@ -207,6 +340,143 @@ export class UnitRig {
     this.head.rotation.y = Math.sin(elapsed * 3) * 0.01 * (1 - ease);
     this.weaponRoot.rotation.z = 0.18 * (1 - ease);
     this.shieldRoot.rotation.x = 0.1 * (1 - ease);
+    if (grips) this.solveClimbArms(grips, gripStrength);
+  }
+
+  /**
+   * Two-bone arm IK toward the climb grips, blended with the procedural pose the caller just
+   * wrote. At gripStrength 0 the arms stay exactly on the procedural pose (mount/dis-mount start);
+   * at 1 the hand spheres seat on the rung/rail surface. The planted hand target is a fixed rung
+   * point, so the solve only changes while the body moves or a hand is scheduled to reach.
+   */
+  private solveClimbArms(grips: ClimbGripPair, gripStrength: number): void {
+    const t = Math.max(0, Math.min(1, gripStrength));
+    if (t <= 0.0001) return;
+    this.gripLeft.position.copyFrom(grips.left.position);
+    this.gripLeft.normal.copyFrom(grips.left.normal);
+    this.gripLeft.lateral.copyFrom(grips.left.lateral);
+    this.gripRight.position.copyFrom(grips.right.position);
+    this.gripRight.normal.copyFrom(grips.right.normal);
+    this.gripRight.lateral.copyFrom(grips.right.lateral);
+    const scale = this.baseScale;
+    const upper = UnitRig.ARM_UPPER * scale;
+    const fore = UnitRig.ARM_FORE * scale;
+    this.visualRoot.computeWorldMatrix(true);
+    this.torso.computeWorldMatrix(true);
+    this.solveClimbArm(this.leftArm, this.leftForearm, this.gripLeft, t, upper, fore);
+    this.solveClimbArm(this.rightArm, this.rightForearm, this.gripRight, t, upper, fore);
+  }
+
+  private solveClimbArm(
+    armNode: TransformNode,
+    forearmNode: TransformNode,
+    grip: { readonly position: Vector3; readonly normal: Vector3; readonly lateral: Vector3 },
+    strength: number,
+    upper: number,
+    fore: number,
+  ): void {
+    const ik = this.ik;
+    const armParent = armNode.parent as TransformNode;
+    armParent.computeWorldMatrix(true);
+    armNode.computeWorldMatrix(true);
+    const shoulder = armNode.getAbsolutePosition();
+
+    // Seat the palm ON the rung face: the hand sphere center sits a hand-radius back from the
+    // surface along its normal, so the sphere touches the wood instead of floating or sinking.
+    const palmLift = this.handRadiusWorld * 0.6;
+    ik.target.set(
+      grip.position.x + grip.normal.x * palmLift,
+      grip.position.y + grip.normal.y * palmLift,
+      grip.position.z + grip.normal.z * palmLift,
+    );
+
+    // Elbow pole: back (away from the ladder), flared toward the gripping side, and down — the
+    // natural climbing elbow that keeps the forearm rising to the rung instead of snapping.
+    ik.pole.set(
+      shoulder.x + grip.normal.x * 1.15 + grip.lateral.x * 0.85,
+      shoulder.y - 0.6,
+      shoulder.z + grip.normal.z * 1.15 + grip.lateral.z * 0.85,
+    );
+
+    ik.toTarget.set(
+      ik.target.x - shoulder.x,
+      ik.target.y - shoulder.y,
+      ik.target.z - shoulder.z,
+    );
+    const dist = ik.toTarget.length();
+    if (dist < 0.01) return;
+    const maxReach = upper + fore - 0.02;
+    const minReach = Math.abs(upper - fore) + 0.02;
+    const d = dist > maxReach ? maxReach : dist < minReach ? minReach : dist;
+    ik.toTarget.scaleInPlace(d / dist);
+    ik.triDir.copyFrom(ik.toTarget).normalize();
+    let cosA = (upper * upper + d * d - fore * fore) / (2 * upper * d);
+    cosA = cosA > 1 ? 1 : cosA < -1 ? -1 : cosA;
+    const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+    ik.poleDir.set(
+      ik.pole.x - shoulder.x,
+      ik.pole.y - shoulder.y,
+      ik.pole.z - shoulder.z,
+    ).normalize();
+    Vector3.CrossToRef(ik.triDir, ik.poleDir, ik.bendAxis);
+    if (ik.bendAxis.lengthSquared() < 1e-8) {
+      Vector3.CrossToRef(ik.triDir, UnitRig.ARM_DOWN, ik.bendAxis);
+    }
+    ik.bendAxis.normalize();
+    Vector3.CrossToRef(ik.bendAxis, ik.triDir, ik.bendDir);
+    ik.bendDir.normalize();
+    if (Vector3.Dot(ik.bendDir, ik.poleDir) < 0) ik.bendDir.scaleInPlace(-1);
+
+    ik.elbow.set(
+      shoulder.x + ik.triDir.x * upper * cosA + ik.bendDir.x * upper * sinA,
+      shoulder.y + ik.triDir.y * upper * cosA + ik.bendDir.y * upper * sinA,
+      shoulder.z + ik.triDir.z * upper * cosA + ik.bendDir.z * upper * sinA,
+    );
+    ik.upperDir.set(
+      ik.elbow.x - shoulder.x,
+      ik.elbow.y - shoulder.y,
+      ik.elbow.z - shoulder.z,
+    ).normalize();
+    ik.foreDir.set(
+      ik.target.x - ik.elbow.x,
+      ik.target.y - ik.elbow.y,
+      ik.target.z - ik.elbow.z,
+    ).normalize();
+
+    // --- Shoulder/upper arm: blend the solved orientation over the procedural rest pose. ---
+    Quaternion.FromUnitVectorsToRef(UnitRig.ARM_DOWN, ik.upperDir, ik.qWorld);
+    const parentMatrix = armParent.getWorldMatrix();
+    parentMatrix.getRotationMatrixToRef(ik.rotMat);
+    Quaternion.FromRotationMatrixToRef(ik.rotMat, ik.qParent);
+    ik.qInv.copyFrom(ik.qParent).invert();
+    ik.qLocal.copyFrom(ik.qInv).multiplyInPlace(ik.qWorld);
+    ik.qLocal.toEulerAnglesToRef(ik.euler);
+    const restX = armNode.rotation.x;
+    const restY = armNode.rotation.y;
+    const restZ = armNode.rotation.z;
+    armNode.rotation.set(
+      restX + (ik.euler.x - restX) * strength,
+      restY + (ik.euler.y - restY) * strength,
+      restZ + (ik.euler.z - restZ) * strength,
+    );
+    armNode.computeWorldMatrix(true);
+
+    // --- Elbow/forearm: same solve in the (already blended) upper-arm frame. ---
+    const armWorld = armNode.getWorldMatrix();
+    armWorld.getRotationMatrixToRef(ik.rotMat);
+    Quaternion.FromRotationMatrixToRef(ik.rotMat, ik.qWorld);
+    Quaternion.FromUnitVectorsToRef(UnitRig.ARM_DOWN, ik.foreDir, ik.qLocal);
+    ik.qInv.copyFrom(ik.qWorld).invert();
+    ik.qLocal.copyFrom(ik.qInv).multiplyInPlace(ik.qLocal);
+    ik.qLocal.toEulerAnglesToRef(ik.euler);
+    const foreRestX = forearmNode.rotation.x;
+    const foreRestY = forearmNode.rotation.y;
+    const foreRestZ = forearmNode.rotation.z;
+    forearmNode.rotation.set(
+      foreRestX + (ik.euler.x - foreRestX) * strength,
+      foreRestY + (ik.euler.y - foreRestY) * strength,
+      foreRestZ + (ik.euler.z - foreRestZ) * strength,
+    );
   }
 
   /** Release the scripted-pose lock so walk/run and idle animation drive the limbs again. */
@@ -479,17 +749,29 @@ export class UnitRig {
     const teamCloth = materials.teamCloth(this.team);
     const armRadius = this.kind === 'ironGuard' ? 0.27 : 0.22;
     const armLength = this.kind === 'ironGuard' ? 1.30 : 1.18;
-    for (const [node, side] of [[this.leftArm, 'left'], [this.rightArm, 'right']] as const) {
-      const arm = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-arm-mesh`, { height: armLength, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
-      arm.parent = node;
-      arm.position.y = -0.52;
+    // The arm is now two bones (upper arm + forearm) so the climb IK can bend a real elbow. The
+    // joint sits at -ARM_UPPER (matching the hand anchor at -1.06) and each capsule is split so
+    // the overall silhouette matches the old single-bone arm.
+    const upperHeight = armLength * 0.52;
+    const upperOffset = -armLength * 0.26;
+    for (const [node, forearm, handNode, side] of [
+      [this.leftArm, this.leftForearm, this.leftHandNode, 'left'],
+      [this.rightArm, this.rightForearm, this.rightHandNode, 'right'],
+    ] as const) {
+      const upperArm = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-arm-mesh`, { height: upperHeight, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
+      upperArm.parent = node;
+      upperArm.position.y = upperOffset;
       // Sleeves in the team tabard cloth: another large colored block on every class.
-      arm.material = teamCloth;
+      upperArm.material = teamCloth;
+      const forearmMesh = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-forearm-mesh`, { height: upperHeight, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
+      forearmMesh.parent = forearm;
+      forearmMesh.position.y = upperOffset;
+      forearmMesh.material = teamCloth;
       const hand = MeshBuilder.CreateSphere(`${this.root.name}-${side}-hand`, { diameter: armRadius * 1.75, segments: 7 }, scene);
-      hand.parent = node;
-      hand.position.y = -1.06;
+      hand.parent = handNode;
       hand.material = materials.skin;
     }
+    this.handRadiusWorld = armRadius * 1.75 * 0.5 * this.baseScale;
 
     const legRadius = this.kind === 'ironGuard' ? 0.29 : 0.24;
     const legLength = this.kind === 'ironGuard' ? 1.48 : 1.34;

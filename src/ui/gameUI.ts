@@ -1,5 +1,5 @@
 import { CONFIG, UNIT_LABELS, UNIT_STATS } from '../core/config';
-import type { CastleState, QualityTier, Team, UnitKind } from '../core/types';
+import type { CastleState, Team, UnitKind } from '../core/types';
 import type { FlagStatus } from '../game/flag';
 
 const MOJIBAKE_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -39,7 +39,6 @@ export class GameUI {
   private readonly loadingOverlay: HTMLElement;
   private readonly loadButton: HTMLButtonElement;
   private readonly startButton: HTMLButtonElement;
-  private readonly qualitySelect: HTMLSelectElement;
   private readonly progressFill: HTMLElement;
   private readonly loadingLabel: HTMLElement;
   private readonly timer: HTMLElement;
@@ -70,18 +69,17 @@ export class GameUI {
   private enemyHitTimer: number | undefined;
   private readonly castleAttentionMs = 2600;
 
-  onPrepare: (quality: QualityTier) => void = () => undefined;
+  onPrepare: () => void = () => undefined;
   onStart: () => void = () => undefined;
   onCardSelect: (kind: UnitKind) => void = () => undefined;
   onRestart: () => void = () => window.location.reload();
 
-  constructor(root: HTMLElement, defaultQuality: QualityTier) {
+  constructor(root: HTMLElement) {
     this.root = root;
-    this.root.innerHTML = normalizeDisplayText(this.template(defaultQuality));
+    this.root.innerHTML = normalizeDisplayText(this.template());
     this.loadingOverlay = this.query('#loading-overlay');
     this.loadButton = this.query<HTMLButtonElement>('#load-arena');
     this.startButton = this.query<HTMLButtonElement>('#start-battle');
-    this.qualitySelect = this.query<HTMLSelectElement>('#quality-select');
     this.progressFill = this.query('#loading-progress-fill');
     this.loadingLabel = this.query('#loading-label');
     this.timer = this.query('#match-timer');
@@ -125,8 +123,7 @@ export class GameUI {
 
     this.loadButton.addEventListener('click', () => {
       this.loadButton.disabled = true;
-      this.qualitySelect.disabled = true;
-      this.onPrepare(this.qualitySelect.value as QualityTier);
+      this.onPrepare();
     });
     this.startButton.addEventListener('click', () => this.onStart());
     this.query<HTMLButtonElement>('#restart-button').addEventListener('click', () => this.onRestart());
@@ -210,7 +207,7 @@ export class GameUI {
     this.endOverlay.classList.add('visible');
   }
 
-  private template(defaultQuality: QualityTier): string {
+  private template(): string {
     const cards = (['vanguard', 'ranger', 'raider', 'ironGuard'] as const).map((kind) => `
       <button class="unit-card" data-card="${kind}" type="button" aria-label="Deploy ${UNIT_LABELS[kind]}">
         <span class="card-portrait portrait-${kind}">${this.icon(kind)}</span>
@@ -225,19 +222,23 @@ export class GameUI {
     return `
       <section id="loading-overlay" class="loading-overlay">
         <div class="loading-card">
-          <div class="game-mark"><span>⚑</span></div>
-          <p class="eyebrow">MOBILE 3D STRATEGY</p>
-          <h1>FLAGFORGE</h1>
+          <div class="brand-lockup">
+            ${this.brandCrest()}
+            <p class="eyebrow">MOBILE 3D STRATEGY</p>
+            <h1 class="brand-title">
+              <span class="brand-word brand-word-battle">BATTLE</span>
+              <span class="brand-word brand-word-flag">FLAG</span>
+            </h1>
+            <span class="brand-rule" aria-hidden="true"></span>
+          </div>
           <p class="loading-copy">Capture the banner. Break the gate. Infiltrate the fortress.</p>
-          <label class="quality-row">Quality
-            <select id="quality-select">
-              <option value="low" ${defaultQuality === 'low' ? 'selected' : ''}>Mobile Low</option>
-              <option value="standard" ${defaultQuality === 'standard' ? 'selected' : ''}>Mobile Standard</option>
-              <option value="high" ${defaultQuality === 'high' ? 'selected' : ''}>Desktop High</option>
-            </select>
-          </label>
+          <ul class="brand-pillars" aria-hidden="true">
+            <li>3D ARENA</li>
+            <li>REAL-TIME</li>
+            <li>4 SQUADS</li>
+          </ul>
           <div class="loading-progress"><i id="loading-progress-fill"></i></div>
-          <p id="loading-label" class="loading-label">Choose quality, then prepare the arena</p>
+          <p id="loading-label" class="loading-label">Forge the arena to begin your campaign</p>
           <button id="load-arena" class="primary-button" type="button">PREPARE ARENA</button>
           <button id="start-battle" class="primary-button pulse" type="button" hidden disabled>START BATTLE</button>
         </div>
@@ -321,6 +322,60 @@ export class GameUI {
           <button id="restart-button" class="primary-button" type="button">PLAY AGAIN</button>
         </div>
       </section>
+    `;
+  }
+
+  /**
+   * Brand mark for "Battle Flag": a gold-crowned heater shield over a fortress silhouette,
+   * flanked by two crossed banners. Pure inline SVG (no image request, no filters) so it stays
+   * cheap on mobile and inside the Telegram Mini App webview.
+   */
+  private brandCrest(): string {
+    return `
+      <span class="brand-crest" role="img" aria-label="Battle Flag emblem">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <defs>
+            <linearGradient id="crest-gold" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff3c4"/>
+              <stop offset=".45" stop-color="#f0c153"/>
+              <stop offset="1" stop-color="#b7842a"/>
+            </linearGradient>
+            <linearGradient id="crest-shield" x1=".2" y1="0" x2=".8" y2="1">
+              <stop offset="0" stop-color="#3d7fc4"/>
+              <stop offset=".55" stop-color="#1e558f"/>
+              <stop offset="1" stop-color="#123a66"/>
+            </linearGradient>
+            <linearGradient id="crest-banner-left" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2f6fb0"/>
+              <stop offset="1" stop-color="#17456f"/>
+            </linearGradient>
+            <linearGradient id="crest-banner-right" x1="1" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#e9b84a"/>
+              <stop offset="1" stop-color="#b07f24"/>
+            </linearGradient>
+          </defs>
+
+          <g class="crest-banners">
+            <path class="crest-pole" d="M27 20h4l3 84h-4z"/>
+            <path class="crest-pole" d="M89 20h4l-3 84h-4z"/>
+            <path fill="url(#crest-banner-left)" d="M31 26l26 9-4 26-25-10z"/>
+            <path fill="url(#crest-banner-right)" d="M89 26L63 35l4 26 25-10z"/>
+          </g>
+
+          <path class="crest-shield-edge" d="M60 16l38 11v34c0 25-16 40-38 47-22-7-38-22-38-47V27z"/>
+          <path fill="url(#crest-shield)" d="M60 21l33 10v30c0 22-14 35-33 41-19-6-33-19-33-41V31z"/>
+          <path class="crest-shield-gloss" d="M60 21v81c-19-6-33-19-33-41V31z"/>
+
+          <g class="crest-keep">
+            <path d="M41 78V52h6v6h6v-6h6v6h6v-6h6v26z"/>
+            <path class="crest-keep-gate" d="M55 78V66a5 5 0 0 1 10 0v12z"/>
+            <path class="crest-keep-tower" d="M47 52V44h6v8zM67 52V44h6v8z"/>
+          </g>
+
+          <path class="crest-crown" fill="url(#crest-gold)" d="M60 4l7 9 9-6-2 12H46l-2-12 9 6z"/>
+          <circle class="crest-crown-jewel" cx="60" cy="9" r="2.6"/>
+        </svg>
+      </span>
     `;
   }
 

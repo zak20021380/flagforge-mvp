@@ -24,8 +24,8 @@ telegram?.ready?.();
 telegram?.expand?.();
 document.documentElement.style.setProperty('--portrait-max-width', `${PORTRAIT_LAYOUT.viewport.desktopMaxWidth}px`);
 
-const defaultQuality = detectQuality();
-const ui = new GameUI(uiRoot, defaultQuality);
+const quality = detectQuality();
+const ui = new GameUI(uiRoot);
 let engine: Engine | null = null;
 let game: import('./game/gameController').GameController | null = null;
 let arena: import('./render/arena').ArenaScene | null = null;
@@ -69,7 +69,7 @@ document.addEventListener('fullscreenchange', () => scheduleViewportRefresh(), {
 screen.orientation?.addEventListener('change', () => scheduleViewportRefresh());
 telegram?.onEvent?.('viewportChanged', scheduleViewportRefresh);
 
-ui.onPrepare = (quality) => {
+ui.onPrepare = () => {
   if (prepared) return;
   prepared = true;
   void prepareGame(quality);

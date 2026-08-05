@@ -6,7 +6,7 @@ import {
   TransformNode,
   Vector3,
 } from '@babylonjs/core';
-import { CENTRAL_TOWER } from '../core/config';
+import { CENTRAL_TOWER, CENTRAL_TOWER_LADDER_FRAME } from '../core/config';
 import { MaterialLibrary } from './materials';
 
 export interface CentralTowerVisual {
@@ -347,24 +347,18 @@ function createSideLadder(
   const railWidth = 0.32;   // across the ladder
   const railDepth = 0.5;    // toward the climber, the face that catches the light
   const rungHeight = 0.26;  // along the climb, the readable step thickness
-  const rungDepth = 0.44;
   const rungLength = railHalfSpan * 2 + railWidth; // flush with the outer stile faces
   // Rungs sit a touch proud of the stile front faces, so each step keeps a lit top edge and a cast
   // shadow instead of disappearing into the stiles at a glancing camera angle.
-  const rungProud = 0.1;
-  // The lean itself is already in the gameplay path: groundAlign sits further from the tower axis
-  // (radius ~3.7) than climbTop (~2.9), so the frame naturally stands off the plaza at the foot and
-  // tucks under the crown at the head. These two numbers only push the whole frame radially outward
-  // — enough at the head to clear the corbel, the objective ring and the deck overhang, and kept
-  // small at the foot so a climber's body still reads as being on the rungs rather than behind them.
-  const bottomStandoff = 0.3;
-  const topStandoff = 0.44;
+  // The frame standoff (bottom..top), rungProud and rungDepth come from the shared
+  // CENTRAL_TOWER_LADDER_FRAME table so the mesh and the climb attachment can never drift apart.
+  const { bottomStandoff, topStandoff, rungProud, rungDepth } = CENTRAL_TOWER_LADDER_FRAME;
+  const standoffAt = (t: number): number => bottomStandoff + (topStandoff - bottomStandoff) * t;
   const plantedDepth = 0.3;   // stiles sink below the climb start so the ladder reads as grounded
   // The stile heads stop a touch below the climb top, level with the deck lip, so the last rung
   // still caps the frame while the heads stay under the corner pinnacle bases (which start just
   // above the deck at the same corners the ladders exit through).
   const headTrim = 0.12;
-  const standoffAt = (t: number): number => bottomStandoff + (topStandoff - bottomStandoff) * t;
 
   // ---- Side stiles: thick squared oak, planted in the plaza and topping out level with the deck
   // lip. Square section, not turned rails: the flat lit face is what makes them read as sawn

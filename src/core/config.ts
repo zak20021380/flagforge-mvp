@@ -322,7 +322,8 @@ export const CENTRAL_TOWER = {
     player: {
       id: 'player',
       side: 'left',
-      facingYaw: 1.18,
+      // Chest-toward-ladder yaw derived from the ladder's outward normal (see ladderMountData).
+      facingYaw: 1.96,
       groundEntry: centralObjectivePoint(-4.15, 0.16, -2.65),
       groundAlign: centralObjectivePoint(-3.4, 0.16, -1.4),
       climbTop: centralObjectivePoint(-2.65, 9.32, -1.1),
@@ -338,7 +339,8 @@ export const CENTRAL_TOWER = {
     enemy: {
       id: 'enemy',
       side: 'right',
-      facingYaw: -1.96,
+      // Chest-toward-ladder yaw derived from the ladder's outward normal (see ladderMountData).
+      facingYaw: -1.18,
       groundEntry: centralObjectivePoint(4.15, 0.16, 2.65),
       groundAlign: centralObjectivePoint(3.4, 0.16, 1.4),
       climbTop: centralObjectivePoint(2.65, 9.32, 1.1),
@@ -359,30 +361,44 @@ export const CENTRAL_TOWER = {
   },
 } as const;
 
-const ladderYawVector = (yaw: number) => ({ x: Math.sin(yaw), z: Math.cos(yaw) });
-
 const MOUNT_APPROACH_DIST = 2.35;
 const MOUNT_ALIGN_DIST = 0.62;
 const MOUNT_PLANT_DIST = 0.24;
 
 /**
- * Derive the mount-route waypoints directly from each ladder's real geometry.
+ * Ladder frame geometry shared with the ladder mesh (src/render/centralTower.ts). The mesh pushes
+ * the whole frame out from the gameplay centreline (groundAlign -> climbTop) along the ladder's
+ * outward face normal by `bottom` at the foot .. `top` at the head, and each rung is a box of
+ * `rungDepth` along that normal, set `rungProud` clear of the stile faces. The climber's root must
+ * be measured against the rung FRONT face (the face the climber stands on), so this exact table is
+ * the single source of truth for both the art and the climb attachment.
+ */
+export const CENTRAL_TOWER_LADDER_FRAME = {
+  bottomStandoff: 0.3,
+  topStandoff: 0.44,
+  rungProud: 0.1,
+  rungDepth: 0.44,
+} as const;
+
+/**
+ * Build a local frame for each ladder straight from its real geometry.
  *
- * The visible ladder mesh is built in createSideLadder (src/render/centralTower.ts) from the same
- * groundAlign/climbTop endpoints used here. Its outward face normal is cross(shaftDir, rungDir),
- * where rungDir is tangent to the tower face at the shaft midpoint. That normal points away from
- * the tower centre and defines the approach direction: the unit must walk toward the ladder from
- * outside, not from across the tower.
+ * The visible ladder mesh (createSideLadder in src/render/centralTower.ts) is built from the same
+ * groundAlign/climbTop endpoints used here, so the frame below is the ladder's own frame:
+ *   - up:     shaftDir, the unit vector along the climb centreline (groundAlign -> climbTop)
+ *   - right:  rungDir, tangent to the tower face at the shaft midpoint (rail-to-rail)
+ *   - forward: outwardDirection = cross(shaftDir, rungDir), the outward face normal
+ * The horizontal part of that normal (panelOutward) is where the standoff is applied, and it is
+ * also the direction the climber's body sits ON: the unit is attached OUTSIDE the ladder plane,
+ * chest against the rungs.
  *
- * The previous implementation rotated a shared local-space route by each ladder's facingYaw, but
- * facingYaw describes which way the climber's chest points (inward, toward the rungs) — the exact
- * opposite of the approach direction. For the player ladder this happened to land near enough to
- * the queue that it looked acceptable; for the enemy ladder it placed the entire mount sequence on
- * the wrong side of the tower, making units clip through invisible geometry beside the visible mesh.
+ * facingYaw is derived from panelOutward so the chest (the rig's local -Z) always points back at
+ * the ladder: in Babylon a yaw of θ maps local -Z to world (sinθ, -cosθ), so the yaw that makes
+ * the chest equal -panelOutward is atan2(-poX, poZ). Each ladder gets its own normal — the two
+ * ladders are mirrors across the tower, so no shared or hand-mirrored yaw can ever fit both.
  */
 const ladderMountData = (id: keyof typeof CENTRAL_TOWER.ladders) => {
   const ladder = CENTRAL_TOWER.ladders[id];
-  const facing = ladderYawVector(ladder.facingYaw);
   const climbX = ladder.climbTop.x - ladder.groundAlign.x;
   const climbY = ladder.climbTop.y - ladder.groundAlign.y;
   const climbZ = ladder.climbTop.z - ladder.groundAlign.z;
@@ -404,6 +420,7 @@ const ladderMountData = (id: keyof typeof CENTRAL_TOWER.ladders) => {
   const panelOutHorizLen = Math.hypot(panelOutX, panelOutZ);
   const poX = panelOutX / panelOutHorizLen;
   const poZ = panelOutZ / panelOutHorizLen;
+  const facingYaw = Math.atan2(-poX, poZ);
   return {
     id: ladder.id,
     side: ladder.side,
@@ -424,10 +441,18 @@ const ladderMountData = (id: keyof typeof CENTRAL_TOWER.ladders) => {
     },
     climbStartPoint: ladder.groundEntry,
     ladderDirection: { x: shaftDirX, y: shaftDirY, z: shaftDirZ },
-    facingDirection: { x: facing.x, y: 0, z: facing.z },
-    facingYaw: ladder.facingYaw,
+    /** Horizontal outward face normal: the direction from the ladder centreline toward the climber. */
+    panelOutward: { x: poX, z: poZ },
+    /** The direction the climber's back points while attached (same as panelOutward). */
+    facingDirection: { x: poX, y: 0, z: poZ },
+    facingYaw,
     rungSpacing: climbLength / Math.max(12, Math.round(climbLength / 0.56)),
+    /**
+     * Distance from the rung FRONT face to the unit root (pelvis) while climbing: keeps the chest
+     * within a breath of the rungs without intersecting the mesh.
+     */
     bodyOffsetFromLadder: 0.38,
+    ladderFrame: CENTRAL_TOWER_LADDER_FRAME,
   };
 };
 

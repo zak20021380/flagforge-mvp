@@ -19,11 +19,16 @@ interface ActiveClimb extends QueueEntry {
   exitClearance: number;
   mountProgress: number;
   speedRamp: number;
+  /** Position along the authored route; the visible body is attached to the ladder frame from this. */
+  routePosition: Vector3;
 }
+
+type LadderMountData = typeof CENTRAL_TOWER_LADDER_MOUNT[LadderId];
 
 interface LadderRuntime {
   readonly id: LadderId;
   readonly facingYaw: number;
+  readonly mount: LadderMountData;
   readonly ascentPath: readonly Vector3[];
   readonly descentPath: readonly Vector3[];
   readonly groundQueue: readonly Vector3[];
@@ -203,7 +208,16 @@ export class LadderSystem {
 
       if (queueIndex === 0 && !ladder.active && reached) {
         ladder.queue.shift();
-        ladder.active = { ...entry, pathIndex: 0, climbDistance: 0, dismountProgress: 0, exitClearance: 0, mountProgress: 0, speedRamp: 0 };
+        ladder.active = {
+          ...entry,
+          pathIndex: 0,
+          climbDistance: 0,
+          dismountProgress: 0,
+          exitClearance: 0,
+          mountProgress: 0,
+          speedRamp: 0,
+          routePosition: unit.position.clone(),
+        };
         ladder.activeDirection = entry.direction;
         if (entry.direction === 'descending') this.towerTopUnits.delete(entry.unit);
         unit.navigationArea = ladder.id === 'player' ? 'playerLadder' : 'enemyLadder';
@@ -236,6 +250,7 @@ export class LadderSystem {
 
   private createRuntime(id: LadderId): LadderRuntime {
     const config = CENTRAL_TOWER.ladders[id];
+    const mount = CENTRAL_TOWER_LADDER_MOUNT[id];
     const groundEntry = point(config.groundEntry);
     const groundAlign = point(config.groundAlign);
     const climbTop = point(config.climbTop);
@@ -251,7 +266,8 @@ export class LadderSystem {
     const topQueue = config.topQueuePositions.map(point);
     return {
       id,
-      facingYaw: config.facingYaw,
+      facingYaw: mount.facingYaw,
+      mount,
       ascentPath: [groundEntry, groundAlign, climbTop, topExit],
       descentPath: [topExit, climbTop, groundAlign, groundEntry],
       groundQueue,
@@ -295,7 +311,9 @@ export class LadderSystem {
     const rampRate = 4.5 * deltaSeconds;
     active.speedRamp += (targetSpeed - active.speedRamp) * Math.min(1, rampRate);
     const moveStep = active.speedRamp * deltaSeconds;
-    const reached = this.moveToward(unit, path[active.pathIndex], moveStep, false);
+    const route = active.routePosition;
+    const reached = this.stepAlong(route, path[active.pathIndex], moveStep);
+    this.applyLadderPlacement(ladder, active);
 
     const isOnMountSegment = active.pathIndex === 0;
     const isOnClimbSegment = active.pathIndex >= 1 && active.pathIndex <= 2;
@@ -305,17 +323,17 @@ export class LadderSystem {
         const segStart = path[0];
         const segEnd = path[1];
         const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
-        const dx = unit.position.x - segStart.x;
-        const dy = unit.position.y - segStart.y;
-        const dz = unit.position.z - segStart.z;
+        const dx = route.x - segStart.x;
+        const dy = route.y - segStart.y;
+        const dz = route.z - segStart.z;
         const dist = Math.hypot(dx, dy, dz);
         active.mountProgress = Math.min(1, dist / Math.max(0.01, totalLen));
         unit.rig.applyMountPose(active.mountProgress, lean, unit.age);
-      } else       if (isOnClimbSegment) {
+      } else if (isOnClimbSegment) {
         const segStart = path[1];
-        const dx = unit.position.x - segStart.x;
-        const dy = unit.position.y - segStart.y;
-        const dz = unit.position.z - segStart.z;
+        const dx = route.x - segStart.x;
+        const dy = route.y - segStart.y;
+        const dz = route.z - segStart.z;
         const distAlongClimb = Math.hypot(dx, dy, dz);
         const phase = (distAlongClimb / mountData.rungSpacing) % 1;
         unit.rig.applyClimbCycle(phase, lean, unit.age, false);
@@ -324,9 +342,9 @@ export class LadderSystem {
       if (isOnClimbSegment) {
         const segStart = path[1];
         const segEnd = path[2];
-        const dx = unit.position.x - segStart.x;
-        const dy = unit.position.y - segStart.y;
-        const dz = unit.position.z - segStart.z;
+        const dx = route.x - segStart.x;
+        const dy = route.y - segStart.y;
+        const dz = route.z - segStart.z;
         const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
         const distFromTop = Math.hypot(dx, dy, dz);
         const remaining = Math.max(0, totalLen - distFromTop);
@@ -336,9 +354,9 @@ export class LadderSystem {
         const segStart = path[2];
         const segEnd = path[3];
         const totalLen = Math.hypot(segEnd.x - segStart.x, segEnd.y - segStart.y, segEnd.z - segStart.z);
-        const dx = unit.position.x - segStart.x;
-        const dy = unit.position.y - segStart.y;
-        const dz = unit.position.z - segStart.z;
+        const dx = route.x - segStart.x;
+        const dy = route.y - segStart.y;
+        const dz = route.z - segStart.z;
         const dist = Math.hypot(dx, dy, dz);
         const dismountP = Math.min(1, dist / Math.max(0.01, totalLen));
         unit.rig.applyTopDismount(dismountP, unit.age);
@@ -380,6 +398,76 @@ export class LadderSystem {
       ladder.active = null;
       ladder.activeDirection = null;
     }
+  }
+
+  /**
+   * Attach the climbing body to the ladder's real front face.
+   *
+   * The route stays on the authored centreline; the visible body is then offset along the ladder's
+   * own horizontal outward normal by the same frame the mesh was built from: the standoff that
+   * pushes the whole frame out from the centreline, the rung proud and half-depth that place the
+   * rung FRONT face, and the body offset that puts the root (pelvis) just clear of that face with
+   * the chest against the rungs. The offset fades in while mounting at the foot, is full over the
+   * whole shaft, and fades out while stepping onto the platform at the head, so the root is always
+   * ON the ladder plane — never under, behind or beside the mesh. The route position is fully
+   * overwritten each frame, so steering, separation or residual ground velocity cannot pull the
+   * body off the ladder.
+   */
+  private applyLadderPlacement(ladder: LadderRuntime, active: ActiveClimb): void {
+    const unit = active.unit;
+    const route = active.routePosition;
+    const path = active.direction === 'ascending' ? ladder.ascentPath : ladder.descentPath;
+    const index = active.pathIndex;
+    if (index === 0) {
+      unit.position.copyFrom(route);
+      return;
+    }
+    const mount = ladder.mount;
+    const frame = mount.ladderFrame;
+    const segStart = path[index - 1];
+    const segEnd = path[index];
+    const segX = segEnd.x - segStart.x;
+    const segY = segEnd.y - segStart.y;
+    const segZ = segEnd.z - segStart.z;
+    const progress = Math.min(1, Math.max(0, (
+      (route.x - segStart.x) * segX
+      + (route.y - segStart.y) * segY
+      + (route.z - segStart.z) * segZ
+    ) / Math.max(0.0001, segX * segX + segY * segY + segZ * segZ)));
+    const rungFrontAt = (t: number): number => (
+      frame.bottomStandoff + (frame.topStandoff - frame.bottomStandoff) * t
+      + frame.rungProud + frame.rungDepth / 2
+      + mount.bodyOffsetFromLadder
+    );
+    const footOffset = rungFrontAt(0);
+    const headOffset = rungFrontAt(1);
+    const offset = active.direction === 'ascending'
+      ? index === 1 ? footOffset * progress
+        : index === 2 ? rungFrontAt(progress)
+        : headOffset * (1 - progress)
+      : index === 1 ? headOffset * progress
+        : index === 2 ? rungFrontAt(1 - progress)
+        : footOffset * (1 - progress);
+    unit.position.x = route.x + mount.panelOutward.x * offset;
+    unit.position.y = route.y;
+    unit.position.z = route.z + mount.panelOutward.z * offset;
+  }
+
+  /** Move a free route point toward a target along the ladder path (the body is attached later). */
+  private stepAlong(route: Vector3, target: Vector3, maxDistance: number): boolean {
+    const dx = target.x - route.x;
+    const dy = target.y - route.y;
+    const dz = target.z - route.z;
+    const distance = Math.hypot(dx, dy, dz);
+    if (distance <= Math.max(CENTRAL_TOWER.queueArrivalRadius, maxDistance)) {
+      route.copyFrom(target);
+      return true;
+    }
+    const scale = maxDistance / Math.max(0.0001, distance);
+    route.x += dx * scale;
+    route.y += dy * scale;
+    route.z += dz * scale;
+    return false;
   }
 
   private moveToward(unit: UnitEntity, target: Vector3, maxDistance: number, faceMovement: boolean): boolean {

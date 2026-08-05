@@ -1,4 +1,4 @@
-export type SoundEvent = 'deploy' | 'swing' | 'arrow' | 'hit' | 'death' | 'flag' | 'gate' | 'breach' | 'victory' | 'defeat';
+export type SoundEvent = 'deploy' | 'swing' | 'arrow' | 'hit' | 'death' | 'flag' | 'gate' | 'gateClose' | 'breach' | 'victory' | 'defeat';
 
 export class AudioManager {
   private context: AudioContext | null = null;
@@ -47,6 +47,7 @@ export class AudioManager {
       case 'death': return { frequency: 125, endFrequency: 42, duration: 0.34, gain: 0.16, wave: 'triangle' };
       case 'flag': return { frequency: 420, endFrequency: 840, duration: 0.34, gain: 0.16, wave: 'triangle' };
       case 'gate': return { frequency: 90, endFrequency: 48, duration: 0.52, gain: 0.2, wave: 'sawtooth' };
+      case 'gateClose': return { frequency: 72, endFrequency: 38, duration: 0.48, gain: 0.16, wave: 'sawtooth' };
       case 'breach': return { frequency: 180, endFrequency: 55, duration: 0.72, gain: 0.28, wave: 'square' };
       case 'victory': return { frequency: 520, endFrequency: 980, duration: 0.68, gain: 0.2, wave: 'triangle' };
       case 'defeat': return { frequency: 210, endFrequency: 52, duration: 0.72, gain: 0.2, wave: 'sine' };

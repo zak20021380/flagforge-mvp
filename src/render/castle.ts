@@ -22,6 +22,16 @@ import { MaterialLibrary } from './materials';
 type BoxOptions = { receiveShadow?: boolean };
 
 export type CastleDamageStage = 'intact' | 'light' | 'moderate' | 'heavy' | 'destroyed';
+export type GateState = 'closed' | 'opening' | 'open' | 'closing';
+
+const GATE_OPEN_DURATION = 1.4;
+const GATE_CLOSE_DURATION = 1.5;
+const GATE_LIFT_HEIGHT = 5.35;
+
+function smootherstep(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * c * (c * (c * 6 - 15) + 10);
+}
 
 interface DamagePiece {
   readonly mesh: Mesh;
@@ -41,8 +51,8 @@ export class CastleVisual {
   readonly deliveryPoint: Vector3;
   readonly gatePoint: Vector3;
   readonly breachGlow: Mesh;
-  private gateProgress = 0;
-  private gateTarget = 0;
+  private gateState: GateState = 'closed';
+  private gateTimer = 0;
   private readonly baseX: number;
   private readonly baseZ: number;
   private readonly facing: number;
@@ -182,8 +192,26 @@ export class CastleVisual {
     this.gatePoint = new Vector3(this.baseX, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.gateOffset * this.facing);
   }
 
-  setGateOpen(open: boolean): void {
-    this.gateTarget = open ? 1 : 0;
+  getGateState(): GateState {
+    return this.gateState;
+  }
+
+  beginOpenGate(): void {
+    if (this.gateState === 'opening' || this.gateState === 'open') return;
+    this.gateState = 'opening';
+    this.gateTimer = 0;
+  }
+
+  beginCloseGate(): void {
+    if (this.gateState === 'closing' || this.gateState === 'closed') return;
+    this.gateState = 'closing';
+    this.gateTimer = 0;
+  }
+
+  forceGateClosed(): void {
+    this.gateState = 'closed';
+    this.gateTimer = 0;
+    this.gate.position.y = 0;
   }
 
   setBreached(breached: boolean): void {
@@ -212,6 +240,7 @@ export class CastleVisual {
       if (piece.mesh.position.y < -2) piece.fallen = true;
     }
     if (progress > 0.3) {
+      this.gateState = 'closed';
       this.gate.position.y = Math.max(0, this.gate.position.y - deltaSeconds * 4);
     }
   }
@@ -232,11 +261,35 @@ export class CastleVisual {
   }
 
   update(deltaSeconds: number, elapsed: number): void {
-    const speed = 1.8;
-    this.gateProgress += (this.gateTarget - this.gateProgress) * Math.min(1, deltaSeconds * speed);
-    const eased = this.gateProgress * this.gateProgress * (3 - 2 * this.gateProgress);
     if (!this.destructionActive) {
-      this.gate.position.y = eased * 5.35;
+      switch (this.gateState) {
+        case 'opening':
+          this.gateTimer += deltaSeconds;
+          if (this.gateTimer >= GATE_OPEN_DURATION) {
+            this.gateState = 'open';
+            this.gateTimer = 0;
+            this.gate.position.y = GATE_LIFT_HEIGHT;
+          } else {
+            this.gate.position.y = smootherstep(this.gateTimer / GATE_OPEN_DURATION) * GATE_LIFT_HEIGHT;
+          }
+          break;
+        case 'closing':
+          this.gateTimer += deltaSeconds;
+          if (this.gateTimer >= GATE_CLOSE_DURATION) {
+            this.gateState = 'closed';
+            this.gateTimer = 0;
+            this.gate.position.y = 0;
+          } else {
+            this.gate.position.y = (1 - smootherstep(this.gateTimer / GATE_CLOSE_DURATION)) * GATE_LIFT_HEIGHT;
+          }
+          break;
+        case 'open':
+          this.gate.position.y = GATE_LIFT_HEIGHT;
+          break;
+        case 'closed':
+          this.gate.position.y = 0;
+          break;
+      }
     }
     if (this.breachGlow.isEnabled()) {
       this.breachGlow.scaling.setAll(1 + Math.sin(elapsed * 5) * 0.05);

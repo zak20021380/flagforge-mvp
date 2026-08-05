@@ -8,8 +8,10 @@ import type { FlagController } from './flag';
 import type { MatchFlow } from './matchFlow';
 import type { UnitEntity } from './unit';
 
+type GatePhase = 'idle' | 'opening' | 'open' | 'closing';
+
 interface GateReturnState {
-  open: boolean;
+  phase: GatePhase;
   closeTimer: number;
   openRemaining: number;
   prevApproachDistance: number;
@@ -20,8 +22,8 @@ export class CastleLogic {
   private breachTimer = 0;
   private winner: Team | null = null;
   private readonly gateReturn: Record<Team, GateReturnState> = {
-    blue: { open: false, closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
-    red: { open: false, closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
+    blue: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
+    red: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
   };
   readonly blueHealth: CastleHealthModel;
   readonly redHealth: CastleHealthModel;
@@ -34,6 +36,7 @@ export class CastleLogic {
     private readonly flag: FlagController,
     private readonly matchFlow: MatchFlow,
     private readonly onGateOpened: (castleTeam: Team) => void,
+    private readonly onGateClosed: (castleTeam: Team) => void,
     private readonly onBreach: (attacker: Team, defender: Team) => void,
     private readonly onVictory: (winner: Team) => void,
   ) {
@@ -119,7 +122,8 @@ export class CastleLogic {
 
   /** True while THIS castle's gate is physically open (flag-return, or its breach state). */
   isGateOpen(team: Team): boolean {
-    return this.gateReturn[team].open || this.breachedTeam === team;
+    const phase = this.gateReturn[team].phase;
+    return (phase === 'open' || phase === 'opening') || this.breachedTeam === team;
   }
 
   /** Seconds the HUD should show while a gate is open: breach countdown, else the return hold. */
@@ -163,7 +167,7 @@ export class CastleLogic {
     const castle = this.getCastle(defender);
     // Breach state is permanent and wins over the return-gate logic: the castle stays open so the
     // countdown reads as a broken fortress, and updateGateReturn never closes it.
-    castle.setGateOpen(true);
+    castle.beginOpenGate();
     castle.setBreached(true);
     this.onBreach(unit.team, defender);
     return true;
@@ -180,36 +184,70 @@ export class CastleLogic {
       if (this.breachedTeam === team) continue;
       const state = this.gateReturn[team];
       const castle = this.getCastle(team);
+      const shouldOpen = this.shouldOpenGateForReturn(team);
 
-      if (this.shouldOpenGateForReturn(team)) {
-        if (!state.open) {
-          state.open = true;
-          castle.setGateOpen(true);
-          this.onGateOpened(team);
-        }
-        state.closeTimer = -1;
-        state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
-        continue;
-      }
+      switch (state.phase) {
+        case 'idle':
+          if (shouldOpen) {
+            state.phase = 'opening';
+            castle.beginOpenGate();
+            this.onGateOpened(team);
+            state.closeTimer = -1;
+            state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+          }
+          break;
 
-      if (!state.open) continue;
-      // The return ended. Delivering the flag closes the gate after a short controlled delay; any
-      // other end (death, drop, lost ownership, or leaving the approach zone) closes it at once.
-      if (this.flag.currentStatus === 'consumed' && this.flag.lastDeliveredTeam === team) {
-        if (state.closeTimer < 0) state.closeTimer = CONFIG.match.flagReturnGateCloseDelaySeconds;
-        state.closeTimer -= deltaSeconds;
-        state.openRemaining = Math.max(0, state.closeTimer);
-        if (state.closeTimer <= 0) {
-          state.open = false;
-          state.closeTimer = -1;
-          state.openRemaining = 0;
-          castle.setGateOpen(false);
-        }
-      } else {
-        state.open = false;
-        state.closeTimer = -1;
-        state.openRemaining = 0;
-        castle.setGateOpen(false);
+        case 'opening':
+          if (!shouldOpen) {
+            state.phase = 'closing';
+            castle.beginCloseGate();
+            state.closeTimer = -1;
+            state.openRemaining = 0;
+          } else {
+            state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+            if (castle.getGateState() === 'open') {
+              state.phase = 'open';
+            }
+          }
+          break;
+
+        case 'open':
+          if (!shouldOpen) {
+            if (this.flag.currentStatus === 'consumed' && this.flag.lastDeliveredTeam === team) {
+              if (state.closeTimer < 0) state.closeTimer = CONFIG.match.flagReturnGateCloseDelaySeconds;
+              state.closeTimer -= deltaSeconds;
+              state.openRemaining = Math.max(0, state.closeTimer);
+              if (state.closeTimer <= 0) {
+                state.phase = 'closing';
+                castle.beginCloseGate();
+                state.closeTimer = -1;
+                state.openRemaining = 0;
+              }
+            } else {
+              state.phase = 'closing';
+              castle.beginCloseGate();
+              state.closeTimer = -1;
+              state.openRemaining = 0;
+            }
+          } else {
+            state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+          }
+          break;
+
+        case 'closing':
+          if (shouldOpen) {
+            state.phase = 'opening';
+            castle.beginOpenGate();
+            this.onGateOpened(team);
+            state.closeTimer = -1;
+            state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+          } else if (castle.getGateState() === 'closed') {
+            state.phase = 'idle';
+            state.closeTimer = -1;
+            state.openRemaining = 0;
+            this.onGateClosed(team);
+          }
+          break;
       }
     }
   }

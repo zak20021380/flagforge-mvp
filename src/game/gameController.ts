@@ -58,6 +58,7 @@ export class GameController {
       this.flag,
       this.matchFlow,
       (castleTeam) => this.handleGateOpened(castleTeam),
+      (castleTeam) => this.handleGateClosed(castleTeam),
       (attacker, defender) => this.handleBreach(attacker, defender),
       (winner) => this.finishMatch(winner),
     );
@@ -264,6 +265,10 @@ export class GameController {
     this.cameraPush = Math.max(this.cameraPush, 0.85);
     if (castleTeam === 'blue') this.ui.showBanner('BLUE GATE OPEN — CARRIER RETURNING', 'success');
     else this.ui.showBanner('RED GATE OPEN — ENEMY CARRIER RETURNING', 'danger');
+  }
+
+  private handleGateClosed(_castleTeam: Team): void {
+    this.audio.play('gateClose');
   }
 
   private handleBreach(attacker: Team, defender: Team): void {

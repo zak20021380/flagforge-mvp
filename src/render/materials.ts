@@ -74,6 +74,8 @@ export class MaterialLibrary {
   readonly redCloth: PBRMaterial;
   readonly redArmor: PBRMaterial;
   readonly redAccent: PBRMaterial;
+  readonly darkSteel: PBRMaterial;
+  readonly brassTrim: PBRMaterial;
   readonly skin: PBRMaterial;
   readonly leather: PBRMaterial;
   readonly cloth: PBRMaterial;
@@ -151,6 +153,8 @@ export class MaterialLibrary {
     this.redCloth = pbr('mat-red-cloth', Color3.FromHexString('#c01f38'), 0.88, 0.02);
     this.redArmor = pbr('mat-red-armor', Color3.FromHexString('#2e2a28'), 0.32, 0.72);
     this.redAccent = pbr('mat-red-accent', Color3.FromHexString('#ff3d50'), 0.28, 0.6);
+    this.darkSteel = pbr('mat-dark-steel', Color3.FromHexString('#3a4550'), 0.32, 0.76);
+    this.brassTrim = pbr('mat-brass-trim', Color3.FromHexString('#c89840'), 0.35, 0.72);
     this.skin = pbr('mat-skin', Color3.FromHexString('#e0a882'), 0.82);
     this.leather = pbr('mat-leather', Color3.FromHexString('#6b4030'), 0.88);
     this.cloth = pbr('mat-cloth', Color3.FromHexString('#dccba8'), 0.92);

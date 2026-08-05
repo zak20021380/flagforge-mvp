@@ -979,22 +979,17 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 .unit-card.selected { transform: translateY(-4px); border-color: #65c5ff; box-shadow: 0 0 0 2px rgba(70, 177, 255, .24), 0 10px 22px rgba(0, 0, 0, .45); }
 .unit-card.disabled { filter: grayscale(.72) brightness(.58); }
 .unit-card:disabled { cursor: default; }
-.card-portrait { display: grid; place-items: center; width: 44px; height: 44px; overflow: hidden; background: radial-gradient(circle at 50% 35%, #4779a7, #172a42 70%); border: 1px solid rgba(255, 255, 255, .17); border-radius: 9px; }
-.card-portrait svg { width: 41px; height: 41px; fill: #d6aa7c; filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .4)); }
-.card-portrait svg .accent { fill: #4aa8ff; }
-.card-portrait svg .metal { fill: #dce7ec; }
-.card-portrait svg .line { fill: none; stroke: #dce7ec; stroke-width: 4; }
-/* Per-unit portrait wells and accent colors. The frame, size, spacing and cost badge are shared and
-   unchanged; only the gradient behind the art and the `.accent` fill differ, so the four cards read
-   apart at a glance: BRAX steel-blue, NYX dark green, VEX purple, FUSE ember orange. */
-.portrait-brax { background: radial-gradient(circle at 50% 35%, #4c7fb2, #16283c 70%); }
-.portrait-brax svg .accent { fill: #4aa8ff; }
-.portrait-nyx { background: radial-gradient(circle at 50% 35%, #2f6b4f, #10231c 70%); }
-.portrait-nyx svg .accent { fill: #55e08a; }
-.portrait-vex { background: radial-gradient(circle at 50% 35%, #5b477f, #1c1930 70%); }
-.portrait-vex svg .accent { fill: #b585ff; }
-.portrait-fuse { background: radial-gradient(circle at 50% 35%, #8a4a2c, #2a1512 70%); }
-.portrait-fuse svg .accent { fill: #ff8a3c; }
+.card-portrait { position: relative; display: grid; place-items: center; width: 44px; height: 44px; overflow: hidden; background: radial-gradient(circle at 50% 35%, #4779a7, #172a42 70%); border: 1px solid rgba(255, 255, 255, .17); border-radius: 9px; }
+.card-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 18%; }
+.card-portrait::after { content: ""; position: absolute; inset: auto 0 0; height: 42%; background: linear-gradient(180deg, transparent, rgba(3, 9, 16, .8)); pointer-events: none; }
+/* Per-unit portrait wells, rims and fallback tint. The frame, size, spacing and cost badge are
+   shared and unchanged; only the dark well behind the art and the restrained inner rim/glow differ,
+   so the four cards read apart at a glance: BRAX steel-blue, NYX dark green, VEX purple, FUSE
+   ember orange. The raster portrait is /assets/ui/units/<kind>-card.webp. */
+.portrait-brax { background: radial-gradient(circle at 50% 35%, #4c7fb2, #16283c 70%); box-shadow: inset 0 0 0 1px rgba(74, 168, 255, .5), inset 0 0 7px rgba(74, 168, 255, .38); }
+.portrait-nyx { background: radial-gradient(circle at 50% 35%, #2f6b4f, #10231c 70%); box-shadow: inset 0 0 0 1px rgba(85, 224, 138, .5), inset 0 0 7px rgba(85, 224, 138, .38); }
+.portrait-vex { background: radial-gradient(circle at 50% 35%, #5b477f, #1c1930 70%); box-shadow: inset 0 0 0 1px rgba(181, 133, 255, .5), inset 0 0 7px rgba(181, 133, 255, .38); }
+.portrait-fuse { background: radial-gradient(circle at 50% 35%, #8a4a2c, #2a1512 70%); box-shadow: inset 0 0 0 1px rgba(255, 138, 60, .5), inset 0 0 7px rgba(255, 138, 60, .38); }
 .card-info { min-width: 0; max-width: 100%; }
 .card-info strong { display: block; max-width: 100%; overflow: hidden; font-size: 10px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .card-info small { display: none; }
@@ -1031,7 +1026,6 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .card-row { gap: 7px; }
   .unit-card { grid-template-rows: 48px minmax(17px, auto); min-height: 76px; }
   .card-portrait { width: 48px; height: 48px; }
-  .card-portrait svg { width: 45px; height: 45px; }
   .card-info strong { font-size: 10px; }
 }
 
@@ -1058,7 +1052,6 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .castle-strip-sigil svg { width: 16px; height: 16px; }
   .unit-card { grid-template-rows: 38px minmax(15px, auto); min-height: 61px; padding-top: 4px; }
   .card-portrait { width: 38px; height: 38px; }
-  .card-portrait svg { width: 36px; height: 36px; }
   .card-info strong { font-size: 9px; }
 }
 
@@ -1068,7 +1061,6 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   .card-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unit-card { grid-template-columns: 42px 1fr; grid-template-rows: 1fr; min-height: 56px; padding: 5px 10px 5px 6px; text-align: left; }
   .card-portrait { width: 42px; height: 42px; }
-  .card-portrait svg { width: 39px; height: 39px; }
   .card-info strong { font-size: 10px; }
 }
 

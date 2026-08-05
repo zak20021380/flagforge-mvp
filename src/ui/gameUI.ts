@@ -152,6 +152,13 @@ export class GameUI {
       this.cardButtons.set(kind, button);
     }
 
+    // Portrait assets are loaded once per unit type. If a file is missing (or fails on a slow
+    // connection) the img is removed so the card keeps its role-tinted well instead of a broken
+    // image icon — the card frame, name and cost stay fully usable either way.
+    for (const image of this.root.querySelectorAll<HTMLImageElement>('.card-art')) {
+      image.addEventListener('error', () => image.remove(), { once: true });
+    }
+
     this.loadButton.addEventListener('click', () => {
       this.loadButton.disabled = true;
       this.onPrepare();
@@ -279,7 +286,7 @@ export class GameUI {
   private template(): string {
     const cards = (['brax', 'nyx', 'vex', 'fuse'] as const).map((kind) => `
       <button class="unit-card" data-card="${kind}" type="button" aria-label="Deploy ${UNIT_LABELS[kind]}">
-        <span class="card-portrait portrait-${kind}">${this.icon(kind)}</span>
+        <span class="card-portrait portrait-${kind}"><img class="card-art" src="/assets/ui/units/${kind}-card.webp" alt="" loading="lazy" decoding="async" draggable="false" /></span>
         <span class="card-info">
           <strong>${UNIT_LABELS[kind]}</strong>
           <small>${kind === 'brax' ? 'Frontline bruiser' : kind === 'nyx' ? 'Precision range' : kind === 'vex' ? 'Fast objective' : 'Siege bomber'}</small>
@@ -526,61 +533,6 @@ export class GameUI {
       this.setCastleExpanded('player', true);
       this.scheduleCastleCollapse('player');
     }
-  }
-
-  /**
-   * Deploy-card artwork. One 80x80 inline SVG per roster unit, built as a stacked heroic bust so
-   * each card reads as a distinct silhouette at the 41px portrait size: BRAX is broad behind a
-   * tower shield, NYX is slim inside a drawn bow, VEX is a hood behind crossed daggers, FUSE is
-   * compact with a lit bomb. Paths use the shared `accent` (per-unit color, see src/styles.css)
-   * and `metal`/`line` hooks; the unclassed paths take the per-portrait base fill.
-   */
-  private icon(kind: UnitKind): string {
-    // BRAX: warhammer behind the shoulder, broad plated torso, visored helm, big cross shield.
-    if (kind === 'brax') {
-      return '<svg viewBox="0 0 80 80">'
-        + '<path class="metal" d="M60 9l11 5-7 16-10-5z"/>'
-        + '<path class="metal" d="M58 24l6 3-16 34-6-3z"/>'
-        + '<path d="M21 70l3-26 10-7h12l10 7 3 26z"/>'
-        + '<path d="M30 35V23a10 10 0 0 1 20 0v12z"/>'
-        + '<path class="metal" d="M31 26h18v5H31z"/>'
-        + '<path class="accent" d="M5 33l14-5 14 5v15c0 10-7 16-14 19-7-3-14-9-14-19z"/>'
-        + '<path class="metal" d="M16 40h6v18h-6zM10 46h18v6H10z"/>'
-        + '</svg>';
-    }
-    // NYX: full bow arc, slim hooded body, nocked arrow held level across the chest.
-    if (kind === 'nyx') {
-      return '<svg viewBox="0 0 80 80">'
-        + '<path class="metal line" d="M63 13c-14 9-14 45 0 54"/>'
-        + '<path d="M27 70l4-30 9-6 9 6 4 30z"/>'
-        + '<path d="M31 41V24l9-12 9 12v17z"/>'
-        + '<path class="accent" d="M40 12l9 12-9 5-9-5z"/>'
-        + '<path class="metal" d="M20 44h43v4H20z"/>'
-        + '<path class="metal" d="M12 46l10-6v12z"/>'
-        + '</svg>';
-    }
-    // VEX: speed streaks, crossed daggers behind, low hood with a bright eye band.
-    if (kind === 'vex') {
-      return '<svg viewBox="0 0 80 80">'
-        + '<path class="accent" d="M3 29h13v5H3zM7 41h11v5H7z"/>'
-        + '<path class="metal" d="M22 19l6-4 27 41-6 4z"/>'
-        + '<path class="metal" d="M58 19l-6-4-27 41 6 4z"/>'
-        + '<path d="M28 70l4-28 8-7 8 7 4 28z"/>'
-        + '<path d="M30 42V26l10-11 10 11v16z"/>'
-        + '<path class="accent" d="M31 31h18v7H31z"/>'
-        + '</svg>';
-    }
-    // FUSE: compact bulky torso, goggles and respirator, lit bomb held out front.
-    return '<svg viewBox="0 0 80 80">'
-      + '<path d="M17 70l3-23 11-6h14l11 6 3 23z"/>'
-      + '<path d="M31 41V31a9 9 0 0 1 18 0v10z"/>'
-      + '<path class="accent" d="M30 31h8v7h-8zM42 31h8v7h-8z"/>'
-      + '<path class="metal" d="M33 45h14v5H33z"/>'
-      + '<path d="M60 41a15 15 0 1 0 0 30 15 15 0 1 0 0-30z"/>'
-      + '<path class="metal" d="M54 36h12v7H54z"/>'
-      + '<path class="accent" d="M57 30l6-9 5 3-6 10z"/>'
-      + '<path class="accent" d="M68 12a6 6 0 1 0 0 12 6 6 0 1 0 0-12z"/>'
-      + '</svg>';
   }
 
   private query<T extends HTMLElement = HTMLElement>(selector: string): T {

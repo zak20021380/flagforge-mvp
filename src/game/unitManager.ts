@@ -203,7 +203,11 @@ export class UnitManager {
     const rig = new UnitRig(this.scene, this.materials, kind, team, id);
     rig.setEnabled(false);
     for (const mesh of rig.root.getChildMeshes()) {
-      if (!mesh.name.includes('shadow') && !mesh.name.includes('health')) this.shadows.addShadowCaster(mesh);
+      if (
+        !mesh.name.includes('shadow')
+        && !mesh.name.includes('health')
+        && mesh.metadata?.skipUnitShadowCaster !== true
+      ) this.shadows.addShadowCaster(mesh);
     }
     const unit = new UnitEntity(id, team, kind, rig);
     this.units.push(unit);

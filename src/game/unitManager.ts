@@ -15,6 +15,7 @@ import { LadderSystem } from './ladderSystem';
 import { MatchFlow } from './matchFlow';
 import { ProjectilePool } from './projectiles';
 import { applyGroundStep, blocksGroundStep, blocksPlayableStep, BRIDGE_BANK_MARGIN, keepOnLand, resolveCrossingGoal } from './riverCrossing';
+import { SeparationSystem } from './separationSystem';
 import { UnitEntity } from './unit';
 
 /** A unit is only considered genuinely stuck after this long without meaningful progress. */
@@ -35,11 +36,12 @@ const YIELD_DURATION = 0.7;
 const WAIT_DURATION = 0.6;
 /** Only switch bridges while this close to the current entrance. */
 const BRIDGE_SWITCH_NEAR_ENTRANCE = 16;
-/** Opposing-team separation strength relative to same-team separation. */
-const ENEMY_SEPARATION_SCALE = 0.8;
+/** Castle-gate ring inside which ground separation is muted so slot/gate formations hold. */
+const GATE_SUPPRESS_RADIUS_SQUARED = 5.5 * 5.5;
 
 const stallAnchorScratch = Vector3.Zero();
 const recoveryScratch = Vector3.Zero();
+const separationScratch = { x: 0, z: 0 };
 
 export class UnitManager {
   private readonly units: UnitEntity[] = [];
@@ -47,6 +49,7 @@ export class UnitManager {
   private readonly ladders = new LadderSystem();
   private readonly castleLadders = new CastleLadderSystem();
   private readonly engagements = new CrowdSystem();
+  private readonly separation = new SeparationSystem();
   private readonly movementScratch = Vector3.Zero();
   private readonly facingScratch = Vector3.Zero();
   private nextId = 1;
@@ -577,45 +580,34 @@ export class UnitManager {
     let dx = movementGoal.x - unit.position.x;
     let dz = movementGoal.z - unit.position.z;
     let distance = Math.hypot(dx, dz);
-    if (distance < 0.12) return false;
-
-    dx /= distance;
-    dz /= distance;
-
-    let separationX = 0;
-    let separationZ = 0;
-    const separationRadiusSquared = CONFIG.unit.separationRadius ** 2;
-    for (const neighbor of this.units) {
-      if (
-        neighbor === unit
-        || !neighbor.active
-        || neighbor.state === 'dead'
-        || neighbor.navigationArea !== unit.navigationArea
-      ) continue;
-      const offsetX = unit.position.x - neighbor.position.x;
-      const offsetZ = unit.position.z - neighbor.position.z;
-      const distanceSquared = offsetX * offsetX + offsetZ * offsetZ;
-      if (distanceSquared <= 0.0001 || distanceSquared >= separationRadiusSquared) continue;
-      const inverse = 1 / Math.sqrt(distanceSquared);
-      // Opposing teams are kept apart too, but softer, so marching groups slide around each other
-      // instead of overlapping or interpenetrating, while combat still closes to melee reach.
-      let strength = (1 - Math.sqrt(distanceSquared) / CONFIG.unit.separationRadius) * CONFIG.unit.separationStrength;
-      if (neighbor.team !== unit.team) strength *= ENEMY_SEPARATION_SCALE;
-      separationX += offsetX * inverse * strength;
-      separationZ += offsetZ * inverse * strength;
+    if (distance > 0.12) {
+      dx /= distance;
+      dz /= distance;
+    } else {
+      dx = 0;
+      dz = 0;
     }
 
+    // Local crowd spacing: a smooth XZ-only push between units whose personal-space bubbles
+    // overlap, faded by distance and muted around bridges, ladders, queues, gates and committed
+    // combat so controlled traversal, reserved slots and engagements are never disturbed. The
+    // push only steers the same speed-capped, water/arena-gated step, so it never teleports and
+    // never shoves a body into a river, a wall, castle geometry or off the battlefield.
+    this.separation.compute(unit, this.units, separationScratch);
+    const separationScale = this.separationScaleFor(unit);
+    separationScratch.x *= separationScale;
+    separationScratch.z *= separationScale;
     // On or near a bridge, separation works mainly along the bridge axis: sideways push is killed on
     // the deck and nearly killed inside the queue zone, so waiting units line up instead of fanning
     // out into horizontal walls at the bridge mouth.
-    separationX *= this.bridges.separationScaleX(unit);
-    dx += separationX * 0.38;
-    dz += separationZ * 0.38;
+    separationScratch.x *= this.bridges.separationScaleX(unit);
+    dx += separationScratch.x * 0.38;
+    dz += separationScratch.z * 0.38;
     distance = Math.hypot(dx, dz);
-    if (distance > 0.0001) {
-      dx /= distance;
-      dz /= distance;
-    }
+    // Nothing to do: at the goal with no one crowding the body.
+    if (distance < 0.001) return false;
+    dx /= distance;
+    dz /= distance;
 
     let speed = unit.stats.speed;
     if (unit.carryingFlag) speed *= unit.kind === 'raider' ? 1 : 0.9;
@@ -682,6 +674,36 @@ export class UnitManager {
     this.facingScratch.set(unit.position.x + dx, unit.position.y, unit.position.z + dz);
     this.faceUnit(unit, this.facingScratch, deltaSeconds);
     return moved;
+  }
+
+  /**
+   * Local-spaces multiplier for the separation pass: 1 in the open field, leaning toward 0 for
+   * controlled traversal and committed states. Bridge decks/queues, ladder lines and climbs,
+   * scripted castle transit and flag-carry runs keep their designated positions; units standing in
+   * a castle-gate ring or actively fighting a target in range keep the formation the slot/queue
+   * systems gave them instead of spreading away from it.
+   */
+  private separationScaleFor(unit: UnitEntity): number {
+    if (unit.carryingFlag) return 0;
+    const state = unit.state;
+    if (unit.bridgeState !== 'none' && unit.bridgeState !== 'cleared') return 0;
+    if (state === 'queued' || state === 'climbing'|| state === 'falling') return 0;
+    if (this.ladders.isRegistered(unit) || this.castleLadders.isRegistered(unit)) return 0;
+    // A reserved tower-standoff ring slot owns the unit's position.
+    if (unit.reservedSlot >= 0) return 0;
+    for (const team of ['blue', 'red'] as const) {
+      const castle = this.castles.getCastle(team);
+      if (squaredDistanceXZ(unit.position, castle.gatePoint) <= GATE_SUPPRESS_RADIUS_SQUARED) return 0;
+    }
+    const target = unit.target;
+    if (
+      target
+      && target.active
+      && target.state !== 'dead'
+      && squaredDistanceXZ(unit.position, target.position)
+        <= unit.stats.attackRange * unit.stats.attackRange
+    ) return 0;
+    return 1;
   }
 
   /**

@@ -598,6 +598,16 @@ export const CONFIG = {
   unit: {
     separationRadius: 1.05,
     separationStrength: 1.6,
+    // Extra personal-space room on top of the two collision radii (> 1 keeps a visible gap:
+    // comfortable spacing between centres is sum of body radii * padding). Big units claim
+    // slightly more room than small units automatically.
+    separationPadding: 1.75,
+    // Hard cap on the summed XZ separation force each frame so a dense cluster only ever drifts
+    // apart gently; never a sudden kick.
+    separationMaxForce: 1.9,
+    // Opposing-team push relative to friendly push: softer so groups slide around each other and
+    // melee still closes to attack range.
+    separationEnemyScale: 0.85,
     targetRefreshMin: 0.18,
     targetRefreshMax: 0.34,
   },

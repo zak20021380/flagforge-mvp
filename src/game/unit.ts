@@ -9,6 +9,9 @@ export class UnitEntity {
   readonly stats;
   /** Half the space this body claims in the separation pass; also its footprint against the water. */
   readonly bodyRadius: number;
+  /** Comfortable personal-space radius used by the separation pass (body radius + slack, scales
+   *  with unit size so large units reserve slightly more room than small ones). */
+  readonly separationRadius: number;
   active = false;
   health = 1;
   state: UnitState = 'idle';
@@ -64,6 +67,7 @@ export class UnitEntity {
   ) {
     this.stats = UNIT_STATS[kind];
     this.bodyRadius = CONFIG.unit.separationRadius * 0.5 * this.stats.scale;
+    this.separationRadius = this.bodyRadius * CONFIG.unit.separationPadding;
   }
 
   get position(): Vector3 {

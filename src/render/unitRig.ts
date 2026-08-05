@@ -297,18 +297,22 @@ export class UnitRig {
     torsoMesh.parent = this.torso;
     torsoMesh.position.y = 0.25;
     torsoMesh.scaling.x = 1.18;
-    torsoMesh.material = this.kind === 'ranger' ? materials.leather : teamCloth;
+    // Every class wears the team tabard as its largest single block. Rangers keep their hood,
+    // quiver and bow; only the tunic material changes from leather to the team cloth.
+    torsoMesh.material = teamCloth;
 
-    const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth, height: 0.74, depth: 0.54 }, scene);
+    const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth * 0.76, height: 0.74, depth: 0.54 }, scene);
     chest.parent = this.torso;
     chest.position = new Vector3(0, 0.36, -0.02);
-    chest.material = this.kind === 'raider' ? materials.black : teamArmor;
+    // Armor plate over the tabard: silver for blue, dark iron for red. Raiders carry a cloth
+    // vest instead of plate, so their whole torso reads as one team-colored block.
+    chest.material = this.kind === 'raider' ? teamCloth : teamArmor;
     chest.rotation.x = -0.05;
 
     const belt = MeshBuilder.CreateCylinder(`${this.root.name}-belt`, { height: 0.20, diameter: bodyWidth * 0.94, tessellation: 8 }, scene);
     belt.parent = this.torso;
     belt.position.y = -0.25;
-    belt.material = teamAccent;
+    belt.material = materials.black;
 
     const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'ironGuard' ? 0.92 : 0.82, segments: 8 }, scene);
     headMesh.parent = this.head;
@@ -317,16 +321,8 @@ export class UnitRig {
     this.buildHeadwear(scene, materials, teamMaterial, teamDark);
     this.buildLimbs(scene, materials, teamDark);
     this.buildWeapon(scene, materials, teamMaterial, teamDark);
-
-    if (this.kind === 'vanguard') {
-      const shoulderL = MeshBuilder.CreateSphere(`${this.root.name}-shoulder-l`, { diameter: 0.74, segments: 7 }, scene);
-      shoulderL.parent = this.torso;
-      shoulderL.position = new Vector3(-0.62, 0.56, 0);
-      shoulderL.scaling.y = 0.76;
-      shoulderL.material = teamArmor;
-      const shoulderR = shoulderL.clone(`${this.root.name}-shoulder-r`) as Mesh;
-      shoulderR.position.x = 0.62;
-    }
+    this.buildShoulderPads(scene, teamArmor, teamAccent);
+    this.buildCape(scene, materials, teamCloth);
 
     if (this.kind === 'ironGuard') {
       const backPlate = MeshBuilder.CreateBox(`${this.root.name}-back-plate`, { width: 1.48, height: 1.42, depth: 0.26 }, scene);
@@ -359,6 +355,59 @@ export class UnitRig {
     }
   }
 
+  /**
+   * Large armor pauldrons with a bright team cap on top. Every class gets them so the shoulder
+   * line is a team-colored block from the gameplay camera, not a thin strap. The caps stay
+   * clearly visible against both the silver (blue) and dark-iron (red) armor below.
+   */
+  private buildShoulderPads(scene: Scene, teamArmor: Material, teamAccent: Material): void {
+    const diameter = this.kind === 'ironGuard' ? 0.9 : this.kind === 'vanguard' ? 0.74 : this.kind === 'ranger' ? 0.58 : 0.54;
+    const capDiameter = diameter * 0.55;
+    const armY = this.kind === 'ironGuard' ? 0.62 : 0.56;
+    const armX = this.kind === 'ironGuard' ? 0.78 : this.kind === 'ranger' || this.kind === 'raider' ? 0.6 : 0.62;
+    for (const side of [-1, 1] as const) {
+      const pad = MeshBuilder.CreateSphere(`${this.root.name}-pad-${side}`, { diameter, segments: 7 }, scene);
+      pad.parent = this.torso;
+      pad.position = new Vector3(side * armX, armY, 0);
+      pad.scaling.y = 0.72;
+      pad.material = teamArmor;
+      const cap = MeshBuilder.CreateSphere(`${this.root.name}-pad-cap-${side}`, { diameter: capDiameter, segments: 6 }, scene);
+      cap.parent = this.torso;
+      cap.position = new Vector3(side * armX, armY + diameter * 0.26, 0);
+      cap.scaling.y = 0.62;
+      cap.material = teamAccent;
+    }
+  }
+
+  /**
+   * Rigid back cloth in the team color with one bold white center stripe. A full-height block,
+   * not a trim: it covers most of the back so player units (seen from behind by the portrait
+   * camera) read as solid blue/red. The stripe doubles the marking for enemy units seen head-on.
+   * Rangers wear a half-cape clear of their quiver, offset to the free right side.
+   */
+  private buildCape(scene: Scene, materials: MaterialLibrary, teamCloth: Material): void {
+    const iron = this.kind === 'ironGuard';
+    const ranger = this.kind === 'ranger';
+    const raider = this.kind === 'raider';
+    const width = iron ? 1.6 : ranger ? 0.7 : raider ? 1.0 : 1.3;
+    const height = iron ? 1.46 : ranger ? 1.3 : raider ? 1.28 : 1.38;
+    const depth = iron ? 0.16 : ranger ? 0.12 : 0.14;
+    const offsetX = ranger ? 0.15 : 0;
+    const backZ = iron ? 0.56 : ranger ? 0.52 : 0.5;
+    const cape = MeshBuilder.CreateBox(`${this.root.name}-cape`, { width, height, depth }, scene);
+    cape.parent = this.torso;
+    cape.position = new Vector3(offsetX, 0.08, backZ);
+    // Lean the bottom edge away from the body so the cloth reads as draped, not glued.
+    cape.rotation.x = -0.1;
+    cape.material = teamCloth;
+    // The stripe rides on the cape surface (parented so it shares the lean) and stays proud of it
+    // by a hair, so it never z-fights or sinks into the cloth from any camera angle.
+    const stripe = MeshBuilder.CreateBox(`${this.root.name}-cape-stripe`, { width: 0.2, height: height * 0.85, depth: 0.035 }, scene);
+    stripe.parent = cape;
+    stripe.position = new Vector3(0, 0, depth / 2 + 0.03);
+    stripe.material = materials.white;
+  }
+
   private buildHeadwear(scene: Scene, materials: MaterialLibrary, _teamMaterial: Material, _teamDark: Material): void {
     const teamCloth = materials.teamCloth(this.team);
     const teamArmor = materials.teamArmor(this.team);
@@ -373,6 +422,10 @@ export class UnitRig {
       mask.parent = this.head;
       mask.position = new Vector3(0, -0.08, -0.38);
       mask.material = materials.black;
+      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.13, height: 0.42, depth: 0.32 }, scene);
+      crest.parent = this.head;
+      crest.position = new Vector3(0, 0.84, 0.05);
+      crest.material = teamAccent;
       return;
     }
 
@@ -385,9 +438,9 @@ export class UnitRig {
       visor.parent = this.head;
       visor.position = new Vector3(0, 0.04, -0.50);
       visor.material = materials.black;
-      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.22, height: 0.85, depth: 0.62 }, scene);
+      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.26, height: 0.95, depth: 0.66 }, scene);
       crest.parent = this.head;
-      crest.position = new Vector3(0, 0.70, 0.05);
+      crest.position = new Vector3(0, 0.72, 0.05);
       crest.material = teamAccent;
       return;
     }
@@ -401,6 +454,10 @@ export class UnitRig {
       brow.parent = this.head;
       brow.position = new Vector3(0, 0.05, -0.39);
       brow.material = teamAccent;
+      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.15, height: 0.5, depth: 0.4 }, scene);
+      crest.parent = this.head;
+      crest.position = new Vector3(0, 0.74, 0.05);
+      crest.material = teamAccent;
       return;
     }
 
@@ -412,6 +469,10 @@ export class UnitRig {
     eyeBand.parent = this.head;
     eyeBand.position = new Vector3(0, 0, -0.39);
     eyeBand.material = teamAccent;
+    const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.13, height: 0.42, depth: 0.34 }, scene);
+    crest.parent = this.head;
+    crest.position = new Vector3(0, 0.74, 0.05);
+    crest.material = teamAccent;
   }
 
   private buildLimbs(scene: Scene, materials: MaterialLibrary, _teamDark: Material): void {
@@ -422,7 +483,8 @@ export class UnitRig {
       const arm = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-arm-mesh`, { height: armLength, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
       arm.parent = node;
       arm.position.y = -0.52;
-      arm.material = this.kind === 'ranger' || this.kind === 'raider' ? materials.leather : teamCloth;
+      // Sleeves in the team tabard cloth: another large colored block on every class.
+      arm.material = teamCloth;
       const hand = MeshBuilder.CreateSphere(`${this.root.name}-${side}-hand`, { diameter: armRadius * 1.75, segments: 7 }, scene);
       hand.parent = node;
       hand.position.y = -1.06;
@@ -469,17 +531,27 @@ export class UnitRig {
     }
 
     if (this.kind === 'ironGuard') {
+      // Tower shield held out at the left flank, facing front/back (axis along Z after the
+      // rotation), so the portrait camera sees a full roundel instead of a sliver buried in the
+      // torso. The bright face carries a large white cross raised off the camera-side cap.
       const shield = MeshBuilder.CreateCylinder(`${this.root.name}-shield-mesh`, { height: 0.28, diameter: 1.72, tessellation: 12 }, scene);
       shield.parent = this.shieldRoot;
+      shield.position.x = -0.55;
       shield.rotation.x = Math.PI / 2;
-      shield.rotation.z = Math.PI / 2;
       shield.material = materials.metal;
       const shieldFace = MeshBuilder.CreateCylinder(`${this.root.name}-shield-face`, { height: 0.30, diameter: 1.28, tessellation: 12 }, scene);
       shieldFace.parent = this.shieldRoot;
+      shieldFace.position.set(-0.55, 0, 0.11);
       shieldFace.rotation.x = Math.PI / 2;
-      shieldFace.rotation.z = Math.PI / 2;
-      shieldFace.position.z = -0.04;
       shieldFace.material = teamAccent;
+      const emblemV = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-v`, { width: 0.06, height: 0.22, depth: 1.0 }, scene);
+      emblemV.parent = shieldFace;
+      emblemV.position.set(0, 0.16, 0);
+      emblemV.material = materials.white;
+      const emblemH = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-h`, { width: 0.06, height: 0.66, depth: 0.22 }, scene);
+      emblemH.parent = shieldFace;
+      emblemH.position.set(0, 0.16, 0);
+      emblemH.material = materials.white;
       const maceHandle = MeshBuilder.CreateCylinder(`${this.root.name}-mace-handle`, { height: 1.38, diameter: 0.13, tessellation: 7 }, scene);
       maceHandle.parent = this.weaponRoot;
       maceHandle.position.y = -0.30;

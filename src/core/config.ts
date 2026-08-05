@@ -359,37 +359,27 @@ export const CENTRAL_TOWER = {
   },
 } as const;
 
-/**
- * The single shared ladder-mount route, authored once in a mirrored local frame. +Z is the
- * outward (approach) direction and +X the tangential offset along the tower face, so the left
- * ladder uses the raw values and the right ladder negates every X and Z. World conversion rotates
- * the local frame by each ladder's tower-facing yaw (-facingYaw: outward -Z maps onto the real
- * approach direction). The numbers follow the leaning ladder in src/render/centralTower.ts:
- * the foot sleeper stands ~0.62 off the groundAlign->climbTop centreline along the outward normal
- * and the first rung centre sits half a ~0.56 pitch up the shaft.
- */
-const LADDER_MOUNT_LOCAL_ROUTE = {
-  /** Where the approach walk peels off the queue line and starts slowing down. */
-  approach: { x: 0, y: 0.16, z: 2.35 },
-  /** Directly in front of the first rung, on the ladder centreline: the pivot point of the turn. */
-  align: { x: 0, y: 0.16, z: 0.62 },
-  /** Body position once the first hand and foot are planted: on the shaft, held off the rung plane. */
-  mount: { x: 0, y: 0.2, z: 0.24 },
-} as const;
-
 const ladderYawVector = (yaw: number) => ({ x: Math.sin(yaw), z: Math.cos(yaw) });
 
-const ladderMountWorldPoint = (yaw: number, local: { readonly x: number; readonly y: number; readonly z: number }) => {
-  const forward = ladderYawVector(yaw);
-  const lateral = ladderYawVector(yaw + Math.PI / 2);
-  return {
-    x: CENTRAL_TOWER.centerX + forward.x * local.z + lateral.x * local.x,
-    y: local.y,
-    z: CENTRAL_TOWER.centerZ + forward.z * local.z + lateral.z * local.x,
-  };
-};
+const MOUNT_APPROACH_DIST = 2.35;
+const MOUNT_ALIGN_DIST = 0.62;
+const MOUNT_PLANT_DIST = 0.24;
 
-/** Complete per-ladder mount data, derived from the shared local route for LadderSystem/Part 2. */
+/**
+ * Derive the mount-route waypoints directly from each ladder's real geometry.
+ *
+ * The visible ladder mesh is built in createSideLadder (src/render/centralTower.ts) from the same
+ * groundAlign/climbTop endpoints used here. Its outward face normal is cross(shaftDir, rungDir),
+ * where rungDir is tangent to the tower face at the shaft midpoint. That normal points away from
+ * the tower centre and defines the approach direction: the unit must walk toward the ladder from
+ * outside, not from across the tower.
+ *
+ * The previous implementation rotated a shared local-space route by each ladder's facingYaw, but
+ * facingYaw describes which way the climber's chest points (inward, toward the rungs) — the exact
+ * opposite of the approach direction. For the player ladder this happened to land near enough to
+ * the queue that it looked acceptable; for the enemy ladder it placed the entire mount sequence on
+ * the wrong side of the tower, making units clip through invisible geometry beside the visible mesh.
+ */
 const ladderMountData = (id: keyof typeof CENTRAL_TOWER.ladders) => {
   const ladder = CENTRAL_TOWER.ladders[id];
   const facing = ladderYawVector(ladder.facingYaw);
@@ -397,32 +387,54 @@ const ladderMountData = (id: keyof typeof CENTRAL_TOWER.ladders) => {
   const climbY = ladder.climbTop.y - ladder.groundAlign.y;
   const climbZ = ladder.climbTop.z - ladder.groundAlign.z;
   const climbLength = Math.hypot(climbX, climbY, climbZ);
+  const shaftDirX = climbX / climbLength;
+  const shaftDirY = climbY / climbLength;
+  const shaftDirZ = climbZ / climbLength;
+  const midLocalX = (ladder.groundAlign.x + ladder.climbTop.x) / 2 - CENTRAL_TOWER.centerX;
+  const midLocalZ = (ladder.groundAlign.z + ladder.climbTop.z) / 2 - CENTRAL_TOWER.centerZ;
+  const rungDirLen = Math.hypot(midLocalX, midLocalZ);
+  const rungDirX = -midLocalZ / rungDirLen;
+  const rungDirZ = midLocalX / rungDirLen;
+  const outX = shaftDirY * rungDirZ - shaftDirZ * 0;
+  const outY = shaftDirZ * rungDirX - shaftDirX * rungDirZ;
+  const outZ = shaftDirX * 0 - shaftDirY * rungDirX;
+  const outLen = Math.hypot(outX, outY, outZ);
+  const panelOutX = (outX / outLen);
+  const panelOutZ = (outZ / outLen);
+  const panelOutHorizLen = Math.hypot(panelOutX, panelOutZ);
+  const poX = panelOutX / panelOutHorizLen;
+  const poZ = panelOutZ / panelOutHorizLen;
   return {
     id: ladder.id,
     side: ladder.side,
-    /** Points of the mount sequence, world space. */
-    approachPoint: ladderMountWorldPoint(ladder.facingYaw, LADDER_MOUNT_LOCAL_ROUTE.approach),
-    alignPoint: ladderMountWorldPoint(ladder.facingYaw, LADDER_MOUNT_LOCAL_ROUTE.align),
-    mountPoint: ladderMountWorldPoint(ladder.facingYaw, LADDER_MOUNT_LOCAL_ROUTE.mount),
-    /** Where the Part 2 rung climb takes over: the old straight-line ascent start. */
+    approachPoint: {
+      x: ladder.groundAlign.x + poX * MOUNT_APPROACH_DIST,
+      y: 0.16,
+      z: ladder.groundAlign.z + poZ * MOUNT_APPROACH_DIST,
+    },
+    alignPoint: {
+      x: ladder.groundAlign.x + poX * MOUNT_ALIGN_DIST,
+      y: 0.16,
+      z: ladder.groundAlign.z + poZ * MOUNT_ALIGN_DIST,
+    },
+    mountPoint: {
+      x: ladder.groundAlign.x + poX * MOUNT_PLANT_DIST,
+      y: 0.2,
+      z: ladder.groundAlign.z + poZ * MOUNT_PLANT_DIST,
+    },
     climbStartPoint: ladder.groundEntry,
-    /** Unit climb direction along the leaning shaft (groundAlign -> climbTop), normalized. */
-    ladderDirection: { x: climbX / climbLength, y: climbY / climbLength, z: climbZ / climbLength },
-    /** Horizontal direction the body faces while on the ladder: toward the tower centre. */
+    ladderDirection: { x: shaftDirX, y: shaftDirY, z: shaftDirZ },
     facingDirection: { x: facing.x, y: 0, z: facing.z },
-    /** Body yaw on the ladder (back to the camera side, chest to the rungs). */
     facingYaw: ladder.facingYaw,
-    /** Rung pitch of either ladder; both frames share one blueprint, so they are identical. */
     rungSpacing: climbLength / Math.max(12, Math.round(climbLength / 0.56)),
-    /** Centreline-to-rung-plane standoff on the foot sleeper; mount->shaft distance during the climb. */
     bodyOffsetFromLadder: 0.38,
   };
 };
 
 /**
- * Mount data for both central-tower ladders, mirrored from LADDER_MOUNT_LOCAL_ROUTE. Everything
- * Part 2 needs for the rung-by-rung climb animation lives here, so it never has to re-derive the
- * geometry from the render module.
+ * Mount data for both central-tower ladders, derived from each ladder's actual shaft geometry.
+ * Everything Part 2 needs for the rung-by-rung climb animation lives here, so it never has to
+ * re-derive the geometry from the render module.
  */
 export const CENTRAL_TOWER_LADDER_MOUNT = {
   player: ladderMountData('player'),

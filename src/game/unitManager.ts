@@ -996,14 +996,26 @@ export class UnitManager {
       unit.attackClock += deltaSeconds;
       if (!unit.attackHitApplied && unit.attackClock >= unit.stats.windup) {
         unit.attackHitApplied = true;
-        let damage = CONFIG.castle.damagePerUnitHit;
-        if (unit.kind === 'ranger') damage *= CONFIG.castle.rangerDamageMultiplier;
-        if (unit.kind === 'ironGuard') damage *= CONFIG.castle.ironGuardDamageMultiplier;
+        // Stage 1 spends the gate's own damage table, stage 2 the castle's. The router in
+        // CastleLogic decides which pool receives it; a hit never lands on both.
+        const gateStage = this.castles.isGateStage(enemyTeam);
+        const table = gateStage ? CONFIG.gate : CONFIG.castle;
+        let damage = table.damagePerUnitHit;
+        if (unit.kind === 'ranger') damage *= table.rangerDamageMultiplier;
+        if (unit.kind === 'ironGuard') damage *= table.ironGuardDamageMultiplier;
         const strong = unit.kind === 'ironGuard' || unit.kind === 'vanguard';
-        const hitY = enemyCastle.gatePoint.y + 2.5 + Math.random() * 3;
-        const hitPos = new Vector3(slot.x, hitY, enemyCastle.gatePoint.z);
-        this.castles.applyCastleDamage(enemyTeam, damage, hitPos, strong);
-        this.effects.castleHit(hitPos);
+        // Gate hits land on the timber itself (low, centred on the doors); castle hits spread up the
+        // masonry as before.
+        const hitY = gateStage
+          ? enemyCastle.gatePoint.y + 1.1 + Math.random() * 2.4
+          : enemyCastle.gatePoint.y + 2.5 + Math.random() * 3;
+        const hitX = gateStage
+          ? enemyCastle.gatePoint.x + (slot.x - enemyCastle.gatePoint.x) * 0.4 + (Math.random() - 0.5) * 1.1
+          : slot.x;
+        const hitPos = new Vector3(hitX, hitY, enemyCastle.gatePoint.z);
+        this.castles.applyStructureDamage(enemyTeam, damage, hitPos, strong);
+        if (gateStage) this.effects.gateHit(hitPos, strong);
+        else this.effects.castleHit(hitPos);
         this.audio.play('swing');
       }
       if (unit.attackClock >= unit.stats.attackCooldown) {

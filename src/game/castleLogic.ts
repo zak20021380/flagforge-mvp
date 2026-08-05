@@ -5,6 +5,7 @@ import type { Team } from '../core/types';
 import type { CastleVisual } from '../render/castle';
 import { CastleHealthModel } from './castleHealth';
 import type { FlagController } from './flag';
+import { GateHealthModel } from './gateHealth';
 import type { MatchFlow } from './matchFlow';
 import type { UnitEntity } from './unit';
 
@@ -28,6 +29,8 @@ export class CastleLogic {
   };
   readonly blueHealth: CastleHealthModel;
   readonly redHealth: CastleHealthModel;
+  readonly blueGate: GateHealthModel;
+  readonly redGate: GateHealthModel;
   private destructionPending: Team | null = null;
   private destructionComplete = false;
 
@@ -43,6 +46,8 @@ export class CastleLogic {
   ) {
     this.blueHealth = new CastleHealthModel();
     this.redHealth = new CastleHealthModel();
+    this.blueGate = new GateHealthModel();
+    this.redGate = new GateHealthModel();
   }
 
   /**
@@ -97,8 +102,35 @@ export class CastleLogic {
     return team === 'blue' ? this.blueHealth : this.redHealth;
   }
 
-  applyCastleDamage(defender: Team, amount: number, hitPoint: Vector3, strong: boolean): void {
+  getGateHealth(team: Team): GateHealthModel {
+    return team === 'blue' ? this.blueGate : this.redGate;
+  }
+
+  /** True while stage 1 is still running for this castle: only its gate may take damage. */
+  isGateStage(team: Team): boolean {
+    return !this.getGateHealth(team).destroyed;
+  }
+
+  /**
+   * The single structure-damage entry point, and the only place the two authoritative HP pools are
+   * ever spent. It is a strict router, never a splitter: while the defender's gate stands the hit is
+   * spent entirely on `gateHp` and the castle is immune; once the gate is destroyed every subsequent
+   * hit is spent entirely on `castleHp`. A hit can never touch both pools. `amount` is already scaled
+   * for the current stage by the caller (see UnitManager.tryAttackCastle).
+   */
+  applyStructureDamage(defender: Team, amount: number, hitPoint: Vector3, strong: boolean): void {
     if (this.winner || this.destructionComplete) return;
+    const gate = this.getGateHealth(defender);
+    if (!gate.destroyed) {
+      // STAGE 1 — the gate absorbs the whole hit. Castle HP is untouched.
+      gate.applyDamage(amount, hitPoint.x, hitPoint.y, hitPoint.z, strong);
+      return;
+    }
+    // STAGE 2 — the gate is breached and permanently out of the loop.
+    this.applyCastleDamage(defender, amount, hitPoint, strong);
+  }
+
+  private applyCastleDamage(defender: Team, amount: number, hitPoint: Vector3, strong: boolean): void {
     const health = this.getHealth(defender);
     if (health.destroyed) return;
     health.applyDamage(amount, hitPoint.x, hitPoint.y, hitPoint.z, strong);
@@ -108,11 +140,20 @@ export class CastleLogic {
     }
   }
 
+  /**
+   * Where an attacker stands to hit the enemy structure. Stage 1 funnels everyone onto the three
+   * gate-front slots so the assault visibly concentrates on the gate; once that gate is breached the
+   * full slot ring (gate + flanking wall slots) opens up for the castle assault. Mirrored for both
+   * teams by the same facing multiplier the castles are built with.
+   */
   getAssaultSlot(unit: UnitEntity): Vector3 {
     const enemy = unit.team === 'blue' ? 'red' : 'blue';
     const castle = this.getCastle(enemy);
     const slots = CONFIG.castle.assaultSlots;
-    const slotIndex = unit.id % slots.length;
+    const usable = this.isGateStage(enemy)
+      ? Math.min(CONFIG.gate.assaultSlotCount, slots.length)
+      : slots.length;
+    const slotIndex = unit.id % usable;
     const slot = slots[slotIndex];
     return new Vector3(
       castle.root.position.x + slot.x,
@@ -318,6 +359,8 @@ export class CastleLogic {
   update(deltaSeconds: number, elapsed: number): void {
     this.updateGateReturn(deltaSeconds);
 
+    this.blueGate.update(deltaSeconds);
+    this.redGate.update(deltaSeconds);
     this.blueHealth.update(deltaSeconds);
     this.redHealth.update(deltaSeconds);
 

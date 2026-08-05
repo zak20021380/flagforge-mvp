@@ -4,8 +4,8 @@ import { CONFIG, PORTRAIT_LAYOUT, UNIT_STATS } from '../core/config';
 import { laneFromX } from '../core/math';
 import type { CastleState, Team, UnitKind } from '../core/types';
 import type { ArenaScene } from '../render/arena';
+import type { SiegeHudState } from '../ui/gameUI';
 import { GameUI } from '../ui/gameUI';
-import { CastleHealthModel } from './castleHealth';
 import { CastleLogic } from './castleLogic';
 import { EffectPool } from './effects';
 import { EnemyAI } from './enemyAI';
@@ -19,8 +19,6 @@ export class GameController {
   private readonly matchFlow = new MatchFlow();
   private readonly playerEnergy = new EnergyModel();
   private readonly enemyEnergy = new EnergyModel();
-  private readonly playerCastleHealth = new CastleHealthModel();
-  private readonly enemyCastleHealth = new CastleHealthModel();
   private readonly effects: EffectPool;
   private readonly castles: CastleLogic;
   private readonly flag: FlagController;
@@ -37,6 +35,9 @@ export class GameController {
   private hudClock = 0;
   private cameraKick = 0;
   private cameraPush = 0;
+  /** Rate limiters for the stage-2 structural smoke plumes, one per castle. */
+  private blueSmokeClock = 0;
+  private redSmokeClock = 0;
 
   constructor(
     private readonly arena: ArenaScene,
@@ -129,6 +130,7 @@ export class GameController {
     this.projectiles.dispose();
     this.units.dispose();
     this.audio.dispose();
+    this.ui.disposeMeters();
   }
 
   private bindInput(): void {
@@ -297,6 +299,9 @@ export class GameController {
     const playerHealth = this.castles.getHealth('blue');
     const enemyHealth = this.castles.getHealth('red');
 
+    this.updateGateStage('blue', deltaSeconds);
+    this.updateGateStage('red', deltaSeconds);
+
     this.arena.blueCastle.setDamageStage(playerHealth.stage);
     this.arena.redCastle.setDamageStage(enemyHealth.stage);
 
@@ -310,14 +315,25 @@ export class GameController {
     }
 
     for (const reaction of enemyHealth.hitReactions) {
-      if (reaction.age < 0.05) this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+      if (reaction.age < 0.05) {
+        this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+        this.ui.pulseSiegeHit('enemy', reaction.strong);
+      }
     }
     for (const reaction of playerHealth.hitReactions) {
-      if (reaction.age < 0.05) this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+      if (reaction.age < 0.05) {
+        this.effects.castleHit(new Vector3(reaction.x, reaction.y, reaction.z));
+        this.ui.pulseSiegeHit('player', reaction.strong);
+      }
     }
 
     this.arena.blueCastle.applyShake(playerHealth.shakeIntensity);
     this.arena.redCastle.applyShake(enemyHealth.shakeIntensity);
+
+    // Stage-2 structural smoke: the plume thickens and darkens as the castle degrades. Pooled and
+    // rate-limited, so a long assault never accumulates particles.
+    this.updateCastleSmoke('blue', deltaSeconds);
+    this.updateCastleSmoke('red', deltaSeconds);
 
     if (enemyHealth.destroyed && enemyHealth.destructionProgress > 0.4 && enemyHealth.destructionProgress < 0.45) {
       this.effects.castleDebris(this.arena.redCastle.gatePoint);
@@ -325,16 +341,106 @@ export class GameController {
     if (playerHealth.destroyed && playerHealth.destructionProgress > 0.4 && playerHealth.destructionProgress < 0.45) {
       this.effects.castleDebris(this.arena.blueCastle.gatePoint);
     }
+  }
 
-    (this.playerCastleHealth as { hp: number; maxHp: number }).hp = playerHealth.hp;
-    (this.playerCastleHealth as { hp: number; maxHp: number }).maxHp = playerHealth.maxHp;
-    (this.enemyCastleHealth as { hp: number; maxHp: number }).hp = enemyHealth.hp;
-    (this.enemyCastleHealth as { hp: number; maxHp: number }).maxHp = enemyHealth.maxHp;
+  /**
+   * Stage-1 presentation for one castle's gate: progressive wear on the mesh, the escalating impact
+   * ladder, the restrained critical tick, and the one-shot breach sequence. All feedback is local to
+   * the gate node, the HUD and the pooled effects — updateCamera is never involved.
+   */
+  private updateGateStage(team: Team, deltaSeconds: number): void {
+    const gate = this.castles.getGateHealth(team);
+    const castle = this.castles.getCastle(team);
+    const side = team === 'blue' ? 'player' : 'enemy';
+
+    castle.setGateDamageStage(gate.stage);
+
+    for (const reaction of gate.hitReactions) {
+      if (reaction.handled) continue;
+      reaction.handled = true;
+      const point = new Vector3(reaction.x, reaction.y, reaction.z);
+      this.effects.gateHit(point, reaction.strong);
+      castle.applyGateHitShake(reaction.strong ? 0.85 : 0.45);
+      this.audio.play(
+        reaction.tier === 'heavy' ? 'gateImpactHeavy'
+          : reaction.tier === 'mid' ? 'gateImpactMid'
+            : 'gateImpactLight',
+      );
+      this.ui.pulseSiegeHit(side, reaction.strong);
+    }
+
+    if (gate.consumeCriticalTick()) this.audio.play('gateCritical');
+
+    if (gate.consumeBreachAnnouncement()) {
+      castle.beginGateBreach();
+      this.effects.gateBreachBurst(new Vector3(castle.gatePoint.x, castle.gatePoint.y + 2.2, castle.gatePoint.z));
+      this.audio.play('gateBreach');
+      this.ui.announceGateBreach(side);
+    }
+    if (gate.destroyed) {
+      castle.updateGateBreach(gate.breachProgress);
+      // One deep landing impact as the timber settles near the end of the collapse: a single
+      // dust/splinter burst on the frame it crosses the threshold, never a loop.
+      const landing = CONFIG.gate.breachSequenceSeconds * 0.82;
+      if (gate.breachTimer >= landing && gate.breachTimer - deltaSeconds < landing) {
+        this.effects.gateBreachBurst(new Vector3(castle.gatePoint.x, castle.gatePoint.y + 0.9, castle.gatePoint.z));
+        this.audio.play('gateImpactHeavy');
+      }
+    }
+  }
+
+  /** Rate-limited stage-2 smoke: only once the gate is down and the castle is visibly damaged. */
+  private updateCastleSmoke(team: Team, deltaSeconds: number): void {
+    if (this.castles.isGateStage(team)) return;
+    const health = this.castles.getHealth(team);
+    if (health.destroyed) return;
+    const stage = health.stage;
+    if (stage === 'intact') return;
+    const interval = stage === 'heavy' ? 0.55 : stage === 'moderate' ? 0.9 : 1.6;
+    const clock = team === 'blue' ? 'blueSmokeClock' : 'redSmokeClock';
+    this[clock] -= deltaSeconds;
+    if (this[clock] > 0) return;
+    this[clock] = interval;
+    const castle = this.castles.getCastle(team);
+    this.effects.castleSmoke(
+      new Vector3(castle.gatePoint.x, castle.gatePoint.y + 5.4, castle.gatePoint.z - 1.6 * (team === 'blue' ? 1 : -1)),
+      stage === 'heavy',
+    );
   }
 
   private castleStateFor(team: Team): CastleState {
     if (this.castles.getBreachedTeam() === team) return 'breached';
     return this.castles.isGateOpen(team) ? 'open' : 'secure';
+  }
+
+  /**
+   * Reading for the single shared siege bar. Stage 1 exposes the gate pool; the moment the gate is
+   * destroyed the same bar starts reporting the castle pool instead. The two are never mixed.
+   */
+  private siegeStateFor(team: Team): SiegeHudState {
+    const gate = this.castles.getGateHealth(team);
+    if (!gate.destroyed) {
+      return {
+        stage: 'gate',
+        hp: gate.hp,
+        maxHp: gate.maxHp,
+        ratio: gate.ratio,
+        warning: gate.warning,
+        critical: gate.critical,
+        shake: gate.hudShake,
+      };
+    }
+    const health = this.castles.getHealth(team);
+    const ratio = health.ratio;
+    return {
+      stage: 'castle',
+      hp: health.hp,
+      maxHp: health.maxHp,
+      ratio,
+      warning: !health.destroyed && ratio <= CONFIG.gate.warningRatio,
+      critical: !health.destroyed && ratio <= CONFIG.gate.criticalRatio,
+      shake: health.shakeIntensity * 0.6,
+    };
   }
 
   private castleThreatCountdown(team: Team): number {
@@ -362,13 +468,11 @@ export class GameController {
       breachCountdown: this.castles.getBreachCountdown(),
       selectedKind: this.selectedKind,
       playerLocked: this.castles.isDeploymentLocked('blue'),
-      playerCastleHp: this.playerCastleHealth.hp,
-      playerCastleMaxHp: this.playerCastleHealth.maxHp,
+      playerSiege: this.siegeStateFor('blue'),
       playerCastleState: this.castleStateFor('blue'),
       playerCastleCountdown: this.castleThreatCountdown('blue'),
       playerFlagSecured: flagSecuredAt === 'blue',
-      enemyCastleHp: this.enemyCastleHealth.hp,
-      enemyCastleMaxHp: this.enemyCastleHealth.maxHp,
+      enemySiege: this.siegeStateFor('red'),
       enemyCastleState: this.castleStateFor('red'),
       enemyCastleCountdown: this.castleThreatCountdown('red'),
       enemyFlagSecured: flagSecuredAt === 'red',

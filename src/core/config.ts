@@ -611,6 +611,27 @@ export const CONFIG = {
     targetRefreshMin: 0.18,
     targetRefreshMax: 0.34,
   },
+  /**
+   * Stage 1 of the siege. The gate carries its OWN authoritative HP pool, completely separate from
+   * castle HP: while `gateHp > 0` every structure hit lands here and the castle is immune, and the
+   * instant it reaches 0 the gate stops accepting damage forever (see CastleLogic.applyStructureDamage).
+   */
+  gate: {
+    maxHp: 900,
+    damagePerUnitHit: 26,
+    rangerDamageMultiplier: 1.15,
+    ironGuardDamageMultiplier: 1.7,
+    /** Shared tension thresholds: the bar turns amber here and the impact ladder steps up. */
+    warningRatio: 0.35,
+    /** Bar turns red, restrained warning pulse and the critical tick rhythm start. */
+    criticalRatio: 0.15,
+    /** Restrained heartbeat while the gate is critical — never a continuous alarm. */
+    criticalTickSeconds: 1.15,
+    /** Short prepared-piece collapse. No runtime fracture, no physics solver. */
+    breachSequenceSeconds: 1.35,
+    /** While the gate stands, attackers only use the gate-front assault slots (first N). */
+    assaultSlotCount: 3,
+  },
   castle: {
     maxHp: 3000,
     damagePerUnitHit: 18,

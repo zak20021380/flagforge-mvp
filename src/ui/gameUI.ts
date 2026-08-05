@@ -1,5 +1,5 @@
 import { CONFIG, UNIT_LABELS, UNIT_STATS } from '../core/config';
-import type { CastleState, Team, UnitKind } from '../core/types';
+import type { CastleState, SiegeStage, Team, UnitKind } from '../core/types';
 import type { FlagStatus } from '../game/flag';
 
 const MOJIBAKE_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
@@ -8,6 +8,23 @@ const MOJIBAKE_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
   [String.fromCharCode(0x00e2, 0x0161, 0x2018), '\u2691'],
   [String.fromCharCode(0x00e2, 0x0161, 0x201d), '\u2694'],
 ];
+
+/**
+ * One side's reading of the single shared siege bar. Stage 1 feeds it gate HP, stage 2 feeds it
+ * castle HP \u2014 the bar itself is never replaced, only re-labelled and re-filled.
+ */
+export interface SiegeHudState {
+  readonly stage: SiegeStage;
+  readonly hp: number;
+  readonly maxHp: number;
+  readonly ratio: number;
+  /** Below CONFIG.gate.warningRatio \u2014 the bar shifts amber. */
+  readonly warning: boolean;
+  /** Below CONFIG.gate.criticalRatio \u2014 amber becomes red and the warning pulse starts. */
+  readonly critical: boolean;
+  /** 0..1 HUD-only shake budget. Never sourced from, or routed to, the camera. */
+  readonly shake: number;
+}
 
 export interface HudState {
   readonly playerEnergy: number;
@@ -22,13 +39,11 @@ export interface HudState {
   readonly breachCountdown: number;
   readonly selectedKind: UnitKind | null;
   readonly playerLocked: boolean;
-  readonly playerCastleHp: number;
-  readonly playerCastleMaxHp: number;
+  readonly playerSiege: SiegeHudState;
   readonly playerCastleState: CastleState;
   readonly playerCastleCountdown: number;
   readonly playerFlagSecured: boolean;
-  readonly enemyCastleHp: number;
-  readonly enemyCastleMaxHp: number;
+  readonly enemySiege: SiegeHudState;
   readonly enemyCastleState: CastleState;
   readonly enemyCastleCountdown: number;
   readonly enemyFlagSecured: boolean;
@@ -46,17 +61,18 @@ export class GameUI {
   private readonly energyText: HTMLElement;
   private readonly enemyEnergyFill: HTMLElement;
   private readonly castlePanel: HTMLElement;
-  private readonly castleFill: HTMLElement;
   private readonly castleStateLabel: HTMLElement;
-  private readonly castleHp: HTMLElement;
   private readonly castleFlag: HTMLElement;
   private readonly enemyCastleStrip: HTMLElement;
-  private readonly enemyCastleFill: HTMLElement;
   private readonly enemyCastleStateLabel: HTMLElement;
-  private readonly enemyCastleHp: HTMLElement;
   private readonly enemyCastleFlag: HTMLElement;
   private readonly playerDamageFlash: CastleDamageFlash;
   private readonly enemyDamageFlash: CastleDamageFlash;
+  /** The one shared siege meter per side: stage 1 reads gate HP, stage 2 the castle's. */
+  private readonly playerSiege: SiegeMeter;
+  private readonly enemySiege: SiegeMeter;
+  private meterFrame = 0;
+  private meterClock = 0;
   private readonly cardButtons = new Map<UnitKind, HTMLButtonElement>();
   private readonly endOverlay: HTMLElement;
   private readonly endTitle: HTMLElement;
@@ -64,9 +80,7 @@ export class GameUI {
   private lastPlayerHp = 0;
   private lastEnemyHp = 0;
   private collapseTimer: number | undefined;
-  private hitTimer: number | undefined;
   private enemyCollapseTimer: number | undefined;
-  private enemyHitTimer: number | undefined;
   private readonly castleAttentionMs = 2600;
 
   onPrepare: () => void = () => undefined;
@@ -87,18 +101,35 @@ export class GameUI {
     this.energyText = this.query('#energy-text');
     this.enemyEnergyFill = this.query('#enemy-energy-fill');
     this.castlePanel = this.query('#player-castle-panel');
-    this.castleFill = this.query('#player-castle-fill');
     this.castleStateLabel = this.query('#player-castle-state');
-    this.castleHp = this.query('#player-castle-hp');
     this.castleFlag = this.query('#player-castle-flag');
     this.enemyCastleStrip = this.query('#enemy-castle-strip');
-    this.enemyCastleFill = this.query('#enemy-castle-fill');
     this.enemyCastleStateLabel = this.query('#enemy-castle-state');
-    this.enemyCastleHp = this.query('#enemy-castle-hp');
     this.enemyCastleFlag = this.query('#enemy-castle-flag');
     const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.playerDamageFlash = new CastleDamageFlash(this.query('#player-castle-flash'), reducedMotion);
     this.enemyDamageFlash = new CastleDamageFlash(this.query('#enemy-castle-flash'), reducedMotion);
+    this.playerSiege = new SiegeMeter({
+      root: this.castlePanel,
+      fill: this.query('#player-castle-fill'),
+      trail: this.query('#player-castle-trail'),
+      hp: this.query('#player-castle-hp'),
+      sigil: this.query('#player-castle-sigil'),
+      breachTag: this.query('#player-breach-tag'),
+      sweep: this.query('#player-castle-sweep'),
+      reducedMotion,
+    });
+    this.enemySiege = new SiegeMeter({
+      root: this.enemyCastleStrip,
+      fill: this.query('#enemy-castle-fill'),
+      trail: this.query('#enemy-castle-trail'),
+      hp: this.query('#enemy-castle-hp'),
+      sigil: this.query('#enemy-castle-sigil'),
+      breachTag: this.query('#enemy-breach-tag'),
+      sweep: this.query('#enemy-castle-sweep'),
+      reducedMotion,
+      compact: true,
+    });
     this.endOverlay = this.query('#end-overlay');
     this.endTitle = this.query('#end-title');
     this.endSubtitle = this.query('#end-subtitle');
@@ -127,6 +158,46 @@ export class GameUI {
     });
     this.startButton.addEventListener('click', () => this.onStart());
     this.query<HTMLButtonElement>('#restart-button').addEventListener('click', () => this.onRestart());
+    this.startMeterLoop();
+  }
+
+  /**
+   * The siege meters animate on their own rAF loop rather than on HUD updates: GameController
+   * throttles update() to 10 Hz, which is far too coarse for a smooth fill, a delayed damage trail
+   * or a decaying shake.
+   */
+  private startMeterLoop(): void {
+    const tick = (now: number): void => {
+      const previous = this.meterClock;
+      this.meterClock = now;
+      const delta = previous === 0 ? 0.016 : Math.min(0.05, (now - previous) / 1000);
+      this.playerSiege.tick(delta);
+      this.enemySiege.tick(delta);
+      this.meterFrame = requestAnimationFrame(tick);
+    };
+    this.meterFrame = requestAnimationFrame(tick);
+  }
+
+  /** Stops the meter loop; called from the controller's dispose path. */
+  disposeMeters(): void {
+    if (this.meterFrame) cancelAnimationFrame(this.meterFrame);
+    this.meterFrame = 0;
+  }
+
+  /** One controlled per-hit pulse on the side that was struck. `strong` adds the HUD-only shake. */
+  pulseSiegeHit(side: 'player' | 'enemy', strong: boolean): void {
+    const meter = side === 'player' ? this.playerSiege : this.enemySiege;
+    meter.pulse(strong);
+    this.setCastleExpanded(side, true);
+    this.scheduleCastleCollapse(side);
+  }
+
+  /** Transient "GATE BREACHED" tag above the bar, then the gate → castle transformation sweep. */
+  announceGateBreach(side: 'player' | 'enemy'): void {
+    const meter = side === 'player' ? this.playerSiege : this.enemySiege;
+    meter.announceBreach();
+    this.setCastleExpanded(side, true);
+    this.scheduleCastleCollapse(side);
   }
 
   setLoading(progress: number, label: string): void {
@@ -156,18 +227,16 @@ export class GameUI {
     this.energyText.textContent = `${Math.floor(state.playerEnergy)} / ${CONFIG.energy.maximum}`;
     this.enemyEnergyFill.style.width = `${(state.enemyEnergy / CONFIG.energy.maximum) * 100}%`;
 
-    const playerCastleHp = Math.max(0, Math.round(state.playerCastleHp));
-    const enemyCastleHp = Math.max(0, Math.round(state.enemyCastleHp));
+    const playerCastleHp = Math.max(0, Math.round(state.playerSiege.hp));
+    const enemyCastleHp = Math.max(0, Math.round(state.enemySiege.hp));
     const playerDamaged = playerCastleHp < this.lastPlayerHp;
     const enemyDamaged = enemyCastleHp < this.lastEnemyHp;
     this.lastPlayerHp = playerCastleHp;
     this.lastEnemyHp = enemyCastleHp;
-    this.castleFill.style.width = `${(playerCastleHp / state.playerCastleMaxHp) * 100}%`;
-    this.enemyCastleFill.style.width = `${(enemyCastleHp / state.enemyCastleMaxHp) * 100}%`;
-    this.castleHp.textContent = `${playerCastleHp} / ${state.playerCastleMaxHp}`;
-    this.enemyCastleHp.textContent = `${enemyCastleHp}/${state.enemyCastleMaxHp}`;
-    this.castleStateLabel.textContent = castleStateText(state.playerCastleState, state.playerCastleCountdown, false);
-    this.enemyCastleStateLabel.textContent = castleStateText(state.enemyCastleState, state.enemyCastleCountdown, true);
+    this.playerSiege.setState(state.playerSiege);
+    this.enemySiege.setState(state.enemySiege);
+    this.castleStateLabel.textContent = siegeStateText(state.playerSiege.stage, state.playerCastleState, state.playerCastleCountdown, false);
+    this.enemyCastleStateLabel.textContent = siegeStateText(state.enemySiege.stage, state.enemyCastleState, state.enemyCastleCountdown, true);
     this.castlePanel.classList.toggle('open', state.playerCastleState === 'open');
     this.castlePanel.classList.toggle('breached', state.playerCastleState === 'breached');
     this.enemyCastleStrip.classList.toggle('open', state.enemyCastleState === 'open');
@@ -178,8 +247,8 @@ export class GameUI {
     this.updateCastleAttention('enemy', enemyPinned, enemyDamaged);
     this.setFlagSecured(this.castleFlag, state.playerFlagSecured, 'secured in your castle');
     this.setFlagSecured(this.enemyCastleFlag, state.enemyFlagSecured, 'secured in the enemy castle');
-    this.playerDamageFlash.pulse(playerCastleHp, state.playerCastleMaxHp, state.playerCastleState === 'breached');
-    this.enemyDamageFlash.pulse(enemyCastleHp, state.enemyCastleMaxHp, state.enemyCastleState === 'breached');
+    this.playerDamageFlash.pulse(playerCastleHp, state.playerSiege.maxHp, state.playerCastleState === 'breached');
+    this.enemyDamageFlash.pulse(enemyCastleHp, state.enemySiege.maxHp, state.enemyCastleState === 'breached');
 
     for (const [kind, button] of this.cardButtons) {
       const unaffordable = state.playerEnergy + 0.001 < UNIT_STATS[kind].cost;
@@ -248,16 +317,22 @@ export class GameUI {
 
       <div id="enemy-castle-strip" class="castle-strip">
         <div class="castle-strip-inner">
-          <span class="castle-strip-sigil" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/><path class="castle-door" d="M10.5 21v-4.2a2.5 2.5 0 0 0 5 0v4.2z"/></svg>
+          <span id="enemy-castle-sigil" class="castle-strip-sigil siege-sigil" aria-hidden="true">
+            ${this.siegeIcons()}
             <i class="castle-core"></i>
           </span>
           <span class="castle-folder">
+            <span id="enemy-breach-tag" class="breach-tag">GATE BREACHED</span>
             <span class="castle-meta">
-              <small id="enemy-castle-state" class="castle-state">SECURE</small>
-              <b id="enemy-castle-hp" class="castle-hp">1000 / 1000</b>
+              <small id="enemy-castle-state" class="castle-state">GATE</small>
+              <b id="enemy-castle-hp" class="castle-hp">900/900</b>
             </span>
-            <span class="castle-bar"><i id="enemy-castle-fill"></i><em id="enemy-castle-flash"></em></span>
+            <span class="castle-bar">
+              <u id="enemy-castle-trail"></u>
+              <i id="enemy-castle-fill"></i>
+              <em id="enemy-castle-flash"></em>
+              <s id="enemy-castle-sweep"></s>
+            </span>
           </span>
           <span id="enemy-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
             <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
@@ -289,21 +364,23 @@ export class GameUI {
       </header>
 
       <footer class="bottom-hud">
-        <div id="player-castle-panel" class="castle-panel" role="button" tabindex="0" aria-expanded="false" aria-label="Castle integrity. Activate to expand details.">
-          <span class="castle-sigil" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/>
-              <path class="castle-door" d="M10.5 21v-5a3 3 0 0 0 6 0v5z"/>
-              <path class="castle-grate" d="M11.6 17h3.8M11.3 18.8h4.4"/>
-            </svg>
+        <div id="player-castle-panel" class="castle-panel" role="button" tabindex="0" aria-expanded="false" aria-label="Siege integrity. Activate to expand details.">
+          <span id="player-castle-sigil" class="castle-sigil siege-sigil" aria-hidden="true">
+            ${this.siegeIcons()}
             <i class="castle-core"></i>
           </span>
           <span class="castle-folder">
+            <span id="player-breach-tag" class="breach-tag">GATE BREACHED</span>
             <span class="castle-meta">
-              <small id="player-castle-state" class="castle-state">GATE SECURE</small>
-              <b id="player-castle-hp" class="castle-hp">1000 / 1000</b>
+              <small id="player-castle-state" class="castle-state">GATE</small>
+              <b id="player-castle-hp" class="castle-hp">900 / 900</b>
             </span>
-            <span class="castle-bar"><i id="player-castle-fill"></i><em id="player-castle-flash"></em></span>
+            <span class="castle-bar">
+              <u id="player-castle-trail"></u>
+              <i id="player-castle-fill"></i>
+              <em id="player-castle-flash"></em>
+              <s id="player-castle-sweep"></s>
+            </span>
           </span>
           <span id="player-castle-flag" class="flag-chip" role="img" aria-label="Flag not secured">
             <svg viewBox="0 0 24 24"><path class="pole" d="M7 22V2h2v20z"/><path class="cloth" d="M9 3l12 5-12 5z"/></svg>
@@ -322,6 +399,25 @@ export class GameUI {
           <button id="restart-button" class="primary-button" type="button">PLAY AGAIN</button>
         </div>
       </section>
+    `;
+  }
+
+  /**
+   * Both siege glyphs live in the same sigil: a portcullis for stage 1 and the fortress for stage 2.
+   * The stage swap is a CSS crossfade on the sigil's `data-stage`, so no element is created or removed
+   * when the bar transforms.
+   */
+  private siegeIcons(): string {
+    return `
+      <svg class="siege-glyph siege-glyph-gate" viewBox="0 0 24 24" aria-hidden="true">
+        <path class="gate-arch" d="M3 21V9a9 9 0 0 1 18 0v12h-3V9a6 6 0 0 0-12 0v12z"/>
+        <path class="gate-grid" d="M8 21V10M12 21V9.4M16 21V10M7.4 13h9.2M7.4 16.4h9.2M7.4 19.4h9.2"/>
+      </svg>
+      <svg class="siege-glyph siege-glyph-castle" viewBox="0 0 24 24" aria-hidden="true">
+        <path class="castle-body" d="M4 21V3h3v4h4V3h4v4h3V3h4v18H4z"/>
+        <path class="castle-door" d="M10.5 21v-5a3 3 0 0 1 3-3 3 3 0 0 1 3 3v5z"/>
+        <path class="castle-grate" d="M11.6 17h3.8M11.3 18.8h4.4"/>
+      </svg>
     `;
   }
 
@@ -391,9 +487,10 @@ export class GameUI {
       return;
     }
     if (damaged) {
+      // The per-hit flash itself comes from pulseSiegeHit (driven by the authoritative hit
+      // reactions); this only keeps the folder open while damage is landing.
       this.setCastleExpanded(side, true);
       this.scheduleCastleCollapse(side);
-      this.pulseCastleHit(side);
     }
   }
 
@@ -431,16 +528,6 @@ export class GameUI {
     }
   }
 
-  private pulseCastleHit(side: 'player' | 'enemy'): void {
-    const panel = side === 'player' ? this.castlePanel : this.enemyCastleStrip;
-    const hitTimer = side === 'player' ? 'hitTimer' : 'enemyHitTimer';
-    panel.classList.remove('hit');
-    void panel.offsetWidth;
-    panel.classList.add('hit');
-    if (this[hitTimer] !== undefined) window.clearTimeout(this[hitTimer]);
-    this[hitTimer] = window.setTimeout(() => panel.classList.remove('hit'), 360);
-  }
-
   private icon(kind: UnitKind): string {
     if (kind === 'vanguard') return '<svg viewBox="0 0 80 80"><path d="M18 62l10-34 12-9 12 9 10 34-22 9z"/><path class="accent" d="M40 10l9 11-9 8-9-8z"/><path class="metal" d="M57 17l5 4-24 39-7-4z"/></svg>';
     if (kind === 'ranger') return '<svg viewBox="0 0 80 80"><path d="M20 64l7-38 13-15 13 15 7 38-20 7z"/><path class="accent" d="M27 27l13-16 13 16-13 8z"/><path class="metal line" d="M62 17c-20 5-20 41 0 47"/></svg>';
@@ -461,13 +548,162 @@ function normalizeDisplayText(value: string): string {
   return normalized;
 }
 
-function castleStateText(state: CastleState, countdown: number, compact: boolean): string {
-  if (state === 'secure') return compact ? 'SECURE' : 'GATE SECURE';
+/**
+ * Label for the shared siege bar. Stage 1 reads GATE (plus the gate's live state); stage 2 reads
+ * CASTLE INTEGRITY, and keeps the existing open/breached countdown copy so nothing regresses.
+ */
+function siegeStateText(stage: SiegeStage, state: CastleState, countdown: number, compact: boolean): string {
+  if (stage === 'gate') {
+    if (state === 'secure') return 'GATE';
+    const gateSeconds = Math.max(1, Math.ceil(countdown));
+    if (state === 'breached') return compact ? `BREACHED ${gateSeconds}s` : `BREACHED \u00b7 ${gateSeconds}s`;
+    return compact ? `GATE OPEN ${gateSeconds}s` : `GATE OPEN \u00b7 ${gateSeconds}s`;
+  }
+  if (state === 'secure') return compact ? 'CASTLE' : 'CASTLE INTEGRITY';
   const seconds = Math.max(1, Math.ceil(countdown));
   if (state === 'breached') {
     return compact ? `BREACHED ${seconds}s` : `BREACHED \u00b7 ${seconds}s`;
   }
-  return compact ? `GATE OPEN ${seconds}s` : `GATE OPEN \u00b7 ${seconds}s`;
+  return compact ? `OPEN ${seconds}s` : `CASTLE \u00b7 OPEN ${seconds}s`;
+}
+
+interface SiegeMeterElements {
+  readonly root: HTMLElement;
+  readonly fill: HTMLElement;
+  readonly trail: HTMLElement;
+  readonly hp: HTMLElement;
+  readonly sigil: HTMLElement;
+  readonly breachTag: HTMLElement;
+  readonly sweep: HTMLElement;
+  readonly reducedMotion: boolean;
+  readonly compact?: boolean;
+}
+
+/**
+ * The single shared siege meter. It owns one bar for both stages: gate HP first, then castle HP after
+ * the breach, with the label, icon and colours transforming in place. Everything animates on the UI
+ * layer's own rAF tick (the HUD state itself only refreshes at 10 Hz), and every effect is a CSS class
+ * or an inline width/transform — no canvas, no per-frame allocation, nothing that touches the camera.
+ */
+class SiegeMeter {
+  private stage: SiegeStage = 'gate';
+  /** Displayed ratio, eased toward the authoritative one so HP loss never snaps. */
+  private shown = 1;
+  /** Delayed trail ratio: holds behind the fill, then catches up. */
+  private trail = 1;
+  private trailHold = 0;
+  private target = 1;
+  private hp = 0;
+  private maxHp = 1;
+  private shake = 0;
+  private lastLabel = '';
+  private pulseTimer: number | undefined;
+  private breachTagTimer: number | undefined;
+  private transitioning = false;
+
+  constructor(private readonly el: SiegeMeterElements) {
+    this.el.sigil.dataset.stage = 'gate';
+    this.el.root.classList.add('siege-gate');
+  }
+
+  /** Pushes the authoritative reading in. Detects the stage change and starts the sweep once. */
+  setState(state: SiegeHudState): void {
+    if (state.stage !== this.stage) {
+      this.stage = state.stage;
+      this.beginStageTransition();
+    }
+    this.hp = Math.max(0, Math.round(state.hp));
+    this.maxHp = Math.max(1, Math.round(state.maxHp));
+    this.target = Math.max(0, Math.min(1, state.ratio));
+    this.shake = Math.max(this.shake, state.shake);
+    const label = this.el.compact ? `${this.hp}/${this.maxHp}` : `${this.hp} / ${this.maxHp}`;
+    if (label !== this.lastLabel) {
+      this.lastLabel = label;
+      this.el.hp.textContent = label;
+    }
+    this.el.root.classList.toggle('siege-warning', state.warning && !state.critical);
+    this.el.root.classList.toggle('siege-critical', state.critical);
+  }
+
+  /** Per-frame easing for the fill, the delayed trail and the HUD-only shake. */
+  tick(deltaSeconds: number): void {
+    if (this.el.reducedMotion) {
+      this.shown = this.target;
+      this.trail = this.target;
+      this.el.fill.style.width = `${this.target * 100}%`;
+      this.el.trail.style.width = `${this.target * 100}%`;
+      return;
+    }
+    if (Math.abs(this.shown - this.target) > 0.0005) {
+      // Exponential approach: fast at first, settling smoothly — no visible step.
+      this.shown += (this.target - this.shown) * Math.min(1, deltaSeconds * 7.5);
+      this.el.fill.style.width = `${Math.max(0, this.shown) * 100}%`;
+    }
+    if (this.trail > this.shown) {
+      // The trail lingers where the HP used to be, then slides down to meet the fill.
+      this.trailHold = Math.max(0, this.trailHold - deltaSeconds);
+      if (this.trailHold <= 0) {
+        this.trail += (this.shown - this.trail) * Math.min(1, deltaSeconds * 2.6);
+        this.el.trail.style.width = `${Math.max(0, this.trail) * 100}%`;
+      }
+    } else if (this.trail < this.shown) {
+      this.trail = this.shown;
+      this.el.trail.style.width = `${this.trail * 100}%`;
+    }
+    if (this.shake > 0.001) {
+      this.shake = Math.max(0, this.shake - deltaSeconds * 4.4);
+      // HUD-only nudge: a sub-pixel translate on the widget, never on the camera.
+      const amount = this.shake * (this.el.compact ? 1.1 : 1.8);
+      this.el.root.style.transform = `translate3d(${(Math.random() - 0.5) * amount}px, ${(Math.random() - 0.5) * amount * 0.5}px, 0)`;
+      if (this.shake === 0) this.el.root.style.transform = '';
+    }
+  }
+
+  /** One brief, controlled flash per hit. Sets the trail hold so the delayed trail reads clearly. */
+  pulse(strong: boolean): void {
+    this.trail = Math.max(this.trail, this.shown);
+    this.trailHold = strong ? 0.42 : 0.3;
+    if (this.el.reducedMotion) return;
+    if (strong) this.shake = Math.min(1, this.shake + 0.55);
+    this.el.root.classList.remove('siege-hit');
+    void this.el.root.offsetWidth;
+    this.el.root.classList.add('siege-hit');
+    if (this.pulseTimer !== undefined) window.clearTimeout(this.pulseTimer);
+    this.pulseTimer = window.setTimeout(() => this.el.root.classList.remove('siege-hit'), 260);
+  }
+
+  /** Shows "GATE BREACHED" above the bar for a beat. The stage swap itself is driven by setState. */
+  announceBreach(): void {
+    this.el.breachTag.classList.add('visible');
+    if (this.breachTagTimer !== undefined) window.clearTimeout(this.breachTagTimer);
+    this.breachTagTimer = window.setTimeout(() => this.el.breachTag.classList.remove('visible'), 1750);
+  }
+
+  /**
+   * The gate → castle transformation: the same bar refills from empty behind a short sweep while the
+   * sigil crossfades. Quick enough not to hide gameplay, long enough to mark the new phase.
+   */
+  private beginStageTransition(): void {
+    this.el.sigil.dataset.stage = this.stage;
+    this.el.root.classList.toggle('siege-gate', this.stage === 'gate');
+    this.el.root.classList.toggle('siege-castle', this.stage === 'castle');
+    this.el.root.classList.remove('siege-warning', 'siege-critical');
+    // Refill from empty so the new pool visibly takes over the bar.
+    this.shown = 0;
+    this.trail = 0;
+    this.trailHold = 0;
+    this.el.fill.style.width = '0%';
+    this.el.trail.style.width = '0%';
+    if (this.el.reducedMotion || this.transitioning) return;
+    this.transitioning = true;
+    this.el.sweep.classList.remove('sweeping');
+    void this.el.sweep.offsetWidth;
+    this.el.sweep.classList.add('sweeping');
+    window.setTimeout(() => {
+      this.el.sweep.classList.remove('sweeping');
+      this.transitioning = false;
+    }, 620);
+  }
 }
 
 /**

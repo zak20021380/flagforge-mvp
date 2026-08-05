@@ -7,6 +7,7 @@ import {
   Vector3,
   VertexBuffer,
 } from '@babylonjs/core';
+import type { Material } from '@babylonjs/core';
 import {
   BLUE_CASTLE_ROOT_X,
   BLUE_CASTLE_ROOT_Z,
@@ -23,10 +24,25 @@ type BoxOptions = { receiveShadow?: boolean };
 
 export type CastleDamageStage = 'intact' | 'light' | 'moderate' | 'heavy' | 'destroyed';
 export type GateState = 'closed' | 'opening' | 'open' | 'closing';
+/** Mirror of GateHealthModel's stage list, kept local so the render layer owns no game imports. */
+export type GateDamageStage = 'intact' | 'scratched' | 'cracked' | 'broken' | 'unstable' | 'destroyed';
 
 const GATE_OPEN_DURATION = 2.4;
 const GATE_CLOSE_DURATION = 2.6;
 const GATE_LIFT_HEIGHT = 5.35;
+/** Authored resting height of the gate planks and metal bands, shared by the wear transforms. */
+const GATE_LEAF_REST_Y = 2.62;
+/** How far into the breach sequence the planks stay in the "cracking and bending" pose. */
+const GATE_BEND_PHASE = 0.24;
+
+const GATE_STAGE_LEVEL: Record<GateDamageStage, number> = {
+  intact: 0,
+  scratched: 1,
+  cracked: 2,
+  broken: 3,
+  unstable: 4,
+  destroyed: 5,
+};
 
 function heavyEaseInOut(t: number): number {
   const c = Math.max(0, Math.min(1, t));
@@ -37,6 +53,11 @@ function heavyEaseInOut(t: number): number {
   return 1 - (f * f * f) / 2;
 }
 
+function easeOutCubic(t: number): number {
+  const c = 1 - Math.max(0, Math.min(1, t));
+  return 1 - c * c * c;
+}
+
 interface DamagePiece {
   readonly mesh: Mesh;
   readonly originalParent: TransformNode;
@@ -45,6 +66,25 @@ interface DamagePiece {
   fallVelocity: number;
   rotationSpeed: number;
   fallen: boolean;
+}
+
+/**
+ * One prepared gate fragment. Everything is authored up-front as a start pose plus a settled pose in
+ * the gate node's own local space, so the collapse is a pure interpolation between two known
+ * transforms — no runtime mesh fracturing and no physics solver.
+ */
+interface GatePiece {
+  readonly mesh: Mesh;
+  /** Pose while the gate is standing (its authored position/rotation). */
+  readonly restPosition: Vector3;
+  readonly restRotation: Vector3;
+  /** Small pre-collapse lean, used for the "cracks and bends" beat. */
+  readonly bendRotation: Vector3;
+  /** Final settled pose: flat on the ground, fallen inward through the archway. */
+  readonly fallenPosition: Vector3;
+  readonly fallenRotation: Vector3;
+  /** Fraction of the collapse window this piece waits before it starts moving. */
+  readonly delay: number;
 }
 
 export class CastleVisual {
@@ -66,6 +106,19 @@ export class CastleVisual {
   private readonly destructionPieces: DamagePiece[] = [];
   private destructionActive = false;
   private shakeOffset = new Vector3(0, 0, 0);
+  /** ---- Gate damage / breach state (stage 1) ---- */
+  private gateDamageStage: GateDamageStage = 'intact';
+  private readonly gateDamageMeshes: Mesh[] = [];
+  private readonly gatePlanks: Mesh[] = [];
+  private readonly gateBands: Mesh[] = [];
+  /** Gate meshes that join the collapse but never take progressive-wear transforms. */
+  private readonly gateCollapseExtras: Mesh[] = [];
+  private readonly gatePieces: GatePiece[] = [];
+  /** Shared dark material for every scratch/crack decal, so wear never allocates a material. */
+  private readonly gateScarMaterial: Material;
+  private gateBreachActive = false;
+  private gateBreachProgress = 0;
+  private gateShake = 0;
 
   constructor(scene: Scene, materials: MaterialLibrary, team: Team) {
     this.team = team;
@@ -153,21 +206,28 @@ export class CastleVisual {
       plank.parent = this.gate;
       plank.position = new Vector3(x, 2.62, 0);
       plank.material = index % 2 === 0 ? materials.gateWood : materials.gateWoodLight;
+      this.gatePlanks.push(plank);
     }
     const kick = MeshBuilder.CreateBox(`${team}-gate-kick`, { width: 5.5, height: 0.14, depth: 0.66 }, scene);
     kick.parent = this.gate;
     kick.position = new Vector3(0, 0.1, 0);
     kick.material = materials.metal;
+    // The kick plate collapses with the leaves, but takes no wear transforms of its own.
+    this.gateCollapseExtras.push(kick);
     for (let i = -2; i <= 2; i += 1) {
       const bar = MeshBuilder.CreateBox(`${team}-gate-bar-${i}`, { width: 0.16, height: 5.35, depth: 0.62 }, scene);
       bar.parent = this.gate;
       bar.position = new Vector3(i * 1.04, 2.62, 0);
       bar.material = materials.metal;
+      this.gateBands.push(bar);
     }
     const crossbar = MeshBuilder.CreateBox(`${team}-gate-crossbar`, { width: 5.5, height: 0.26, depth: 0.7 }, scene);
     crossbar.parent = this.gate;
     crossbar.position = new Vector3(0, 2.85, 0);
     crossbar.material = materials.metal;
+    this.gateBands.push(crossbar);
+    this.gateScarMaterial = materials.black;
+    this.prepareGatePieces();
 
     createBanner(scene, this.root, materials, team, new Vector3(-4.4, 5.7, 3.0 * this.facing));
     createBanner(scene, this.root, materials, team, new Vector3(4.4, 5.7, 3.0 * this.facing));
@@ -204,12 +264,24 @@ export class CastleVisual {
 
   beginOpenGate(): void {
     if (this.gateState === 'opening' || this.gateState === 'open') return;
+    // A breached gate has already collapsed out of the archway: there is nothing left to lift, so
+    // the return state machine is answered immediately with an open doorway.
+    if (this.gateBreachActive) {
+      this.gateState = 'open';
+      this.gateTimer = 0;
+      return;
+    }
     this.gateState = 'opening';
     this.gateTimer = 0;
   }
 
   beginCloseGate(): void {
     if (this.gateState === 'closing' || this.gateState === 'closed') return;
+    if (this.gateBreachActive) {
+      this.gateState = 'closed';
+      this.gateTimer = 0;
+      return;
+    }
     this.gateState = 'closing';
     this.gateTimer = 0;
   }
@@ -228,6 +300,69 @@ export class CastleVisual {
     if (stage === this.damageStage) return;
     this.damageStage = stage;
     this.applyDamageVisuals(stage);
+  }
+
+  /** Progressive gate damage. Cheap: a handful of small boxes plus transforms on existing planks. */
+  setGateDamageStage(stage: GateDamageStage): void {
+    if (stage === this.gateDamageStage) return;
+    this.gateDamageStage = stage;
+    this.applyGateDamageVisuals(stage);
+  }
+
+  getGateDamageStage(): GateDamageStage {
+    return this.gateDamageStage;
+  }
+
+  /**
+   * Tiny local jolt on the gate node itself when it is struck. Deliberately separate from
+   * applyShake (which moves the whole castle) and never routed to the camera.
+   */
+  applyGateHitShake(intensity: number): void {
+    this.gateShake = Math.min(1, Math.max(this.gateShake, intensity));
+  }
+
+  isGateBreachPlaying(): boolean {
+    return this.gateBreachActive && this.gateBreachProgress < 1;
+  }
+
+  /**
+   * Starts the prepared-piece breach: the planks lean, crack and then swing/fall inward through the
+   * archway to their authored settled poses. Pure interpolation of prepared transforms.
+   */
+  beginGateBreach(): void {
+    if (this.gateBreachActive) return;
+    this.gateBreachActive = true;
+    this.gateBreachProgress = 0;
+    // The gate can no longer be lifted, so pin the carrier animation node at rest and clear any
+    // in-flight hit jolt: from here the prepared pieces own every gate transform.
+    this.gate.position.set(0, 0, 2.0 * this.facing);
+    this.gate.rotation.z = 0;
+    this.gateShake = 0;
+    this.gateDamageStage = 'destroyed';
+    this.applyGateDamageVisuals('destroyed');
+  }
+
+  /** `progress` is 0..1 across CONFIG.gate.breachSequenceSeconds, owned by GateHealthModel. */
+  updateGateBreach(progress: number): void {
+    if (!this.gateBreachActive) return;
+    this.gateBreachProgress = Math.max(0, Math.min(1, progress));
+    const p = this.gateBreachProgress;
+    for (const piece of this.gatePieces) {
+      if (p <= GATE_BEND_PHASE) {
+        // Beat 1 — the gate cracks and bends inward under the last hits.
+        const bend = easeOutCubic(p / GATE_BEND_PHASE);
+        piece.mesh.position.copyFrom(piece.restPosition);
+        lerpRotation(piece.mesh.rotation, piece.restRotation, piece.bendRotation, bend);
+        continue;
+      }
+      // Beat 2 — staggered inward collapse to the settled pose.
+      const span = 1 - GATE_BEND_PHASE;
+      const local = (p - GATE_BEND_PHASE) / span;
+      const scaled = Math.max(0, Math.min(1, (local - piece.delay) / (1 - piece.delay)));
+      const fall = easeOutCubic(scaled);
+      lerpVector(piece.mesh.position, piece.restPosition, piece.fallenPosition, fall);
+      lerpRotation(piece.mesh.rotation, piece.bendRotation, piece.fallenRotation, fall);
+    }
   }
 
   triggerDestruction(): void {
@@ -267,7 +402,7 @@ export class CastleVisual {
   }
 
   update(deltaSeconds: number, elapsed: number): void {
-    if (!this.destructionActive) {
+    if (!this.destructionActive && !this.gateBreachActive) {
       switch (this.gateState) {
         case 'opening':
           this.gateTimer += deltaSeconds;
@@ -297,9 +432,34 @@ export class CastleVisual {
           break;
       }
     }
+    this.updateGateReactions(deltaSeconds, elapsed);
     if (this.breachGlow.isEnabled()) {
       this.breachGlow.scaling.setAll(1 + Math.sin(elapsed * 5) * 0.05);
       this.breachGlow.rotation.z += deltaSeconds * 0.65;
+    }
+  }
+
+  /**
+   * Local gate life: a tiny decaying jolt on impact and, in the last HP band, a slow sag/creak so an
+   * unstable gate reads as barely holding. Two transforms on one node — no camera involvement.
+   */
+  private updateGateReactions(deltaSeconds: number, elapsed: number): void {
+    if (this.gateBreachActive) return;
+    const restZ = 2.0 * this.facing;
+    if (this.gateShake > 0.01) {
+      this.gateShake = Math.max(0, this.gateShake - deltaSeconds * 4.2);
+      this.gate.position.x = (Math.random() - 0.5) * this.gateShake * 0.11;
+      this.gate.position.z = restZ + (Math.random() - 0.5) * this.gateShake * 0.09;
+    } else if (this.gateShake !== 0) {
+      this.gateShake = 0;
+      this.gate.position.x = 0;
+      this.gate.position.z = restZ;
+    }
+    if (this.gateDamageStage === 'unstable') {
+      // Barely-holding creak: a shallow, slow lean that never reads as a wobble.
+      this.gate.rotation.z = Math.sin(elapsed * 1.7) * 0.018 - 0.02 * this.facing;
+    } else if (this.gateDamageStage === 'broken') {
+      this.gate.rotation.z = Math.sin(elapsed * 1.1) * 0.008;
     }
   }
 
@@ -366,8 +526,10 @@ export class CastleVisual {
 
   private prepareDestructionPieces(): void {
     const childMeshes = this.root.getChildMeshes().filter((m): m is Mesh => m instanceof Mesh);
+    // Gate planks are excluded: they are owned by the gate breach sequence and may already be lying
+    // on the ground by the time the castle itself falls.
     const candidates = childMeshes.filter((m) =>
-      m.name.includes('battlement') || m.name.includes('merlon') || m.name.includes('gate-plank'),
+      m.name.includes('battlement') || m.name.includes('merlon'),
     );
     const selected = candidates.slice(0, 12);
     for (const mesh of selected) {
@@ -385,6 +547,115 @@ export class CastleVisual {
       mesh.position.copyFrom(absPos);
     }
   }
+
+  /**
+   * Authors the breach poses once, at build time. Each plank and metal band gets a small inward lean
+   * (the "cracks and bends" beat) and a settled pose lying inside the archway, so the whole collapse
+   * is two interpolations per piece at runtime. Nothing is fractured, cloned or simulated.
+   */
+  private prepareGatePieces(): void {
+    const inward = -this.facing;
+    const pieces: Mesh[] = [...this.gatePlanks, ...this.gateBands, ...this.gateCollapseExtras];
+    for (const [index, mesh] of pieces.entries()) {
+      const restPosition = mesh.position.clone();
+      const restRotation = mesh.rotation.clone();
+      const side = restPosition.x >= 0 ? 1 : -1;
+      const lean = 0.06 + (index % 3) * 0.015;
+      const bendRotation = new Vector3(
+        restRotation.x + lean * inward,
+        restRotation.y + side * 0.03,
+        restRotation.z + side * 0.035,
+      );
+      // Settled: rotated flat and pushed inward through the doorway, spread across the passage.
+      const fallenPosition = new Vector3(
+        restPosition.x * 0.72 + side * 0.28,
+        0.16 + (index % 3) * 0.07,
+        restPosition.z + inward * (1.7 + (index % 4) * 0.42),
+      );
+      const fallenRotation = new Vector3(
+        restRotation.x + inward * (Math.PI / 2 - 0.06 - (index % 3) * 0.05),
+        restRotation.y + side * 0.16,
+        restRotation.z + side * (0.08 + (index % 2) * 0.06),
+      );
+      this.gatePieces.push({
+        mesh,
+        restPosition,
+        restRotation,
+        bendRotation,
+        fallenPosition,
+        fallenRotation,
+        delay: ((index * 7) % 5) / 12,
+      });
+    }
+  }
+
+  /**
+   * Progressive gate wear. Each stage re-uses one prepared set of thin boxes (scratch lines, cracks,
+   * splinter stubs) parented to the gate node, plus small transforms on the existing planks and metal
+   * bands so heavier stages read as broken timber and buckled iron.
+   */
+  private applyGateDamageVisuals(stage: GateDamageStage): void {
+    for (const mesh of this.gateDamageMeshes) mesh.dispose();
+    this.gateDamageMeshes.length = 0;
+
+    const scene = this.root.getScene();
+    const level = GATE_STAGE_LEVEL[stage];
+    // No decals on the destroyed stage: the leaves themselves fall away, and scars parented to the
+    // gate node would otherwise be left hanging in the empty archway.
+    const scars = level === 0 || level >= 5 ? 0 : Math.min(9, level * 2 + 1);
+    for (let i = 0; i < scars; i += 1) {
+      const deep = level >= 2;
+      const scar = MeshBuilder.CreateBox(`${this.team}-gate-scar-${i}`, {
+        width: deep ? 0.1 : 0.07,
+        height: 0.5 + (i % 3) * (deep ? 0.55 : 0.28),
+        depth: 0.08,
+      }, scene);
+      scar.parent = this.gate;
+      scar.position = new Vector3(
+        -2.1 + ((i * 1.37) % 4.2),
+        0.75 + ((i * 1.9) % 3.7),
+        this.facing * 0.29,
+      );
+      scar.rotation.z = ((i % 2 === 0 ? 1 : -1) * (0.18 + (i % 3) * 0.12));
+      scar.material = this.gateScarMaterial;
+      scar.receiveShadows = false;
+      this.gateDamageMeshes.push(scar);
+    }
+
+    // Timber: broken planks sag and twist; the unstable stage adds a visibly dropped plank. The
+    // destroyed stage clears the wear offsets so the collapse starts from the authored rest poses.
+    const wear = level >= 5 ? 0 : level;
+    for (const [index, plank] of this.gatePlanks.entries()) {
+      const sag = wear >= 3 ? (0.1 + (index % 2) * 0.14) * (wear === 4 ? 1.8 : 1) : 0;
+      const twist = wear >= 3 ? (index % 2 === 0 ? 1 : -1) * (wear === 4 ? 0.09 : 0.045) : 0;
+      plank.position.y = GATE_LEAF_REST_Y - sag;
+      plank.rotation.z = twist;
+      plank.rotation.x = wear >= 4 ? (index % 2 === 0 ? 0.05 : -0.03) * this.facing : 0;
+    }
+    // Iron: bands bend outward from the second stage and buckle noticeably near destruction.
+    for (const [index, band] of this.gateBands.entries()) {
+      const bend = wear >= 2 ? (index % 2 === 0 ? 1 : -1) * (wear >= 4 ? 0.12 : 0.05) : 0;
+      band.rotation.z = bend;
+      band.position.z = wear >= 3 ? this.facing * (wear >= 4 ? 0.14 : 0.07) : 0;
+    }
+    if (wear < 3) {
+      this.gate.rotation.z = 0;
+    }
+  }
+}
+
+/** Writes the interpolated position into `out` in place, so the collapse never allocates. */
+function lerpVector(out: Vector3, from: Vector3, to: Vector3, t: number): void {
+  out.set(
+    from.x + (to.x - from.x) * t,
+    from.y + (to.y - from.y) * t,
+    from.z + (to.z - from.z) * t,
+  );
+}
+
+/** Euler-angle counterpart of lerpVector; the authored poses are close enough that no slerp is needed. */
+function lerpRotation(out: Vector3, from: Vector3, to: Vector3, t: number): void {
+  lerpVector(out, from, to, t);
 }
 
 function createAssaultLadder(

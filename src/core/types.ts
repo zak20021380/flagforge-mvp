@@ -33,6 +33,11 @@ export type RecoveryState = 'none' | 'lateral' | 'yield' | 'wait';
 export type QualityTier = 'low' | 'standard' | 'high';
 /** Display-only castle gate/breach state for the castle health HUD. */
 export type CastleState = 'secure' | 'open' | 'breached';
+/**
+ * Which pool the single shared siege bar is currently reading. Stage 1 ('gate') runs until the gate
+ * is breached; the same bar then transforms into stage 2 ('castle'). There is never a second bar.
+ */
+export type SiegeStage = 'gate' | 'castle';
 
 export interface UnitStats {
   readonly cost: number;

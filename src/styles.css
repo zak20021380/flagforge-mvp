@@ -619,14 +619,105 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   gap: 11px;
 }
 
-.castle-panel.hit { animation: castle-hit .34s ease; }
-@keyframes castle-hit {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-2px); }
-  40% { transform: translateX(2px); }
-  60% { transform: translateX(-1px); }
-  80% { transform: translateX(1px); }
+/* ===== TWO-STAGE SIEGE METER =====
+   One shared bar per fortress. Stage 1 reports gate HP behind a portcullis glyph; once the gate is
+   breached the SAME bar transforms in place into CASTLE INTEGRITY behind the fortress glyph. Every
+   cue here is a class toggle or an inline width/transform written by SiegeMeter — no second bar is
+   ever created, and the HUD shake is a translate on the widget only (the camera is never touched). */
+
+/* Per-hit pulse: a brief brightening plus a hairline rim, deliberately short and non-strobing. */
+.siege-hit .castle-bar { box-shadow: inset 0 0 0 1px rgba(255, 236, 200, .5), inset 0 1px 2px rgba(0, 0, 0, .6), 0 0 9px rgba(255, 214, 150, .3); }
+.siege-hit .castle-bar i { filter: brightness(1.35) saturate(1.1); }
+.siege-hit .siege-sigil { filter: brightness(1.3); }
+
+/* Delayed damage trail: parks where the HP used to be, then slides down to meet the fill. */
+.castle-bar u {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 128, 120, .5), rgba(255, 196, 150, .62));
+  border-radius: inherit;
+  pointer-events: none;
 }
+
+/* Stage transition sweep: one pass of light across the bar as gate hands over to castle. */
+.castle-bar s {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: block;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(100deg, transparent 12%, rgba(255, 246, 220, .92) 46%, transparent 78%);
+  pointer-events: none;
+}
+.castle-bar s.sweeping { animation: siege-sweep .6s cubic-bezier(.3, .9, .3, 1); }
+@keyframes siege-sweep {
+  0% { opacity: 0; transform: translateX(-104%); }
+  22% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(104%); }
+}
+
+/* Low-health tension. Amber below the warning ratio, red below the critical one, with a slow
+   restrained pulse on the critical band only — no flashing and no full-screen effects. The selectors
+   are scoped to both widget roots so they outrank the rival strip's own red bar colour below. */
+.castle-panel.siege-warning .castle-bar i,
+.castle-strip.siege-warning .castle-bar i { background: linear-gradient(90deg, #d97a12, #ffc247); box-shadow: 0 0 11px rgba(255, 176, 62, .55); }
+.siege-warning .castle-hp { color: #ffdca4; }
+.castle-panel.siege-critical .castle-bar i,
+.castle-strip.siege-critical .castle-bar i { background: linear-gradient(90deg, #c02422, #ff6a4d); box-shadow: 0 0 12px rgba(255, 90, 74, .6); }
+.siege-critical .castle-hp { color: #ffb9b0; }
+.siege-critical .castle-state { color: #ff9d92; }
+.siege-critical .castle-bar { animation: siege-critical-pulse 1.15s ease-in-out infinite; }
+@keyframes siege-critical-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(214, 232, 255, .14), inset 0 1px 2px rgba(0, 0, 0, .6); }
+  50% { box-shadow: inset 0 0 0 1px rgba(255, 128, 116, .6), inset 0 1px 2px rgba(0, 0, 0, .6), 0 0 8px rgba(255, 88, 74, .35); }
+}
+.siege-critical .castle-core { animation: castle-breach-pulse .9s ease-in-out infinite alternate; }
+
+/* Transient "GATE BREACHED" tag, above the bar inside the folder. Collapses to zero height so the
+   folder layout is unchanged while it is hidden. */
+.breach-tag {
+  overflow: hidden;
+  max-height: 0;
+  font-size: 8.5px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: .17em;
+  color: #ffd0a2;
+  text-align: center;
+  text-shadow: 0 0 7px rgba(255, 132, 74, .75);
+  opacity: 0;
+  transition: max-height .22s ease, opacity .22s ease;
+}
+.breach-tag.visible { max-height: 12px; opacity: 1; animation: breach-tag-in .34s ease-out; }
+@keyframes breach-tag-in {
+  0% { transform: translateY(4px) scale(.94); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* Stage glyph crossfade inside the one sigil: portcullis for stage 1, fortress for stage 2. */
+.siege-sigil { transition: filter .2s ease; }
+.siege-glyph {
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  margin: auto;
+  opacity: 0;
+  transform: scale(.82);
+  transition: opacity .3s ease, transform .34s cubic-bezier(.22, 1, .36, 1);
+}
+.siege-sigil[data-stage="gate"] .siege-glyph-gate,
+.siege-sigil[data-stage="castle"] .siege-glyph-castle { opacity: 1; transform: none; }
+.castle-sigil .gate-arch { fill: #f6d489; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
+.castle-sigil .gate-grid { fill: none; stroke: rgba(6, 15, 27, .85); stroke-width: 1.3; }
+.castle-strip-sigil .gate-arch { fill: #ffc2b8; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)); }
+.castle-strip-sigil .gate-grid { fill: none; stroke: rgba(26, 5, 11, .8); stroke-width: 1.3; }
 
 /* Machined emblem — the only element in the collapsed widget, perfectly centered. No backing coin. */
 .castle-sigil {
@@ -694,15 +785,20 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
 }
 .castle-bar i {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   background: linear-gradient(90deg, #2b73f1, #58c5ff);
   border-radius: inherit;
   box-shadow: 0 0 12px rgba(57, 169, 255, .55);
-  transition: width .18s ease-out;
+  /* Width is eased per-frame by SiegeMeter, so no CSS width transition here (it would double-smooth
+     the fill and make HP loss read as laggy). Colour changes still transition. */
+  transition: background .28s ease, box-shadow .28s ease, filter .16s ease-out;
 }
 .castle-bar em {
   position: absolute;
+  z-index: 2;
   inset: 0;
   border-radius: inherit;
   opacity: 0;
@@ -819,11 +915,9 @@ button { touch-action: manipulation; user-select: none; -webkit-user-select: non
   transform: none;
 }
 .castle-strip .castle-meta { flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; }
-.castle-strip.hit { animation: castle-strip-hit .32s ease; }
-@keyframes castle-strip-hit {
-  0%, 100% { filter: brightness(1); }
-  35% { filter: brightness(1.5); }
-}
+/* The rival readout is narrow, so its transient breach tag runs one size smaller. */
+.castle-strip .breach-tag { font-size: 7px; letter-spacing: .1em; }
+.castle-strip.expanded .castle-folder { max-height: 104px; }
 
 /* Machined emblem — the only element in the collapsed widget, perfectly centered. No backing coin. */
 .castle-strip-sigil {

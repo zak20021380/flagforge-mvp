@@ -1,4 +1,23 @@
-export type SoundEvent = 'deploy' | 'swing' | 'arrow' | 'hit' | 'death' | 'flag' | 'gate' | 'gateClose' | 'breach' | 'victory' | 'defeat';
+export type SoundEvent =
+  | 'deploy'
+  | 'swing'
+  | 'arrow'
+  | 'hit'
+  | 'death'
+  | 'flag'
+  | 'gate'
+  | 'gateClose'
+  | 'breach'
+  | 'victory'
+  | 'defeat'
+  /** Gate impact ladder: the tier steps up as the gate's remaining HP falls. */
+  | 'gateImpactLight'
+  | 'gateImpactMid'
+  | 'gateImpactHeavy'
+  /** Restrained tick under the critical-HP band, one short blip per interval. */
+  | 'gateCritical'
+  /** Deep one-shot for the collapse itself. */
+  | 'gateBreach';
 
 export class AudioManager {
   private context: AudioContext | null = null;
@@ -51,6 +70,12 @@ export class AudioManager {
       case 'breach': return { frequency: 180, endFrequency: 55, duration: 0.72, gain: 0.28, wave: 'square' };
       case 'victory': return { frequency: 520, endFrequency: 980, duration: 0.68, gain: 0.2, wave: 'triangle' };
       case 'defeat': return { frequency: 210, endFrequency: 52, duration: 0.72, gain: 0.2, wave: 'sine' };
+      // Gate impacts get lower, longer and louder as the timber gives way.
+      case 'gateImpactLight': return { frequency: 190, endFrequency: 96, duration: 0.13, gain: 0.15, wave: 'square' };
+      case 'gateImpactMid': return { frequency: 138, endFrequency: 62, duration: 0.2, gain: 0.21, wave: 'square' };
+      case 'gateImpactHeavy': return { frequency: 96, endFrequency: 40, duration: 0.3, gain: 0.27, wave: 'sawtooth' };
+      case 'gateCritical': return { frequency: 660, endFrequency: 430, duration: 0.08, gain: 0.09, wave: 'sine' };
+      case 'gateBreach': return { frequency: 130, endFrequency: 32, duration: 1.05, gain: 0.3, wave: 'sawtooth' };
     }
   }
 }

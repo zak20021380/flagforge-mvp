@@ -250,8 +250,6 @@ export class GameController {
 
   private handleFlagDelivered(team: Team): void {
     this.audio.play('flag');
-    // Atomic, once-only phase transition: the flag is consumed and the match permanently enters
-    // castle assault. Repeated delivery callbacks return false here and can never re-run it.
     if (!this.matchFlow.enterCastleAssault(team)) return;
     this.lastFlagDeliveredBy = team;
     this.units.beginCastleAssault(team);

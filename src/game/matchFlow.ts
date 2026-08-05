@@ -71,6 +71,10 @@ export class MatchFlow {
     return true;
   }
 
+  get isFlagObjectivePhase(): boolean {
+    return this.phase === 'FLAG_OBJECTIVE';
+  }
+
   /** Permanently close the flow after a winner is decided. */
   finish(): void {
     if (this.phase === 'MATCH_FINISHED') return;

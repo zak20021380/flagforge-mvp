@@ -8,13 +8,14 @@ import type { FlagController } from './flag';
 import type { MatchFlow } from './matchFlow';
 import type { UnitEntity } from './unit';
 
-type GatePhase = 'idle' | 'opening' | 'open' | 'closing';
+type GatePhase = 'idle' | 'opening' | 'open' | 'carrierEntering' | 'flagPlacement' | 'closing';
 
 interface GateReturnState {
   phase: GatePhase;
   closeTimer: number;
   openRemaining: number;
   prevApproachDistance: number;
+  placementTimer: number;
 }
 
 export class CastleLogic {
@@ -22,8 +23,8 @@ export class CastleLogic {
   private breachTimer = 0;
   private winner: Team | null = null;
   private readonly gateReturn: Record<Team, GateReturnState> = {
-    blue: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
-    red: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1 },
+    blue: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1, placementTimer: 0 },
+    red: { phase: 'idle', closeTimer: -1, openRemaining: 0, prevApproachDistance: -1, placementTimer: 0 },
   };
   readonly blueHealth: CastleHealthModel;
   readonly redHealth: CastleHealthModel;
@@ -123,7 +124,21 @@ export class CastleLogic {
   /** True while THIS castle's gate is physically open (flag-return, or its breach state). */
   isGateOpen(team: Team): boolean {
     const phase = this.gateReturn[team].phase;
-    return (phase === 'open' || phase === 'opening') || this.breachedTeam === team;
+    return (
+      phase === 'open'
+      || phase === 'opening'
+      || phase === 'carrierEntering'
+      || phase === 'flagPlacement'
+    ) || this.breachedTeam === team;
+  }
+
+  getGatePhase(team: Team): GatePhase {
+    return this.gateReturn[team].phase;
+  }
+
+  isCarrierEnteringOrPlacing(team: Team): boolean {
+    const p = this.gateReturn[team].phase;
+    return p === 'carrierEntering' || p === 'flagPlacement';
   }
 
   /** Seconds the HUD should show while a gate is open: breach countdown, else the return hold. */
@@ -185,6 +200,9 @@ export class CastleLogic {
       const state = this.gateReturn[team];
       const castle = this.getCastle(team);
       const shouldOpen = this.shouldOpenGateForReturn(team);
+      const carrier = this.flag.currentCarrier;
+      const carrierValid = carrier?.active && carrier.state !== 'dead' && carrier.team === team && carrier.carryingFlag;
+      const carrierInside = carrierValid && this.isCarrierInsideGate(carrier, castle);
 
       switch (state.phase) {
         case 'idle':
@@ -193,12 +211,13 @@ export class CastleLogic {
             castle.beginOpenGate();
             this.onGateOpened(team);
             state.closeTimer = -1;
+            state.placementTimer = 0;
             state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
           }
           break;
 
         case 'opening':
-          if (!shouldOpen) {
+          if (!shouldOpen && !carrierValid) {
             state.phase = 'closing';
             castle.beginCloseGate();
             state.closeTimer = -1;
@@ -206,13 +225,15 @@ export class CastleLogic {
           } else {
             state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
             if (castle.getGateState() === 'open') {
-              state.phase = 'open';
+              state.phase = carrierValid ? 'carrierEntering' : 'open';
             }
           }
           break;
 
         case 'open':
-          if (!shouldOpen) {
+          if (shouldOpen && carrierValid) {
+            state.phase = 'carrierEntering';
+          } else if (!shouldOpen) {
             if (this.flag.currentStatus === 'consumed' && this.flag.lastDeliveredTeam === team) {
               if (state.closeTimer < 0) state.closeTimer = CONFIG.match.flagReturnGateCloseDelaySeconds;
               state.closeTimer -= deltaSeconds;
@@ -234,22 +255,64 @@ export class CastleLogic {
           }
           break;
 
+        case 'carrierEntering':
+          if (!carrierValid) {
+            state.phase = 'closing';
+            castle.beginCloseGate();
+            state.closeTimer = -1;
+            state.openRemaining = 0;
+          } else if (carrierInside) {
+            state.phase = 'flagPlacement';
+            state.placementTimer = 0;
+          } else {
+            state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+          }
+          break;
+
+        case 'flagPlacement':
+          state.placementTimer += deltaSeconds;
+          state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
+          if (this.flag.currentStatus === 'consumed' || state.placementTimer >= CONFIG.match.flagPlacementDurationSeconds) {
+            if (state.closeTimer < 0) state.closeTimer = CONFIG.match.flagReturnGateCloseDelaySeconds;
+            state.closeTimer -= deltaSeconds;
+            state.openRemaining = Math.max(0, state.closeTimer);
+            if (state.closeTimer <= 0) {
+              state.phase = 'closing';
+              castle.beginCloseGate();
+              state.closeTimer = -1;
+              state.openRemaining = 0;
+            }
+          }
+          break;
+
         case 'closing':
-          if (shouldOpen) {
+          if (shouldOpen && carrierValid && !carrierInside) {
             state.phase = 'opening';
             castle.beginOpenGate();
             this.onGateOpened(team);
             state.closeTimer = -1;
+            state.placementTimer = 0;
             state.openRemaining = CONFIG.match.flagReturnGateCloseDelaySeconds;
           } else if (castle.getGateState() === 'closed') {
             state.phase = 'idle';
             state.closeTimer = -1;
+            state.placementTimer = 0;
             state.openRemaining = 0;
             this.onGateClosed(team);
           }
           break;
       }
     }
+  }
+
+  private isCarrierInsideGate(carrier: UnitEntity, castle: CastleVisual): boolean {
+    const gateZ = castle.gatePoint.z;
+    const facing = castle.team === 'blue' ? 1 : -1;
+    const pastGate = facing > 0
+      ? carrier.position.z < gateZ - 0.5
+      : carrier.position.z > gateZ + 0.5;
+    const distX = Math.abs(carrier.position.x - castle.root.position.x);
+    return pastGate && distX < 4.0;
   }
 
   update(deltaSeconds: number, elapsed: number): void {

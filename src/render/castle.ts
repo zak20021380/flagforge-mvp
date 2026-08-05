@@ -24,13 +24,17 @@ type BoxOptions = { receiveShadow?: boolean };
 export type CastleDamageStage = 'intact' | 'light' | 'moderate' | 'heavy' | 'destroyed';
 export type GateState = 'closed' | 'opening' | 'open' | 'closing';
 
-const GATE_OPEN_DURATION = 1.4;
-const GATE_CLOSE_DURATION = 1.5;
+const GATE_OPEN_DURATION = 2.4;
+const GATE_CLOSE_DURATION = 2.6;
 const GATE_LIFT_HEIGHT = 5.35;
 
-function smootherstep(t: number): number {
+function heavyEaseInOut(t: number): number {
   const c = Math.max(0, Math.min(1, t));
-  return c * c * c * (c * (c * 6 - 15) + 10);
+  if (c < 0.5) {
+    return 4 * c * c * c;
+  }
+  const f = -2 * c + 2;
+  return 1 - (f * f * f) / 2;
 }
 
 interface DamagePiece {
@@ -49,6 +53,7 @@ export class CastleVisual {
   readonly gate: TransformNode;
   readonly interiorPoint: Vector3;
   readonly deliveryPoint: Vector3;
+  readonly flagPlacementPoint: Vector3;
   readonly gatePoint: Vector3;
   readonly breachGlow: Mesh;
   private gateState: GateState = 'closed';
@@ -189,6 +194,7 @@ export class CastleVisual {
 
     this.interiorPoint = new Vector3(this.baseX, 0.2, this.baseZ - PORTRAIT_LAYOUT.arena.interiorOffset * this.facing);
     this.deliveryPoint = new Vector3(this.baseX, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.deliveryOffset * this.facing);
+    this.flagPlacementPoint = new Vector3(this.baseX, 1.8, this.baseZ - 2.5 * this.facing);
     this.gatePoint = new Vector3(this.baseX, 0.2, this.baseZ + PORTRAIT_LAYOUT.arena.gateOffset * this.facing);
   }
 
@@ -270,7 +276,7 @@ export class CastleVisual {
             this.gateTimer = 0;
             this.gate.position.y = GATE_LIFT_HEIGHT;
           } else {
-            this.gate.position.y = smootherstep(this.gateTimer / GATE_OPEN_DURATION) * GATE_LIFT_HEIGHT;
+            this.gate.position.y = heavyEaseInOut(this.gateTimer / GATE_OPEN_DURATION) * GATE_LIFT_HEIGHT;
           }
           break;
         case 'closing':
@@ -280,7 +286,7 @@ export class CastleVisual {
             this.gateTimer = 0;
             this.gate.position.y = 0;
           } else {
-            this.gate.position.y = (1 - smootherstep(this.gateTimer / GATE_CLOSE_DURATION)) * GATE_LIFT_HEIGHT;
+            this.gate.position.y = (1 - heavyEaseInOut(this.gateTimer / GATE_CLOSE_DURATION)) * GATE_LIFT_HEIGHT;
           }
           break;
         case 'open':

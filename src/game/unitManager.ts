@@ -298,10 +298,14 @@ export class UnitManager {
     const moved = this.moveUnit(unit, goal, deltaSeconds);
     unit.state = moved ? 'moving' : 'idle';
 
-    if (!unit.carryingFlag && this.flag.canBePickedUp()) this.flag.tryPickup(unit);
+    if (!unit.carryingFlag && !this.flag.isPlacing && this.flag.canBePickedUp()) this.flag.tryPickup(unit);
     if (unit.carryingFlag) {
-      const ownDelivery = this.castles.getCastle(unit.team).deliveryPoint;
-      this.flag.tryDeliver(unit, ownDelivery);
+      const ownCastle = this.castles.getCastle(unit.team);
+      const gatePhase = this.castles.getGatePhase(unit.team);
+      const gateOpenEnough = gatePhase === 'open' || gatePhase === 'carrierEntering' || gatePhase === 'flagPlacement';
+      if (gateOpenEnough) {
+        this.flag.tryDeliver(unit, ownCastle.deliveryPoint, ownCastle.flagPlacementPoint);
+      }
     }
     if (this.canAssaultCastle(unit.team) && this.castles.tryInfiltrate(unit)) {
       this.engagements.release(unit);
@@ -498,7 +502,13 @@ export class UnitManager {
   }
 
   private getReturnRoutePoint(unit: UnitEntity): Vector3 {
-    const delivery = this.castles.getCastle(unit.team).deliveryPoint;
+    const ownCastle = this.castles.getCastle(unit.team);
+    const delivery = ownCastle.deliveryPoint;
+    const gatePhase = this.castles.getGatePhase(unit.team);
+    const gateOpenEnough = gatePhase === 'open' || gatePhase === 'carrierEntering' || gatePhase === 'flagPlacement';
+    if (!gateOpenEnough) {
+      return ownCastle.gatePoint;
+    }
     const route = PORTRAIT_LAYOUT.arena.route;
     if (unit.team === 'blue' && unit.position.z > -route.returnMergeThresholdZ) {
       return new Vector3(laneX(unit.lane) * route.returnLaneScale, delivery.y, -route.returnMergeZ);

@@ -580,7 +580,9 @@ export const CONFIG = {
     // A carrier this close to the gate is "at the door" and keeps it open while it stands to deliver.
     flagReturnGateDoorReach: 1.5,
     // Short controlled delay after delivery before the gate starts closing again.
-    flagReturnGateCloseDelaySeconds: 1.6,
+    flagReturnGateCloseDelaySeconds: 0.8,
+    // Duration of the smooth flag placement animation inside the castle.
+    flagPlacementDurationSeconds: 1.2,
   },
   energy: {
     maximum: 10,

@@ -11,7 +11,16 @@ import { squaredDistanceXZ } from '../core/math';
 import { MaterialLibrary } from '../render/materials';
 import type { UnitEntity } from './unit';
 
-export type FlagStatus = 'neutral' | 'carried' | 'dropped' | 'consumed';
+export type FlagStatus = 'neutral' | 'carried' | 'delivering' | 'dropped' | 'consumed';
+
+const PLACEMENT_DURATION = 1.2;
+
+function placementEase(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.5) return 4 * c * c * c;
+  const f = -2 * c + 2;
+  return 1 - (f * f * f) / 2;
+}
 
 export class FlagController {
   readonly root: TransformNode;
@@ -21,6 +30,10 @@ export class FlagController {
   private carrier: UnitEntity | null = null;
   private status: FlagStatus = 'neutral';
   private lastDeliveredTeamField: Team | null = null;
+  private placementTimer = 0;
+  private placementStartPos = Vector3.Zero();
+  private placementEndPos = Vector3.Zero();
+  private placementActive = false;
 
   constructor(
     scene: Scene,
@@ -132,6 +145,10 @@ export class FlagController {
     return this.status === 'neutral' || this.status === 'dropped';
   }
 
+  get isPlacing(): boolean {
+    return this.status === 'delivering';
+  }
+
   tryPickup(unit: UnitEntity): boolean {
     if (!this.canBePickedUp() || unit.state === 'dead') return false;
     const flagPosition = this.root.getAbsolutePosition();
@@ -154,25 +171,56 @@ export class FlagController {
     return true;
   }
 
-  tryDeliver(unit: UnitEntity, deliveryPoint: Vector3): boolean {
+  tryDeliver(unit: UnitEntity, deliveryPoint: Vector3, placementTarget?: Vector3): boolean {
     if (this.carrier !== unit || this.status !== 'carried') return false;
     if (squaredDistanceXZ(unit.position, deliveryPoint) > 1.7 ** 2) return false;
     unit.carryingFlag = false;
     this.carrier = null;
-    // The flag is permanently consumed for this match. It is hidden, detached from the carrier,
-    // and never re-enabled: no timer, update branch or reset step can bring it back to the tower.
-    // A flag can only exist again when a completely new match builds a fresh FlagController.
-    this.status = 'consumed';
     this.lastDeliveredTeamField = unit.team;
-    this.root.parent = null;
-    this.root.setEnabled(false);
     this.carrierRing.parent = null;
     this.carrierRing.setEnabled(false);
-    this.onDelivered(unit.team);
+    const startPos = this.root.getAbsolutePosition().clone();
+    this.root.parent = null;
+    this.root.position.copyFrom(startPos);
+    this.root.scaling.setAll(0.76);
+    this.placementStartPos.copyFrom(startPos);
+    this.placementEndPos.copyFrom(placementTarget ?? deliveryPoint);
+    this.placementTimer = 0;
+    this.placementActive = true;
+    this.status = 'delivering';
     return true;
   }
 
+  beginPlacementAnimation(targetPos: Vector3): void {
+    if (this.status !== 'delivering') return;
+    const startPos = this.root.getAbsolutePosition().clone();
+    this.placementStartPos.copyFrom(startPos);
+    this.placementEndPos.copyFrom(targetPos);
+    this.placementTimer = 0;
+    this.placementActive = true;
+  }
+
+  finalizeDelivery(): void {
+    if (this.status !== 'delivering') return;
+    this.status = 'consumed';
+    this.placementActive = false;
+    this.root.setEnabled(false);
+    this.onDelivered(this.lastDeliveredTeamField!);
+  }
+
   dropFrom(unit: UnitEntity): void {
+    if (this.status === 'delivering') {
+      this.placementActive = false;
+      this.status = 'dropped';
+      this.root.parent = null;
+      this.root.scaling.setAll(1);
+      this.placeAtSafeDrop(unit);
+      this.root.setEnabled(true);
+      this.setClothMaterial(this.materials.objectiveCloth);
+      this.tail.material = this.materials.objectiveCloth;
+      this.onDropped();
+      return;
+    }
     if (this.carrier !== unit) return;
     unit.carryingFlag = false;
     this.carrier = null;
@@ -188,13 +236,29 @@ export class FlagController {
     this.onDropped();
   }
 
-  update(_deltaSeconds: number, elapsed: number): void {
-    // A consumed flag is gone for this match: no cloth drift, no timer, no reset. Nothing here can
-    // reactivate it.
+  update(deltaSeconds: number, elapsed: number): void {
     if (this.status === 'consumed') return;
-    // Subtle, lightweight cloth motion: a gentle horizontal sway on the root strip plus a
-    // travelling ripple (phased z-rotations) down the chain, and a soft flutter on the free
-    // edge. All values are absolute so nothing accumulates, and there is no mesh deformation.
+
+    if (this.placementActive) {
+      this.placementTimer += deltaSeconds;
+      const progress = Math.min(1, this.placementTimer / PLACEMENT_DURATION);
+      const eased = placementEase(progress);
+      const px = this.placementStartPos.x + (this.placementEndPos.x - this.placementStartPos.x) * eased;
+      const py = this.placementStartPos.y + (this.placementEndPos.y - this.placementStartPos.y) * eased;
+      const pz = this.placementStartPos.z + (this.placementEndPos.z - this.placementStartPos.z) * eased;
+      this.root.position.set(px, py, pz);
+      const scaleDown = 0.76 + (1.0 - 0.76) * eased;
+      this.root.scaling.setAll(scaleDown);
+      const settleRot = eased * 0.15;
+      this.clothSegments[0].rotation.z = settleRot;
+      this.clothSegments[1].rotation.z = settleRot * 0.7;
+      this.clothSegments[2].rotation.z = settleRot * 0.4;
+      if (progress >= 1) {
+        this.finalizeDelivery();
+      }
+      return;
+    }
+
     const sway = Math.sin(elapsed * 2.1);
     const ripple = elapsed * 3.3;
     const seg1 = this.clothSegments[0];

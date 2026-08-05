@@ -68,6 +68,12 @@ export class MaterialLibrary {
   readonly blueDark: PBRMaterial;
   readonly red: PBRMaterial;
   readonly redDark: PBRMaterial;
+  readonly blueCloth: PBRMaterial;
+  readonly blueArmor: PBRMaterial;
+  readonly blueAccent: PBRMaterial;
+  readonly redCloth: PBRMaterial;
+  readonly redArmor: PBRMaterial;
+  readonly redAccent: PBRMaterial;
   readonly skin: PBRMaterial;
   readonly leather: PBRMaterial;
   readonly cloth: PBRMaterial;
@@ -134,6 +140,12 @@ export class MaterialLibrary {
     this.blueDark = pbr('mat-blue-dark', Color3.FromHexString('#1456a8'), 0.50, 0.14);
     this.red = pbr('mat-red', Color3.FromHexString('#ff4d58'), 0.45, 0.10);
     this.redDark = pbr('mat-red-dark', Color3.FromHexString('#a82438'), 0.50, 0.14);
+    this.blueCloth = pbr('mat-blue-cloth', Color3.FromHexString('#1e3a6e'), 0.88, 0.02);
+    this.blueArmor = pbr('mat-blue-armor', Color3.FromHexString('#c8ced8'), 0.22, 0.82);
+    this.blueAccent = pbr('mat-blue-accent', Color3.FromHexString('#d4a840'), 0.30, 0.78);
+    this.redCloth = pbr('mat-red-cloth', Color3.FromHexString('#6b1a22'), 0.88, 0.02);
+    this.redArmor = pbr('mat-red-armor', Color3.FromHexString('#2e2a28'), 0.32, 0.72);
+    this.redAccent = pbr('mat-red-accent', Color3.FromHexString('#9a7830'), 0.38, 0.68);
     this.skin = pbr('mat-skin', Color3.FromHexString('#e0a882'), 0.82);
     this.leather = pbr('mat-leather', Color3.FromHexString('#6b4030'), 0.88);
     this.cloth = pbr('mat-cloth', Color3.FromHexString('#dccba8'), 0.92);
@@ -190,5 +202,17 @@ export class MaterialLibrary {
 
   teamGlow(team: Team): StandardMaterial {
     return team === 'blue' ? this.glowBlue : this.glowRed;
+  }
+
+  teamCloth(team: Team): PBRMaterial {
+    return team === 'blue' ? this.blueCloth : this.redCloth;
+  }
+
+  teamArmor(team: Team): PBRMaterial {
+    return team === 'blue' ? this.blueArmor : this.redArmor;
+  }
+
+  teamAccent(team: Team): PBRMaterial {
+    return team === 'blue' ? this.blueAccent : this.redAccent;
   }
 }

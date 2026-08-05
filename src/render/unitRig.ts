@@ -287,6 +287,9 @@ export class UnitRig {
   private buildBody(scene: Scene, materials: MaterialLibrary): void {
     const teamMaterial = materials.team(this.team);
     const teamDark = materials.teamDark(this.team);
+    const teamCloth = materials.teamCloth(this.team);
+    const teamArmor = materials.teamArmor(this.team);
+    const teamAccent = materials.teamAccent(this.team);
     const bodyWidth = this.kind === 'ironGuard' ? 1.38 : this.kind === 'raider' ? 0.88 : 1.12;
     const bodyHeight = this.kind === 'ironGuard' ? 1.48 : 1.28;
 
@@ -294,18 +297,18 @@ export class UnitRig {
     torsoMesh.parent = this.torso;
     torsoMesh.position.y = 0.25;
     torsoMesh.scaling.x = 1.18;
-    torsoMesh.material = this.kind === 'ranger' ? materials.leather : teamDark;
+    torsoMesh.material = this.kind === 'ranger' ? materials.leather : teamCloth;
 
     const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth, height: 0.74, depth: 0.54 }, scene);
     chest.parent = this.torso;
     chest.position = new Vector3(0, 0.36, -0.02);
-    chest.material = this.kind === 'raider' ? materials.black : teamMaterial;
+    chest.material = this.kind === 'raider' ? materials.black : teamArmor;
     chest.rotation.x = -0.05;
 
     const belt = MeshBuilder.CreateCylinder(`${this.root.name}-belt`, { height: 0.20, diameter: bodyWidth * 0.94, tessellation: 8 }, scene);
     belt.parent = this.torso;
     belt.position.y = -0.25;
-    belt.material = materials.leather;
+    belt.material = teamAccent;
 
     const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'ironGuard' ? 0.92 : 0.82, segments: 8 }, scene);
     headMesh.parent = this.head;
@@ -320,7 +323,7 @@ export class UnitRig {
       shoulderL.parent = this.torso;
       shoulderL.position = new Vector3(-0.62, 0.56, 0);
       shoulderL.scaling.y = 0.76;
-      shoulderL.material = materials.metal;
+      shoulderL.material = teamArmor;
       const shoulderR = shoulderL.clone(`${this.root.name}-shoulder-r`) as Mesh;
       shoulderR.position.x = 0.62;
     }
@@ -329,7 +332,7 @@ export class UnitRig {
       const backPlate = MeshBuilder.CreateBox(`${this.root.name}-back-plate`, { width: 1.48, height: 1.42, depth: 0.26 }, scene);
       backPlate.parent = this.torso;
       backPlate.position = new Vector3(0, 0.24, 0.34);
-      backPlate.material = materials.metal;
+      backPlate.material = teamArmor;
     }
 
     if (this.kind === 'raider') {
@@ -337,7 +340,7 @@ export class UnitRig {
       scarf.parent = this.torso;
       scarf.position = new Vector3(0.38, 0.05, 0.36);
       scarf.rotation.z = -0.2;
-      scarf.material = teamMaterial;
+      scarf.material = teamCloth;
     }
 
     if (this.kind === 'ranger') {
@@ -356,12 +359,16 @@ export class UnitRig {
     }
   }
 
-  private buildHeadwear(scene: Scene, materials: MaterialLibrary, teamMaterial: Material, teamDark: Material): void {
+  private buildHeadwear(scene: Scene, materials: MaterialLibrary, _teamMaterial: Material, _teamDark: Material): void {
+    const teamCloth = materials.teamCloth(this.team);
+    const teamArmor = materials.teamArmor(this.team);
+    const teamAccent = materials.teamAccent(this.team);
+
     if (this.kind === 'ranger') {
       const hood = MeshBuilder.CreateCylinder(`${this.root.name}-hood`, { height: 0.88, diameterTop: 0.22, diameterBottom: 0.96, tessellation: 8 }, scene);
       hood.parent = this.head;
       hood.position.y = 0.22;
-      hood.material = teamDark;
+      hood.material = teamCloth;
       const mask = MeshBuilder.CreateBox(`${this.root.name}-mask`, { width: 0.66, height: 0.28, depth: 0.15 }, scene);
       mask.parent = this.head;
       mask.position = new Vector3(0, -0.08, -0.38);
@@ -373,7 +380,7 @@ export class UnitRig {
       const helmet = MeshBuilder.CreateCylinder(`${this.root.name}-helmet`, { height: 0.82, diameter: 1.04, tessellation: 8 }, scene);
       helmet.parent = this.head;
       helmet.position.y = 0.14;
-      helmet.material = materials.metal;
+      helmet.material = teamArmor;
       const visor = MeshBuilder.CreateBox(`${this.root.name}-visor`, { width: 0.94, height: 0.27, depth: 0.18 }, scene);
       visor.parent = this.head;
       visor.position = new Vector3(0, 0.04, -0.50);
@@ -381,7 +388,7 @@ export class UnitRig {
       const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.22, height: 0.85, depth: 0.62 }, scene);
       crest.parent = this.head;
       crest.position = new Vector3(0, 0.70, 0.05);
-      crest.material = teamMaterial;
+      crest.material = teamAccent;
       return;
     }
 
@@ -389,32 +396,33 @@ export class UnitRig {
       const hair = MeshBuilder.CreateCylinder(`${this.root.name}-hair`, { height: 0.48, diameterTop: 0.48, diameterBottom: 0.88, tessellation: 8 }, scene);
       hair.parent = this.head;
       hair.position.y = 0.30;
-      hair.material = materials.leather;
+      hair.material = teamCloth;
       const brow = MeshBuilder.CreateBox(`${this.root.name}-brow`, { width: 0.80, height: 0.14, depth: 0.15 }, scene);
       brow.parent = this.head;
       brow.position = new Vector3(0, 0.05, -0.39);
-      brow.material = teamMaterial;
+      brow.material = teamAccent;
       return;
     }
 
     const cowl = MeshBuilder.CreateCylinder(`${this.root.name}-cowl`, { height: 0.52, diameterTop: 0.56, diameterBottom: 0.92, tessellation: 8 }, scene);
     cowl.parent = this.head;
     cowl.position.y = 0.30;
-    cowl.material = materials.black;
+    cowl.material = teamCloth;
     const eyeBand = MeshBuilder.CreateBox(`${this.root.name}-eye-band`, { width: 0.74, height: 0.17, depth: 0.15 }, scene);
     eyeBand.parent = this.head;
     eyeBand.position = new Vector3(0, 0, -0.39);
-    eyeBand.material = teamMaterial;
+    eyeBand.material = teamAccent;
   }
 
-  private buildLimbs(scene: Scene, materials: MaterialLibrary, teamDark: Material): void {
+  private buildLimbs(scene: Scene, materials: MaterialLibrary, _teamDark: Material): void {
+    const teamCloth = materials.teamCloth(this.team);
     const armRadius = this.kind === 'ironGuard' ? 0.27 : 0.22;
     const armLength = this.kind === 'ironGuard' ? 1.30 : 1.18;
     for (const [node, side] of [[this.leftArm, 'left'], [this.rightArm, 'right']] as const) {
       const arm = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-arm-mesh`, { height: armLength, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
       arm.parent = node;
       arm.position.y = -0.52;
-      arm.material = this.kind === 'ranger' || this.kind === 'raider' ? materials.leather : teamDark;
+      arm.material = this.kind === 'ranger' || this.kind === 'raider' ? materials.leather : teamCloth;
       const hand = MeshBuilder.CreateSphere(`${this.root.name}-${side}-hand`, { diameter: armRadius * 1.75, segments: 7 }, scene);
       hand.parent = node;
       hand.position.y = -1.06;
@@ -435,7 +443,9 @@ export class UnitRig {
     }
   }
 
-  private buildWeapon(scene: Scene, materials: MaterialLibrary, teamMaterial: Material, teamDark: Material): void {
+  private buildWeapon(scene: Scene, materials: MaterialLibrary, _teamMaterial: Material, _teamDark: Material): void {
+    const teamArmor = materials.teamArmor(this.team);
+    const teamAccent = materials.teamAccent(this.team);
     if (this.kind === 'ranger') {
       const upperLimb = MeshBuilder.CreateCylinder(`${this.root.name}-bow-upper`, { height: 1.06, diameter: 0.11, tessellation: 7 }, scene);
       upperLimb.parent = this.weaponRoot;
@@ -469,7 +479,7 @@ export class UnitRig {
       shieldFace.rotation.x = Math.PI / 2;
       shieldFace.rotation.z = Math.PI / 2;
       shieldFace.position.z = -0.04;
-      shieldFace.material = teamMaterial;
+      shieldFace.material = teamAccent;
       const maceHandle = MeshBuilder.CreateCylinder(`${this.root.name}-mace-handle`, { height: 1.38, diameter: 0.13, tessellation: 7 }, scene);
       maceHandle.parent = this.weaponRoot;
       maceHandle.position.y = -0.30;
@@ -493,7 +503,7 @@ export class UnitRig {
     const guard = MeshBuilder.CreateBox(`${this.root.name}-weapon-guard`, { width: 0.66, height: 0.13, depth: 0.15 }, scene);
     guard.parent = this.weaponRoot;
     guard.position.y = -0.44;
-    guard.material = teamDark;
+    guard.material = teamArmor;
 
     if (this.kind === 'vanguard') {
       const axeBack = MeshBuilder.CreateBox(`${this.root.name}-axe-back`, { width: 0.50, height: 0.56, depth: 0.14 }, scene);

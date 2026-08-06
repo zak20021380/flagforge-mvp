@@ -9,17 +9,7 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
-import {
-  createBraxModelInstance,
-  disposeBraxModelInstance,
-  type BraxModelInstance,
-} from './braxModel';
 import { MaterialLibrary } from './materials';
-
-const BRAX_MODEL_SCALE = 0.014;
-const BRAX_MODEL_ROTATION_X = Math.PI / 2;
-const BRAX_MODEL_ROTATION_Y = 0;
-const BRAX_MODEL_Y_OFFSET = 0.010046269185841084;
 
 /**
  * World-space hand target on a real ladder surface. The ladder system derives these from the
@@ -50,8 +40,6 @@ export class UnitRig {
    */
   interactionPoseActive = false;
   private readonly visualRoot: TransformNode;
-  private readonly braxVisualRoot: TransformNode | null;
-  private braxModelInstance: BraxModelInstance | null = null;
   private readonly torso: TransformNode;
   private readonly head: TransformNode;
   private readonly leftArm: TransformNode;
@@ -123,13 +111,6 @@ export class UnitRig {
     this.root = new TransformNode(`unit-${id}-${team}-${kind}`, scene);
     this.visualRoot = new TransformNode(`unit-${id}-visual`, scene);
     this.visualRoot.parent = this.root;
-    this.braxVisualRoot = kind === 'brax' ? new TransformNode(`unit-${id}-brax-visual`, scene) : null;
-    if (this.braxVisualRoot) {
-      this.braxVisualRoot.parent = this.root;
-      this.braxVisualRoot.scaling.setAll(BRAX_MODEL_SCALE);
-      this.braxVisualRoot.rotation.set(BRAX_MODEL_ROTATION_X, BRAX_MODEL_ROTATION_Y, 0);
-      this.braxVisualRoot.position.y = BRAX_MODEL_Y_OFFSET;
-    }
 
     this.shadow = MeshBuilder.CreateDisc(`unit-${id}-shadow`, { radius: kind === 'brax' ? 0.92 : kind === 'fuse' ? 0.74 : 0.66, tessellation: 24 }, scene);
     this.shadow.parent = this.root;
@@ -202,7 +183,6 @@ export class UnitRig {
     this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
     this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
     this.buildBody(scene, materials);
-    this.attachPreparedBraxModel();
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;
@@ -221,12 +201,6 @@ export class UnitRig {
 
   setEnabled(enabled: boolean): void {
     this.root.setEnabled(enabled);
-  }
-
-  dispose(): void {
-    disposeBraxModelInstance(this.braxModelInstance);
-    this.braxModelInstance = null;
-    this.root.dispose();
   }
 
   setHealthRatio(ratio: number): void {
@@ -607,31 +581,6 @@ export class UnitRig {
       this.leftArm.rotation.z = -0.38;
       this.torso.rotation.z += Math.sin(elapsed * 4.2) * 0.02;
     }
-  }
-
-  private attachPreparedBraxModel(): void {
-    if (!this.braxVisualRoot) return;
-
-    const instance = createBraxModelInstance();
-    const modelRoot = instance?.rootNodes[0];
-    if (!instance || instance.rootNodes.length !== 1 || !modelRoot) {
-      disposeBraxModelInstance(instance);
-      return;
-    }
-
-    try {
-      // The imported hierarchy remains intact: only its one top-level root changes parent.
-      modelRoot.parent = this.braxVisualRoot;
-      this.braxModelInstance = instance;
-    } catch {
-      disposeBraxModelInstance(instance);
-      return;
-    }
-
-    // Preserve sockets and procedural transforms for gameplay; hide only the old rendered meshes.
-    this.visualRoot.getChildMeshes().forEach((mesh) => {
-      mesh.isVisible = false;
-    });
   }
 
   private buildBody(scene: Scene, materials: MaterialLibrary): void {

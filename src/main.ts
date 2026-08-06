@@ -95,16 +95,14 @@ async function prepareGame(quality: QualityTier): Promise<void> {
     engine.setHardwareScalingLevel(settings.hardwareScaling);
 
     ui.setLoading(0.26, 'Building battlefield and castles');
-    const [{ createArenaScene }, { GameController }, { AudioManager }, { prepareBraxModel }] = await Promise.all([
+    const [{ createArenaScene }, { GameController }, { AudioManager }] = await Promise.all([
       import('./render/arena'),
       import('./game/gameController'),
       import('./audio/audioManager'),
-      import('./render/braxModel'),
     ]);
     await nextFrame();
     arena = createArenaScene(engine, canvas, quality);
     applyViewportMetrics();
-    await prepareBraxModel(arena.scene);
 
     ui.setLoading(0.57, 'Creating four animated unit squads');
     await nextFrame();

@@ -194,7 +194,7 @@ export class UnitManager {
   }
 
   dispose(): void {
-    for (const unit of this.units) unit.rig.dispose();
+    for (const unit of this.units) unit.rig.root.dispose();
     this.units.length = 0;
   }
 

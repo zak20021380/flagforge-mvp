@@ -16,10 +16,10 @@ import {
 } from './braxModel';
 import { MaterialLibrary } from './materials';
 
-const BRAX_MODEL_SCALE = 0.009;
+const BRAX_MODEL_SCALE = 0.014;
 const BRAX_MODEL_ROTATION_X = Math.PI / 2;
 const BRAX_MODEL_ROTATION_Y = 0;
-const BRAX_MODEL_Y_OFFSET = 0.007;
+const BRAX_MODEL_Y_OFFSET = 0.010046269185841084;
 
 /**
  * World-space hand target on a real ladder surface. The ladder system derives these from the

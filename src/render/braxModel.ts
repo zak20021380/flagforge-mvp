@@ -96,7 +96,7 @@ export function createBraxModelInstance(): BraxModelInstance | null {
     entries.rootNodes.forEach((rootNode) => rootNode.setEnabled(true));
 
     const hasIndependentRig =
-      entries.rootNodes.length > 0 &&
+      entries.rootNodes.length === 1 &&
       entries.skeletons.length === container.skeletons.length &&
       entries.animationGroups.length === container.animationGroups.length &&
       entries.skeletons.every((skeleton) => !container.skeletons.includes(skeleton)) &&

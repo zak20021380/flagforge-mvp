@@ -9,7 +9,6 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
-import { BraxVisualInstance, hasBraxModel } from './braxVisual';
 import { MaterialLibrary } from './materials';
 
 /**
@@ -41,7 +40,6 @@ export class UnitRig {
    */
   interactionPoseActive = false;
   private readonly visualRoot: TransformNode;
-  private readonly braxVisual: BraxVisualInstance | null;
   private readonly torso: TransformNode;
   private readonly head: TransformNode;
   private readonly leftArm: TransformNode;
@@ -184,15 +182,7 @@ export class UnitRig {
     // BRAX is the broadest, FUSE is compact but bulky, NYX is slim and VEX is the smallest.
     this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
     this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
-    // BRAX renders the imported GLB rig only when it actually loaded. If the GLB failed to load (or
-    // for every other unit kind) we build the shared procedural body so the logical unit is never
-    // shown as an invisible placeholder. The GLB path is what normally runs; the procedural body is
-    // the emergency runtime fallback and MUST stay reachable.
-    const braxLoaded = kind === 'brax' && hasBraxModel(scene);
-    this.braxVisual = braxLoaded
-      ? new BraxVisualInstance(scene, this.visualRoot, this.root, team, id, materials.teamCloth(team))
-      : null;
-    if (!this.braxVisual) this.buildBody(scene, materials);
+    this.buildBody(scene, materials);
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;
@@ -236,7 +226,6 @@ export class UnitRig {
     this.rightLeg.rotation.set(0, 0, 0);
     this.weaponRoot.rotation.set(0, 0, 0);
     this.shieldRoot.rotation.set(0, 0, 0);
-    this.braxVisual?.reset();
     this.deathRotation = 0;
     if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
     this.setHealthRatio(1);
@@ -518,9 +507,8 @@ export class UnitRig {
       this.rightLeg.rotation.x = -swing * legArc;
       this.leftArm.rotation.x = -swing * armArc;
       this.rightArm.rotation.x = swing * armArc;
-      const bounce = state === 'climbing' ? 0.038 : 0.08;
-      if (this.kind === 'brax') this.visualRoot.position.y *= 0.72;
-      else this.visualRoot.position.y = Math.abs(Math.sin(elapsed * speed)) * bounce;
+      const bounce = state === 'climbing' ? 0.038 : (this.kind === 'brax' ? 0.06 : 0.08);
+      this.visualRoot.position.y = Math.abs(Math.sin(elapsed * speed)) * bounce;
       const sway = state === 'climbing' ? 0.020 : (this.kind === 'brax' ? 0.032 : 0.040);
       this.torso.rotation.z = Math.sin(elapsed * speed * 0.5) * sway;
     } else if (!this.interactionPoseActive) {
@@ -593,8 +581,6 @@ export class UnitRig {
       this.leftArm.rotation.z = -0.38;
       this.torso.rotation.z += Math.sin(elapsed * 4.2) * 0.02;
     }
-
-    this.braxVisual?.updateAnimation(state, elapsed, attackProgress, hitProgress);
   }
 
   private buildBody(scene: Scene, materials: MaterialLibrary): void {

@@ -591,30 +591,51 @@ export class UnitRig {
     const teamAccent = materials.teamAccent(this.team);
     // BRAX is the widest and tallest torso block; FUSE is nearly as wide but shorter, so it reads
     // as a compact powder-keg next to BRAX's slab. VEX stays narrow.
-    const bodyWidth = this.kind === 'brax' ? 1.48 : this.kind === 'vex' ? 0.88 : this.kind === 'fuse' ? 1.24 : 1.12;
-    const bodyHeight = this.kind === 'brax' ? 1.56 : this.kind === 'fuse' ? 1.22 : 1.28;
+    const bodyWidth = this.kind === 'brax' ? 1.34 : this.kind === 'vex' ? 0.88 : this.kind === 'fuse' ? 1.24 : 1.12;
+    const bodyHeight = this.kind === 'brax' ? 1.84 : this.kind === 'fuse' ? 1.22 : 1.28;
 
     const torsoMesh = MeshBuilder.CreateCapsule(`${this.root.name}-body`, { height: bodyHeight, radius: bodyWidth * 0.44, tessellation: 8, subdivisions: 2 }, scene);
     torsoMesh.parent = this.torso;
     torsoMesh.position.y = 0.25;
-    torsoMesh.scaling.x = this.kind === 'brax' ? 1.28 : 1.18;
+    torsoMesh.scaling.x = this.kind === 'brax' ? 1.06 : 1.18;
+    torsoMesh.scaling.z = this.kind === 'brax' ? 0.78 : 1;
     torsoMesh.material = teamCloth;
 
-    const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth * (this.kind === 'brax' ? 0.84 : 0.76), height: this.kind === 'brax' ? 0.82 : 0.74, depth: this.kind === 'brax' ? 0.62 : 0.54 }, scene);
+    const chest = MeshBuilder.CreateBox(`${this.root.name}-chest`, { width: bodyWidth * (this.kind === 'brax' ? 1.02 : 0.76), height: this.kind === 'brax' ? 0.94 : 0.74, depth: this.kind === 'brax' ? 0.64 : 0.54 }, scene);
     chest.parent = this.torso;
-    chest.position = new Vector3(0, 0.36, -0.02);
-    chest.material = this.kind === 'brax' ? materials.darkSteel : this.kind === 'vex' ? teamCloth : teamArmor;
+    chest.position = this.kind === 'brax' ? new Vector3(0, 0.42, -0.08) : new Vector3(0, 0.36, -0.02);
+    chest.material = this.kind === 'brax' ? materials.vanguardSteel : this.kind === 'vex' ? teamCloth : teamArmor;
     chest.rotation.x = -0.05;
 
     if (this.kind === 'brax') {
-      const chestTrim = MeshBuilder.CreateBox(`${this.root.name}-chest-trim`, { width: bodyWidth * 0.86, height: 0.08, depth: 0.64 }, scene);
+      // Layered breastplate: a broad upper plate over a narrower abdomen keeps the waist compact
+      // while the bevel-like overlaps create a premium, readable highlight at low polygon count.
+      const upperPlate = MeshBuilder.CreateBox(`${this.root.name}-chest-upper-plate`, { width: 1.42, height: 0.32, depth: 0.70 }, scene);
+      upperPlate.parent = this.torso;
+      upperPlate.position = new Vector3(0, 0.70, -0.12);
+      upperPlate.material = materials.vanguardSteelLight;
+      upperPlate.rotation.x = -0.05;
+      const abdomenPlate = MeshBuilder.CreateBox(`${this.root.name}-abdomen-plate`, { width: 1.16, height: 0.48, depth: 0.58 }, scene);
+      abdomenPlate.parent = this.torso;
+      abdomenPlate.position = new Vector3(0, -0.08, -0.12);
+      abdomenPlate.material = materials.darkSteel;
+      abdomenPlate.rotation.x = -0.04;
+      const chestRidge = MeshBuilder.CreateBox(`${this.root.name}-chest-ridge`, { width: 0.12, height: 0.88, depth: 0.075 }, scene);
+      chestRidge.parent = this.torso;
+      chestRidge.position = new Vector3(0, 0.26, -0.45);
+      chestRidge.material = materials.brassTrim;
+      const chestTrim = MeshBuilder.CreateBox(`${this.root.name}-chest-trim`, { width: 1.46, height: 0.07, depth: 0.70 }, scene);
       chestTrim.parent = this.torso;
       chestTrim.position = new Vector3(0, 0.72, -0.02);
       chestTrim.material = materials.brassTrim;
-      const chestLowerTrim = MeshBuilder.CreateBox(`${this.root.name}-chest-lower-trim`, { width: bodyWidth * 0.86, height: 0.06, depth: 0.64 }, scene);
+      const chestLowerTrim = MeshBuilder.CreateBox(`${this.root.name}-chest-lower-trim`, { width: 1.22, height: 0.06, depth: 0.60 }, scene);
       chestLowerTrim.parent = this.torso;
-      chestLowerTrim.position = new Vector3(0, 0.0, -0.02);
+      chestLowerTrim.position = new Vector3(0, -0.30, -0.02);
       chestLowerTrim.material = materials.brassTrim;
+      const tabard = MeshBuilder.CreateBox(`${this.root.name}-tabard-front`, { width: 0.56, height: 0.70, depth: 0.10 }, scene);
+      tabard.parent = this.torso;
+      tabard.position = new Vector3(0, -0.55, -0.39);
+      tabard.material = teamCloth;
     }
 
     const belt = MeshBuilder.CreateCylinder(`${this.root.name}-belt`, { height: this.kind === 'brax' ? 0.24 : 0.20, diameter: bodyWidth * 0.94, tessellation: 8 }, scene);
@@ -629,20 +650,9 @@ export class UnitRig {
       beltBuckle.material = materials.brassTrim;
     }
 
-    const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'brax' ? 0.96 : 0.82, segments: 8 }, scene);
+    const headMesh = MeshBuilder.CreateSphere(`${this.root.name}-head-mesh`, { diameter: this.kind === 'brax' ? 0.84 : 0.82, segments: 8 }, scene);
     headMesh.parent = this.head;
-    headMesh.material = materials.skin;
-
-    if (this.kind === 'brax') {
-      const jaw = MeshBuilder.CreateBox(`${this.root.name}-jaw`, { width: 0.52, height: 0.22, depth: 0.34 }, scene);
-      jaw.parent = this.head;
-      jaw.position = new Vector3(0, -0.32, -0.18);
-      jaw.material = materials.skin;
-      const brow = MeshBuilder.CreateBox(`${this.root.name}-brow`, { width: 0.68, height: 0.14, depth: 0.22 }, scene);
-      brow.parent = this.head;
-      brow.position = new Vector3(0, 0.18, -0.36);
-      brow.material = materials.skin;
-    }
+    headMesh.material = this.kind === 'brax' ? materials.darkSteel : materials.skin;
 
     this.buildHeadwear(scene, materials, teamMaterial, teamDark);
     this.buildLimbs(scene, materials, teamDark);
@@ -651,18 +661,18 @@ export class UnitRig {
     this.buildCape(scene, materials, teamCloth);
 
     if (this.kind === 'brax') {
-      const backPlate = MeshBuilder.CreateBox(`${this.root.name}-back-plate`, { width: 1.58, height: 1.50, depth: 0.30 }, scene);
+      const backPlate = MeshBuilder.CreateBox(`${this.root.name}-back-plate`, { width: 1.48, height: 1.60, depth: 0.30 }, scene);
       backPlate.parent = this.torso;
       backPlate.position = new Vector3(0, 0.24, 0.36);
-      backPlate.material = materials.darkSteel;
-      const backTrimTop = MeshBuilder.CreateBox(`${this.root.name}-back-trim-top`, { width: 1.60, height: 0.07, depth: 0.32 }, scene);
+      backPlate.material = materials.vanguardSteel;
+      const backTrimTop = MeshBuilder.CreateBox(`${this.root.name}-back-trim-top`, { width: 1.50, height: 0.07, depth: 0.32 }, scene);
       backTrimTop.parent = this.torso;
       backTrimTop.position = new Vector3(0, 0.96, 0.36);
       backTrimTop.material = materials.brassTrim;
-      const backSpine = MeshBuilder.CreateBox(`${this.root.name}-back-spine`, { width: 0.18, height: 1.20, depth: 0.08 }, scene);
+      const backSpine = MeshBuilder.CreateBox(`${this.root.name}-back-spine`, { width: 0.16, height: 1.28, depth: 0.08 }, scene);
       backSpine.parent = this.torso;
       backSpine.position = new Vector3(0, 0.24, 0.52);
-      backSpine.material = materials.brassTrim;
+      backSpine.material = materials.vanguardSteelLight;
     }
 
     if (this.kind === 'vex') {
@@ -729,30 +739,34 @@ export class UnitRig {
    * clearly visible against both the silver (blue) and dark-iron (red) armor below.
    */
   private buildShoulderPads(scene: Scene, materials: MaterialLibrary, teamArmor: Material, teamAccent: Material): void {
-    const diameter = this.kind === 'brax' ? 1.08 : this.kind === 'fuse' ? 0.7 : this.kind === 'nyx' ? 0.58 : 0.54;
+    const diameter = this.kind === 'brax' ? 1.28 : this.kind === 'fuse' ? 0.7 : this.kind === 'nyx' ? 0.58 : 0.54;
     const capDiameter = diameter * 0.55;
-    const armY = this.kind === 'brax' ? 0.66 : 0.56;
-    const armX = this.kind === 'brax' ? 0.86 : this.kind === 'nyx' || this.kind === 'vex' ? 0.6 : 0.66;
+    const armY = this.kind === 'brax' ? 0.72 : 0.56;
+    const armX = this.kind === 'brax' ? 0.92 : this.kind === 'nyx' || this.kind === 'vex' ? 0.6 : 0.66;
     for (const side of [-1, 1] as const) {
       if (this.kind === 'brax') {
-        const padBase = MeshBuilder.CreateBox(`${this.root.name}-pad-base-${side}`, { width: diameter * 0.92, height: diameter * 0.52, depth: diameter * 0.78 }, scene);
+        const padBase = MeshBuilder.CreateBox(`${this.root.name}-pad-base-${side}`, { width: diameter * 0.98, height: diameter * 0.54, depth: diameter * 0.84 }, scene);
         padBase.parent = this.torso;
         padBase.position = new Vector3(side * armX, armY, 0);
-        padBase.material = materials.darkSteel;
+        padBase.material = materials.vanguardSteel;
         const padTop = MeshBuilder.CreateSphere(`${this.root.name}-pad-${side}`, { diameter, segments: 7 }, scene);
         padTop.parent = this.torso;
         padTop.position = new Vector3(side * armX, armY + 0.08, 0);
         padTop.scaling.y = 0.62;
-        padTop.material = materials.darkSteel;
-        const padTrim = MeshBuilder.CreateCylinder(`${this.root.name}-pad-trim-${side}`, { height: 0.06, diameter: diameter * 0.96, tessellation: 8 }, scene);
+        padTop.material = materials.vanguardSteel;
+        const padTrim = MeshBuilder.CreateCylinder(`${this.root.name}-pad-trim-${side}`, { height: 0.07, diameter: diameter * 0.98, tessellation: 8 }, scene);
         padTrim.parent = this.torso;
         padTrim.position = new Vector3(side * armX, armY - 0.12, 0);
-        padTrim.material = materials.brassTrim;
+        padTrim.material = materials.vanguardSteelLight;
         const cap = MeshBuilder.CreateSphere(`${this.root.name}-pad-cap-${side}`, { diameter: capDiameter, segments: 6 }, scene);
         cap.parent = this.torso;
         cap.position = new Vector3(side * armX, armY + diameter * 0.30, 0);
         cap.scaling.y = 0.58;
-        cap.material = teamAccent;
+        cap.material = materials.teamCloth(this.team);
+        const frontLip = MeshBuilder.CreateBox(`${this.root.name}-pad-front-lip-${side}`, { width: diameter * 0.74, height: diameter * 0.16, depth: diameter * 0.16 }, scene);
+        frontLip.parent = this.torso;
+        frontLip.position = new Vector3(side * armX, armY - 0.02, -diameter * 0.40);
+        frontLip.material = materials.brassTrim;
       } else {
         const pad = MeshBuilder.CreateSphere(`${this.root.name}-pad-${side}`, { diameter, segments: 7 }, scene);
         pad.parent = this.torso;
@@ -780,11 +794,11 @@ export class UnitRig {
     const heavy = this.kind === 'brax';
     const marksman = this.kind === 'nyx';
     const rogue = this.kind === 'vex';
-    const width = heavy ? 1.72 : marksman ? 0.7 : rogue ? 1.0 : 1.3;
-    const height = heavy ? 1.58 : marksman ? 1.3 : rogue ? 1.28 : 1.38;
+    const width = heavy ? 1.46 : marksman ? 0.7 : rogue ? 1.0 : 1.3;
+    const height = heavy ? 1.36 : marksman ? 1.3 : rogue ? 1.28 : 1.38;
     const depth = heavy ? 0.18 : marksman ? 0.12 : 0.14;
     const offsetX = marksman ? 0.15 : 0;
-    const backZ = heavy ? 0.56 : marksman ? 0.52 : 0.5;
+    const backZ = heavy ? 0.58 : marksman ? 0.52 : 0.5;
     const cape = MeshBuilder.CreateBox(`${this.root.name}-cape`, { width, height, depth }, scene);
     cape.parent = this.torso;
     cape.position = new Vector3(offsetX, 0.08, backZ);
@@ -820,38 +834,52 @@ export class UnitRig {
     }
 
     if (this.kind === 'brax') {
-      const helmet = MeshBuilder.CreateCylinder(`${this.root.name}-helmet`, { height: 0.88, diameter: 1.12, tessellation: 8 }, scene);
+      // Closed human vanguard helm: a tapered shell, deep cheek guards and a separate faceplate
+      // hide the old exposed head so the silhouette reads as tall and intimidating, not dwarven.
+      const helmet = MeshBuilder.CreateCylinder(`${this.root.name}-helmet`, { height: 1.02, diameterTop: 0.88, diameterBottom: 1.12, tessellation: 8 }, scene);
       helmet.parent = this.head;
-      helmet.position.y = 0.16;
-      helmet.material = materials.darkSteel;
-      const helmetBrim = MeshBuilder.CreateCylinder(`${this.root.name}-helmet-brim`, { height: 0.10, diameter: 1.22, tessellation: 8 }, scene);
+      helmet.position.y = 0.22;
+      helmet.material = materials.vanguardSteel;
+      const helmetCrown = MeshBuilder.CreateBox(`${this.root.name}-helmet-crown`, { width: 0.24, height: 0.18, depth: 0.72 }, scene);
+      helmetCrown.parent = this.head;
+      helmetCrown.position = new Vector3(0, 0.78, 0.02);
+      helmetCrown.material = materials.vanguardSteelLight;
+      const helmetBrim = MeshBuilder.CreateCylinder(`${this.root.name}-helmet-brim`, { height: 0.10, diameter: 1.20, tessellation: 8 }, scene);
       helmetBrim.parent = this.head;
-      helmetBrim.position.y = -0.18;
-      helmetBrim.material = materials.brassTrim;
-      const visor = MeshBuilder.CreateBox(`${this.root.name}-visor`, { width: 1.02, height: 0.30, depth: 0.22 }, scene);
+      helmetBrim.position.y = -0.22;
+      helmetBrim.material = materials.vanguardSteelLight;
+      const faceplate = MeshBuilder.CreateBox(`${this.root.name}-faceplate`, { width: 0.92, height: 0.48, depth: 0.30 }, scene);
+      faceplate.parent = this.head;
+      faceplate.position = new Vector3(0, -0.04, -0.42);
+      faceplate.material = materials.vanguardSteel;
+      const visor = MeshBuilder.CreateBox(`${this.root.name}-visor`, { width: 0.84, height: 0.24, depth: 0.16 }, scene);
       visor.parent = this.head;
-      visor.position = new Vector3(0, 0.02, -0.52);
-      visor.material = materials.black;
-      const visorSlit = MeshBuilder.CreateBox(`${this.root.name}-visor-slit`, { width: 0.72, height: 0.06, depth: 0.24 }, scene);
+      visor.position = new Vector3(0, 0.10, -0.58);
+      visor.material = materials.darkSteel;
+      const visorSlit = MeshBuilder.CreateBox(`${this.root.name}-visor-slit`, { width: 0.62, height: 0.055, depth: 0.18 }, scene);
       visorSlit.parent = this.head;
-      visorSlit.position = new Vector3(0, 0.06, -0.54);
-      visorSlit.material = materials.teamGlow(this.team);
-      const crestBase = MeshBuilder.CreateBox(`${this.root.name}-crest-base`, { width: 0.34, height: 0.18, depth: 0.72 }, scene);
-      crestBase.parent = this.head;
-      crestBase.position = new Vector3(0, 0.56, 0.05);
-      crestBase.material = materials.brassTrim;
-      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.22, height: 1.05, depth: 0.58 }, scene);
-      crest.parent = this.head;
-      crest.position = new Vector3(0, 0.82, 0.05);
-      crest.material = teamAccent;
-      const cheekL = MeshBuilder.CreateBox(`${this.root.name}-cheek-l`, { width: 0.16, height: 0.42, depth: 0.38 }, scene);
+      visorSlit.position = new Vector3(0, 0.10, -0.68);
+      visorSlit.material = materials.black;
+      const neckGuard = MeshBuilder.CreateBox(`${this.root.name}-neck-guard`, { width: 1.02, height: 0.32, depth: 0.46 }, scene);
+      neckGuard.parent = this.head;
+      neckGuard.position = new Vector3(0, -0.34, 0.04);
+      neckGuard.material = materials.darkSteel;
+      const cheekL = MeshBuilder.CreateBox(`${this.root.name}-cheek-l`, { width: 0.20, height: 0.44, depth: 0.42 }, scene);
       cheekL.parent = this.head;
-      cheekL.position = new Vector3(-0.48, -0.10, -0.18);
-      cheekL.material = materials.darkSteel;
-      const cheekR = MeshBuilder.CreateBox(`${this.root.name}-cheek-r`, { width: 0.16, height: 0.42, depth: 0.38 }, scene);
+      cheekL.position = new Vector3(-0.48, -0.14, -0.16);
+      cheekL.material = materials.vanguardSteel;
+      const cheekR = MeshBuilder.CreateBox(`${this.root.name}-cheek-r`, { width: 0.20, height: 0.44, depth: 0.42 }, scene);
       cheekR.parent = this.head;
-      cheekR.position = new Vector3(0.48, -0.10, -0.18);
-      cheekR.material = materials.darkSteel;
+      cheekR.position = new Vector3(0.48, -0.14, -0.16);
+      cheekR.material = materials.vanguardSteel;
+      const crestBase = MeshBuilder.CreateBox(`${this.root.name}-crest-base`, { width: 0.34, height: 0.16, depth: 0.72 }, scene);
+      crestBase.parent = this.head;
+      crestBase.position = new Vector3(0, 0.64, 0.05);
+      crestBase.material = materials.brassTrim;
+      const crest = MeshBuilder.CreateBox(`${this.root.name}-crest`, { width: 0.18, height: 0.76, depth: 0.46 }, scene);
+      crest.parent = this.head;
+      crest.position = new Vector3(0, 0.86, 0.05);
+      crest.material = teamCloth;
       return;
     }
 
@@ -896,7 +924,7 @@ export class UnitRig {
 
   private buildLimbs(scene: Scene, materials: MaterialLibrary, _teamDark: Material): void {
     const teamCloth = materials.teamCloth(this.team);
-    const armRadius = this.kind === 'brax' ? 0.31 : this.kind === 'fuse' ? 0.25 : 0.22;
+    const armRadius = this.kind === 'brax' ? 0.32 : this.kind === 'fuse' ? 0.25 : 0.22;
     const armLength = this.kind === 'brax' ? 1.38 : 1.18;
     const upperHeight = armLength * 0.52;
     const upperOffset = -armLength * 0.26;
@@ -907,20 +935,24 @@ export class UnitRig {
       const upperArm = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-arm-mesh`, { height: upperHeight, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
       upperArm.parent = node;
       upperArm.position.y = upperOffset;
-      upperArm.material = teamCloth;
+      upperArm.material = this.kind === 'brax' ? materials.vanguardSteel : teamCloth;
       const forearmMesh = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-forearm-mesh`, { height: upperHeight, radius: armRadius, tessellation: 7, subdivisions: 1 }, scene);
       forearmMesh.parent = forearm;
       forearmMesh.position.y = upperOffset;
-      forearmMesh.material = this.kind === 'brax' ? materials.darkSteel : teamCloth;
+      forearmMesh.material = this.kind === 'brax' ? materials.vanguardSteel : teamCloth;
       if (this.kind === 'brax') {
-        const gauntletTrim = MeshBuilder.CreateCylinder(`${this.root.name}-${side}-gauntlet-trim`, { height: 0.06, diameter: armRadius * 2.1, tessellation: 8 }, scene);
+        const gauntletTrim = MeshBuilder.CreateCylinder(`${this.root.name}-${side}-gauntlet-trim`, { height: 0.08, diameter: armRadius * 2.18, tessellation: 8 }, scene);
         gauntletTrim.parent = forearm;
         gauntletTrim.position.y = upperOffset + upperHeight * 0.38;
-        gauntletTrim.material = materials.brassTrim;
+        gauntletTrim.material = materials.vanguardSteelLight;
+        const gauntletCuff = MeshBuilder.CreateBox(`${this.root.name}-${side}-gauntlet-cuff`, { width: armRadius * 2.16, height: 0.24, depth: armRadius * 2.0 }, scene);
+        gauntletCuff.parent = forearm;
+        gauntletCuff.position = new Vector3(0, upperOffset - upperHeight * 0.28, -0.03);
+        gauntletCuff.material = materials.darkSteel;
       }
       const hand = MeshBuilder.CreateSphere(`${this.root.name}-${side}-hand`, { diameter: armRadius * (this.kind === 'brax' ? 2.0 : 1.75), segments: 7 }, scene);
       hand.parent = handNode;
-      hand.material = this.kind === 'brax' ? materials.darkSteel : materials.skin;
+      hand.material = this.kind === 'brax' ? materials.vanguardSteel : materials.skin;
     }
     this.handRadiusWorld = armRadius * (this.kind === 'brax' ? 2.0 : 1.75) * 0.5 * this.baseScale;
 
@@ -930,24 +962,34 @@ export class UnitRig {
       const leg = MeshBuilder.CreateCapsule(`${this.root.name}-${side}-leg-mesh`, { height: legLength, radius: legRadius, tessellation: 7, subdivisions: 1 }, scene);
       leg.parent = node;
       leg.position.y = -0.54;
-      leg.material = this.kind === 'brax' ? materials.darkSteel : materials.black;
+      leg.material = this.kind === 'brax' ? materials.vanguardSteel : materials.black;
       if (this.kind === 'brax') {
-        const shinGuard = MeshBuilder.CreateBox(`${this.root.name}-${side}-shin-guard`, { width: legRadius * 1.8, height: legLength * 0.42, depth: legRadius * 1.4 }, scene);
+        const shinGuard = MeshBuilder.CreateBox(`${this.root.name}-${side}-shin-guard`, { width: legRadius * 1.9, height: legLength * 0.46, depth: legRadius * 1.5 }, scene);
         shinGuard.parent = node;
-        shinGuard.position = new Vector3(0, -0.62, -legRadius * 0.4);
-        shinGuard.material = materials.darkSteel;
-        const shinTrim = MeshBuilder.CreateBox(`${this.root.name}-${side}-shin-trim`, { width: legRadius * 1.9, height: 0.06, depth: legRadius * 1.5 }, scene);
+        shinGuard.position = new Vector3(0, -0.62, -legRadius * 0.42);
+        shinGuard.material = materials.vanguardSteelLight;
+        const shinTrim = MeshBuilder.CreateBox(`${this.root.name}-${side}-shin-trim`, { width: legRadius * 2.0, height: 0.07, depth: legRadius * 1.56 }, scene);
         shinTrim.parent = node;
         shinTrim.position = new Vector3(0, -0.42, -legRadius * 0.4);
         shinTrim.material = materials.brassTrim;
       }
-      const bootWidth = this.kind === 'brax' ? 0.56 : 0.48;
-      const bootHeight = this.kind === 'brax' ? 0.38 : 0.32;
-      const bootDepth = this.kind === 'brax' ? 0.80 : 0.72;
+      const bootWidth = this.kind === 'brax' ? 0.64 : 0.48;
+      const bootHeight = this.kind === 'brax' ? 0.42 : 0.32;
+      const bootDepth = this.kind === 'brax' ? 0.88 : 0.72;
       const boot = MeshBuilder.CreateBox(`${this.root.name}-${side}-boot`, { width: bootWidth, height: bootHeight, depth: bootDepth }, scene);
       boot.parent = node;
-      boot.position = new Vector3(0, this.kind === 'brax' ? -1.26 : -1.18, -0.14);
+      boot.position = new Vector3(0, this.kind === 'brax' ? -1.28 : -1.18, -0.16);
       boot.material = this.kind === 'brax' ? materials.darkSteel : materials.leather;
+      if (this.kind === 'brax') {
+        const bootToe = MeshBuilder.CreateBox(`${this.root.name}-${side}-boot-toe`, { width: bootWidth * 1.08, height: 0.20, depth: 0.30 }, scene);
+        bootToe.parent = node;
+        bootToe.position = new Vector3(0, -1.30, -0.58);
+        bootToe.material = materials.vanguardSteelLight;
+        const bootStrap = MeshBuilder.CreateBox(`${this.root.name}-${side}-boot-strap`, { width: bootWidth * 0.96, height: 0.08, depth: bootDepth * 0.92 }, scene);
+        bootStrap.parent = node;
+        bootStrap.position = new Vector3(0, -1.17, -0.16);
+        bootStrap.material = materials.brassTrim;
+      }
     }
   }
 
@@ -977,54 +1019,68 @@ export class UnitRig {
     }
 
     if (this.kind === 'brax') {
-      const shieldRim = MeshBuilder.CreateCylinder(`${this.root.name}-shield-rim`, { height: 0.34, diameter: 1.92, tessellation: 14 }, scene);
+      // Tall oval tower shield: the face is deliberately proud of the forearm so it remains a
+      // clear front-line read from the top-down camera while still staying lightweight.
+      const shieldRim = MeshBuilder.CreateCylinder(`${this.root.name}-shield-rim`, { height: 0.34, diameter: 2.14, tessellation: 12 }, scene);
       shieldRim.parent = this.shieldRoot;
-      shieldRim.position.x = -0.58;
+      shieldRim.position.x = -0.66;
       shieldRim.rotation.x = Math.PI / 2;
-      shieldRim.material = materials.brassTrim;
-      const shield = MeshBuilder.CreateCylinder(`${this.root.name}-shield-mesh`, { height: 0.30, diameter: 1.82, tessellation: 14 }, scene);
+      shieldRim.scaling.z = 1.16;
+      shieldRim.material = materials.vanguardSteelLight;
+      const shield = MeshBuilder.CreateCylinder(`${this.root.name}-shield-mesh`, { height: 0.30, diameter: 2.02, tessellation: 12 }, scene);
       shield.parent = this.shieldRoot;
-      shield.position.x = -0.58;
+      shield.position.x = -0.66;
       shield.rotation.x = Math.PI / 2;
-      shield.material = materials.darkSteel;
-      const shieldFace = MeshBuilder.CreateCylinder(`${this.root.name}-shield-face`, { height: 0.32, diameter: 1.38, tessellation: 14 }, scene);
+      shield.scaling.z = 1.16;
+      shield.material = materials.vanguardSteel;
+      const shieldFace = MeshBuilder.CreateCylinder(`${this.root.name}-shield-face`, { height: 0.32, diameter: 1.66, tessellation: 12 }, scene);
       shieldFace.parent = this.shieldRoot;
-      shieldFace.position.set(-0.58, 0, 0.12);
+      shieldFace.position.set(-0.66, 0, 0.14);
       shieldFace.rotation.x = Math.PI / 2;
-      shieldFace.material = teamAccent;
+      shieldFace.scaling.z = 1.10;
+      shieldFace.material = materials.teamCloth(this.team);
       const emblemCenter = MeshBuilder.CreateCylinder(`${this.root.name}-shield-emblem-center`, { height: 0.34, diameter: 0.44, tessellation: 8 }, scene);
       emblemCenter.parent = shieldFace;
       emblemCenter.position.set(0, 0.17, 0);
-      emblemCenter.rotation.x = Math.PI / 2;
       emblemCenter.material = materials.brassTrim;
-      const emblemV = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-v`, { width: 0.08, height: 0.24, depth: 1.12 }, scene);
+      const emblemV = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-v`, { width: 0.10, height: 0.08, depth: 1.14 }, scene);
       emblemV.parent = shieldFace;
-      emblemV.position.set(0, 0.17, 0);
-      emblemV.material = materials.white;
-      const emblemH = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-h`, { width: 0.08, height: 0.74, depth: 0.24 }, scene);
+      emblemV.position.set(0, 0.17, -0.02);
+      emblemV.material = teamAccent;
+      const emblemH = MeshBuilder.CreateBox(`${this.root.name}-shield-emblem-h`, { width: 0.68, height: 0.08, depth: 0.12 }, scene);
       emblemH.parent = shieldFace;
-      emblemH.position.set(0, 0.17, 0);
+      emblemH.position.set(0, 0.17, -0.02);
       emblemH.material = materials.white;
-      const maceHandle = MeshBuilder.CreateCylinder(`${this.root.name}-mace-handle`, { height: 1.52, diameter: 0.16, tessellation: 7 }, scene);
+      const shieldBoss = MeshBuilder.CreateCylinder(`${this.root.name}-shield-boss`, { height: 0.16, diameter: 0.34, tessellation: 8 }, scene);
+      shieldBoss.parent = shieldFace;
+      shieldBoss.position.set(0, 0.24, -0.06);
+      shieldBoss.material = teamAccent;
+      const maceHandle = MeshBuilder.CreateCylinder(`${this.root.name}-mace-handle`, { height: 1.64, diameter: 0.18, tessellation: 7 }, scene);
       maceHandle.parent = this.weaponRoot;
-      maceHandle.position.y = -0.34;
-      maceHandle.material = materials.darkSteel;
-      const maceGrip = MeshBuilder.CreateCylinder(`${this.root.name}-mace-grip`, { height: 0.48, diameter: 0.22, tessellation: 7 }, scene);
+      maceHandle.position.y = -0.22;
+      maceHandle.material = materials.vanguardSteel;
+      const maceGrip = MeshBuilder.CreateCylinder(`${this.root.name}-mace-grip`, { height: 0.52, diameter: 0.24, tessellation: 7 }, scene);
       maceGrip.parent = this.weaponRoot;
-      maceGrip.position.y = 0.12;
+      maceGrip.position.y = 0.20;
       maceGrip.material = materials.leather;
-      const maceHead = MeshBuilder.CreatePolyhedron(`${this.root.name}-mace-head`, { type: 1, size: 0.62 }, scene);
-      maceHead.parent = this.weaponRoot;
-      maceHead.position.y = -1.14;
-      maceHead.material = materials.darkSteel;
-      const maceCapTop = MeshBuilder.CreateCylinder(`${this.root.name}-mace-cap-top`, { height: 0.10, diameter: 0.38, tessellation: 8 }, scene);
-      maceCapTop.parent = this.weaponRoot;
-      maceCapTop.position.y = -0.82;
-      maceCapTop.material = materials.brassTrim;
-      const maceCapBottom = MeshBuilder.CreateCylinder(`${this.root.name}-mace-cap-bottom`, { height: 0.10, diameter: 0.38, tessellation: 8 }, scene);
-      maceCapBottom.parent = this.weaponRoot;
-      maceCapBottom.position.y = -1.46;
-      maceCapBottom.material = materials.brassTrim;
+      const hammerHead = MeshBuilder.CreateBox(`${this.root.name}-war-hammer-head`, { width: 0.82, height: 0.36, depth: 0.46 }, scene);
+      hammerHead.parent = this.weaponRoot;
+      hammerHead.position.y = -1.16;
+      hammerHead.material = materials.vanguardSteel;
+      const hammerFaceL = MeshBuilder.CreateCylinder(`${this.root.name}-war-hammer-face-l`, { height: 0.28, diameter: 0.42, tessellation: 8 }, scene);
+      hammerFaceL.parent = this.weaponRoot;
+      hammerFaceL.position = new Vector3(-0.46, -1.16, 0);
+      hammerFaceL.rotation.z = Math.PI / 2;
+      hammerFaceL.material = materials.vanguardSteelLight;
+      const hammerFaceR = MeshBuilder.CreateCylinder(`${this.root.name}-war-hammer-face-r`, { height: 0.28, diameter: 0.42, tessellation: 8 }, scene);
+      hammerFaceR.parent = this.weaponRoot;
+      hammerFaceR.position = new Vector3(0.46, -1.16, 0);
+      hammerFaceR.rotation.z = Math.PI / 2;
+      hammerFaceR.material = materials.vanguardSteelLight;
+      const hammerCollar = MeshBuilder.CreateCylinder(`${this.root.name}-war-hammer-collar`, { height: 0.10, diameter: 0.34, tessellation: 8 }, scene);
+      hammerCollar.parent = this.weaponRoot;
+      hammerCollar.position.y = -0.94;
+      hammerCollar.material = materials.brassTrim;
       return;
     }
 

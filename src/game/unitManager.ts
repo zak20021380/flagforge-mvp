@@ -194,13 +194,20 @@ export class UnitManager {
   }
 
   dispose(): void {
-    for (const unit of this.units) unit.rig.root.dispose();
+    for (const unit of this.units) unit.rig.dispose();
     this.units.length = 0;
   }
 
   private createUnit(team: Team, kind: UnitKind): UnitEntity {
     const id = this.nextId++;
-    const rig = new UnitRig(this.scene, this.materials, kind, team, id);
+    const rig = new UnitRig(
+      this.scene,
+      this.materials,
+      kind,
+      team,
+      id,
+      (mesh) => this.shadows.addShadowCaster(mesh),
+    );
     rig.setEnabled(false);
     for (const mesh of rig.root.getChildMeshes()) {
       if (!mesh.name.includes('shadow') && !mesh.name.includes('health')) this.shadows.addShadowCaster(mesh);

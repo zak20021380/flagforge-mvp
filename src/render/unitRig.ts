@@ -1,4 +1,6 @@
 import {
+  AbstractMesh,
+  AnimationGroup,
   Material,
   Matrix,
   Mesh,
@@ -9,6 +11,12 @@ import {
   Vector3,
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
+import {
+  BRAX_MODEL_ROTATION,
+  createBraxModelInstance,
+  disposeBraxModelInstance,
+  type BraxModelInstance,
+} from './braxModel';
 import { MaterialLibrary } from './materials';
 
 /**
@@ -40,6 +48,14 @@ export class UnitRig {
    */
   interactionPoseActive = false;
   private readonly visualRoot: TransformNode;
+  private readonly braxVisualRoot: TransformNode | null;
+  private braxModelInstance: BraxModelInstance | null = null;
+  private braxAnimationGroup: AnimationGroup | null = null;
+  private braxAnimationRole: 'idle' | 'move' | 'attack' | 'hit' | 'death' | null = null;
+  private braxPreviousState: UnitState | null = null;
+  private braxPreviousAttackProgress = 0;
+  private braxPreviousHitProgress = 0;
+  private disposed = false;
   private readonly torso: TransformNode;
   private readonly head: TransformNode;
   private readonly leftArm: TransformNode;
@@ -107,10 +123,19 @@ export class UnitRig {
   private readonly shieldRestPosition = Vector3.Zero();
   private readonly shieldRestRotation = Vector3.Zero();
 
-  constructor(scene: Scene, materials: MaterialLibrary, readonly kind: UnitKind, readonly team: Team, id: number) {
+  constructor(
+    scene: Scene,
+    materials: MaterialLibrary,
+    readonly kind: UnitKind,
+    readonly team: Team,
+    id: number,
+    onBraxMeshAttached?: (mesh: AbstractMesh) => void,
+  ) {
     this.root = new TransformNode(`unit-${id}-${team}-${kind}`, scene);
     this.visualRoot = new TransformNode(`unit-${id}-visual`, scene);
     this.visualRoot.parent = this.root;
+    this.braxVisualRoot = kind === 'brax' ? new TransformNode(`unit-${id}-brax-visual`, scene) : null;
+    if (this.braxVisualRoot) this.braxVisualRoot.parent = this.root;
 
     this.shadow = MeshBuilder.CreateDisc(`unit-${id}-shadow`, { radius: kind === 'brax' ? 0.92 : kind === 'fuse' ? 0.74 : 0.66, tessellation: 24 }, scene);
     this.shadow.parent = this.root;
@@ -197,10 +222,19 @@ export class UnitRig {
     this.healthFill.material = materials.team(team);
     this.healthFill.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.healthFill.isPickable = false;
+
+    if (this.braxVisualRoot) void this.attachBraxModel(scene, onBraxMeshAttached);
   }
 
   setEnabled(enabled: boolean): void {
     this.root.setEnabled(enabled);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    disposeBraxModelInstance(this.braxModelInstance);
+    this.braxModelInstance = null;
+    this.root.dispose();
   }
 
   setHealthRatio(ratio: number): void {
@@ -227,6 +261,7 @@ export class UnitRig {
     this.weaponRoot.rotation.set(0, 0, 0);
     this.shieldRoot.rotation.set(0, 0, 0);
     this.deathRotation = 0;
+    this.resetBraxAnimation();
     if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
     this.setHealthRatio(1);
   }
@@ -490,6 +525,7 @@ export class UnitRig {
   }
 
   updateAnimation(state: UnitState, elapsed: number, attackProgress: number, hitProgress: number, deathProgress: number, carryingFlag: boolean): void {
+    this.updateBraxAnimation(state, attackProgress, hitProgress);
     const idleSpeed = this.kind === 'brax' ? 2.6 : 3.4;
     const idleAmp = this.kind === 'brax' ? 0.032 : 0.042;
     const idleBob = Math.sin(elapsed * idleSpeed) * idleAmp;
@@ -581,6 +617,135 @@ export class UnitRig {
       this.leftArm.rotation.z = -0.38;
       this.torso.rotation.z += Math.sin(elapsed * 4.2) * 0.02;
     }
+  }
+
+  private async attachBraxModel(scene: Scene, onMeshAttached?: (mesh: AbstractMesh) => void): Promise<void> {
+    const braxVisualRoot = this.braxVisualRoot;
+    if (!braxVisualRoot) return;
+    const instance = await createBraxModelInstance(scene, this.root.name);
+    if (!instance) return;
+    if (this.disposed || scene.isDisposed) {
+      disposeBraxModelInstance(instance);
+      return;
+    }
+
+    try {
+      // Preserve the complete imported hierarchy: only Babylon's returned top-level model root is
+      // parented. Scale, facing correction, and ground placement live solely on braxVisualRoot.
+      instance.modelRoot.parent = braxVisualRoot;
+      braxVisualRoot.scaling.setAll(instance.scale);
+      braxVisualRoot.rotation.set(
+        BRAX_MODEL_ROTATION.x,
+        BRAX_MODEL_ROTATION.y,
+        BRAX_MODEL_ROTATION.z,
+      );
+      braxVisualRoot.position.y = instance.groundYOffset;
+      this.rejectUnsafeBraxRootTracks(instance);
+      this.braxModelInstance = instance;
+      this.resetBraxAnimation();
+      instance.modelRoot.setEnabled(true);
+    } catch (error) {
+      this.braxModelInstance = null;
+      disposeBraxModelInstance(instance);
+      console.error('[BRAX] Minotaur attachment failed; keeping the procedural visual.', error);
+      return;
+    }
+
+    // Hide the procedural render meshes only after the complete rig has attached successfully.
+    this.visualRoot.getChildMeshes().forEach((mesh) => {
+      mesh.isVisible = false;
+    });
+    if (onMeshAttached) instance.modelRoot.getChildMeshes().forEach(onMeshAttached);
+  }
+
+  private rejectUnsafeBraxRootTracks(instance: BraxModelInstance): void {
+    const protectedRoots = new Set([this.root, this.braxVisualRoot, instance.modelRoot]);
+    for (const group of instance.animationGroups) {
+      for (const targeted of [...group.targetedAnimations]) {
+        if (!protectedRoots.has(targeted.target)) continue;
+        const property = targeted.animation.targetProperty.toLowerCase();
+        if (!property.includes('position') && !property.includes('scal')) continue;
+        group.removeTargetedAnimation(targeted.animation);
+        console.warn(
+          `[BRAX] Rejected ${group.name}:${targeted.animation.targetProperty} on a gameplay/world root.`,
+        );
+      }
+    }
+  }
+
+  private updateBraxAnimation(state: UnitState, attackProgress: number, hitProgress: number): void {
+    const instance = this.braxModelInstance;
+    if (!instance) return;
+    const attackStarted = state === 'attacking' && (
+      this.braxPreviousState !== 'attacking'
+      || attackProgress + 0.05 < this.braxPreviousAttackProgress
+    );
+    const hitStarted = state === 'hit' && (
+      this.braxPreviousState !== 'hit'
+      || hitProgress + 0.05 < this.braxPreviousHitProgress
+    );
+
+    if (state === 'dead') {
+      if (instance.animations.death) {
+        if (this.braxPreviousState !== 'dead') {
+          this.playBraxAnimation(instance.animations.death, false, 'death', true);
+        }
+      } else {
+        this.stopBraxAnimations('death');
+      }
+    } else if (state === 'hit') {
+      if (instance.animations.hit) {
+        if (hitStarted) this.playBraxAnimation(instance.animations.hit, false, 'hit', true);
+      } else {
+        this.playBraxAnimation(instance.animations.idle, true, 'idle');
+      }
+    } else if (state === 'attacking') {
+      if (instance.animations.attack) {
+        if (attackStarted) this.playBraxAnimation(instance.animations.attack, false, 'attack', true);
+      } else {
+        this.playBraxAnimation(instance.animations.idle, true, 'idle');
+      }
+    } else if (state === 'moving' || state === 'climbing') {
+      this.playBraxAnimation(instance.animations.move ?? instance.animations.idle, true, 'move');
+    } else {
+      this.playBraxAnimation(instance.animations.idle, true, 'idle');
+    }
+
+    this.braxPreviousState = state;
+    this.braxPreviousAttackProgress = attackProgress;
+    this.braxPreviousHitProgress = hitProgress;
+  }
+
+  private playBraxAnimation(
+    group: AnimationGroup | null,
+    loop: boolean,
+    role: 'idle' | 'move' | 'attack' | 'hit' | 'death',
+    forceRestart = false,
+  ): void {
+    const instance = this.braxModelInstance;
+    if (!instance || !group) return;
+    if (!forceRestart && this.braxAnimationGroup === group && this.braxAnimationRole === role) return;
+    instance.animationGroups.forEach((candidate) => candidate.stop());
+    group.start(loop);
+    this.braxAnimationGroup = group;
+    this.braxAnimationRole = role;
+  }
+
+  private stopBraxAnimations(role: 'idle' | 'move' | 'attack' | 'hit' | 'death'): void {
+    const instance = this.braxModelInstance;
+    if (!instance || (!this.braxAnimationGroup && this.braxAnimationRole === role)) return;
+    instance.animationGroups.forEach((group) => group.stop());
+    this.braxAnimationGroup = null;
+    this.braxAnimationRole = role;
+  }
+
+  private resetBraxAnimation(): void {
+    this.braxModelInstance?.animationGroups.forEach((group) => group.stop());
+    this.braxAnimationGroup = null;
+    this.braxAnimationRole = null;
+    this.braxPreviousState = null;
+    this.braxPreviousAttackProgress = 0;
+    this.braxPreviousHitProgress = 0;
   }
 
   private buildBody(scene: Scene, materials: MaterialLibrary): void {

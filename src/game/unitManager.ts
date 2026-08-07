@@ -39,9 +39,23 @@ const WAIT_DURATION = 0.6;
 const BRIDGE_SWITCH_NEAR_ENTRANCE = 16;
 /** Castle-gate ring inside which ground separation is muted so slot/gate formations hold. */
 const GATE_SUPPRESS_RADIUS_SQUARED = 5.5 * 5.5;
+/**
+ * NYX point-blank band. Both thresholds are multiples of the two bodies' own collision radii, so the
+ * dead zone is only the contact itself (about 1.4 world units against BRAX) and not a fraction of
+ * NYX's 9.2 attack range: long, medium and close shots all stay legal. The larger clear threshold is
+ * pure hysteresis so a single step of separation is enough to resume firing without flip-flopping.
+ */
+const POINT_BLANK_CONTACT_SCALE = 1.3;
+const POINT_BLANK_CLEAR_SCALE = 1.75;
+/** How far a point-blank back-step aims for, and the total kiting budget before NYX shoots anyway. */
+const POINT_BLANK_BACKSTEP = 1.5;
+const POINT_BLANK_BUDGET = 1.4;
+/** Sideways fan tried when the straight-back retreat point is water, a wall or off the battlefield. */
+const POINT_BLANK_FAN = [0, 0.6, -0.6, 1.15, -1.15] as const;
 
 const stallAnchorScratch = Vector3.Zero();
 const recoveryScratch = Vector3.Zero();
+const pointBlankScratch = Vector3.Zero();
 const separationScratch = { x: 0, z: 0 };
 
 export class UnitManager {
@@ -279,10 +293,18 @@ export class UnitManager {
       const distanceSquared = squaredDistanceXZ(unit.position, target.position);
       const attackRangeSquared = unit.stats.attackRange * unit.stats.attackRange;
       if (distanceSquared <= attackRangeSquared) {
+        // NYX fires at long, medium and close range alike. Only an enemy pressed against its body
+        // suppresses the shot, and then only long enough to back up one step and re-open the gap.
+        if (this.isPointBlank(unit, target, distanceSquared)) {
+          this.updatePointBlankRetreat(unit, target, deltaSeconds, elapsed);
+          return;
+        }
+        this.clearPointBlank(unit, target, distanceSquared);
         this.updateAttack(unit, target, deltaSeconds, elapsed);
         return;
       }
     }
+    unit.pointBlankClock = 0;
 
     if (
       unit.team === 'blue'
@@ -368,6 +390,112 @@ export class UnitManager {
       unit.stats.windup / unit.stats.attackCooldown,
       attackReleased,
     );
+  }
+
+  /**
+   * Squared point-blank contact distance for this pair, derived purely from the two collision radii.
+   * `clearing` returns the wider hysteresis threshold used while NYX is already backing away.
+   */
+  private pointBlankThresholdSquared(unit: UnitEntity, target: UnitEntity, clearing: boolean): number {
+    const contact = unit.bodyRadius + target.bodyRadius;
+    const scaled = contact * (clearing ? POINT_BLANK_CLEAR_SCALE : POINT_BLANK_CONTACT_SCALE);
+    return scaled * scaled;
+  }
+
+  /**
+   * True only while an enemy is physically pressed against NYX. Every other distance inside the
+   * 9.2-unit attack range — long, medium and close — is a normal firing distance.
+   */
+  private isPointBlank(unit: UnitEntity, target: UnitEntity, distanceSquared: number): boolean {
+    if (unit.kind !== 'nyx' || unit.navigationArea !== 'ground') return false;
+    // Once the kiting budget is spent NYX shoots from contact rather than backing away forever.
+    if (unit.pointBlankClock >= POINT_BLANK_BUDGET) return false;
+    const retreating = unit.pointBlankClock > 0;
+    return distanceSquared <= this.pointBlankThresholdSquared(unit, target, retreating);
+  }
+
+  /**
+   * Release the kiting budget once the gap is genuinely re-opened. While the attacker is still
+   * touching NYX the spent budget is deliberately kept, so a marksman that could not find room keeps
+   * firing from contact instead of oscillating between backing away and shooting.
+   */
+  private clearPointBlank(unit: UnitEntity, target: UnitEntity, distanceSquared: number): void {
+    if (unit.pointBlankClock === 0) return;
+    if (distanceSquared > this.pointBlankThresholdSquared(unit, target, true)) unit.pointBlankClock = 0;
+  }
+
+  /**
+   * Short local reposition while a melee attacker is touching NYX: keep facing the threat, hold the
+   * attack cycle where it is, and take one terrain-legal back-step away from that attacker. The step
+   * uses the same applyGroundStep + blocksPlayableStep gates as normal movement, so it can never
+   * enter water, leave the battlefield or cut through the tower, and the budget keeps it local.
+   */
+  private updatePointBlankRetreat(
+    unit: UnitEntity,
+    target: UnitEntity,
+    deltaSeconds: number,
+    elapsed: number,
+  ): void {
+    unit.pointBlankClock += deltaSeconds;
+    this.faceUnit(unit, target.position, deltaSeconds * 1.8);
+    const retreat = this.pointBlankRetreatGoal(unit, target);
+    let moved = false;
+    if (retreat) {
+      const prevX = unit.position.x;
+      const prevZ = unit.position.z;
+      let dx = retreat.x - unit.position.x;
+      let dz = retreat.z - unit.position.z;
+      const length = Math.hypot(dx, dz);
+      if (length > 0.001) {
+        dx /= length;
+        dz /= length;
+        const step = Math.min(length, unit.stats.speed * deltaSeconds);
+        moved = applyGroundStep(unit, unit.position.x + dx * step, unit.position.z + dz * step);
+        if (moved && blocksPlayableStep(prevX, prevZ, unit.position.x, unit.position.z, unit.bodyRadius)) {
+          unit.position.x = prevX;
+          unit.position.z = prevZ;
+          moved = false;
+        }
+      }
+    }
+    // The attack clock is deliberately left untouched so the windup NYX had already banked is not
+    // thrown away, and the shot resumes on cadence the moment the gap re-opens.
+    unit.state = moved ? 'moving' : 'idle';
+    // The retreat is a legitimate hold, so the stall detector must not fire a recovery on top of it.
+    unit.noProgressClock = 0;
+    unit.rig.updateAnimation(unit.state, elapsed, 0, 0, 0, unit.carryingFlag);
+  }
+
+  /** Straight-back retreat point, fanned sideways until one candidate passes the terrain gates. */
+  private pointBlankRetreatGoal(unit: UnitEntity, target: UnitEntity): Vector3 | null {
+    let awayX = unit.position.x - target.position.x;
+    let awayZ = unit.position.z - target.position.z;
+    const length = Math.hypot(awayX, awayZ);
+    if (length < 0.001) {
+      // Exactly co-located: back away along the unit's own facing rather than dividing by zero.
+      awayX = Math.sin(unit.rig.root.rotation.y);
+      awayZ = Math.cos(unit.rig.root.rotation.y);
+    } else {
+      awayX /= length;
+      awayZ /= length;
+    }
+    for (const bias of POINT_BLANK_FAN) {
+      // Rotate the away vector by the fan bias, using its perpendicular so no trig is needed.
+      const dirX = awayX + -awayZ * bias;
+      const dirZ = awayZ + awayX * bias;
+      const norm = Math.hypot(dirX, dirZ);
+      if (norm < 0.001) continue;
+      const pointX = unit.position.x + (dirX / norm) * POINT_BLANK_BACKSTEP;
+      const pointZ = unit.position.z + (dirZ / norm) * POINT_BLANK_BACKSTEP;
+      if (
+        blocksGroundStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+        || blocksPlayableStep(unit.position.x, unit.position.z, pointX, pointZ, unit.bodyRadius)
+      ) continue;
+      pointBlankScratch.set(pointX, unit.position.y, pointZ);
+      if (this.segmentCrossesTower(unit.position, pointBlankScratch, 0.72)) continue;
+      return pointBlankScratch;
+    }
+    return null;
   }
 
   private refreshTarget(unit: UnitEntity): void {

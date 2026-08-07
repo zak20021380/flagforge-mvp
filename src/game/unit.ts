@@ -58,6 +58,8 @@ export class UnitEntity {
   reservedSlot = -1;
   /** Rotation offset for slot reacquisition after a stale-reservation release. */
   acquireBias = 0;
+  /** Seconds NYX has spent backing out of a point-blank body contact; caps the kiting budget. */
+  pointBlankClock = 0;
 
   constructor(
     readonly id: number,
@@ -106,6 +108,7 @@ export class UnitEntity {
     this.crowdEngaged = false;
     this.reservedSlot = -1;
     this.acquireBias = 0;
+    this.pointBlankClock = 0;
     this.rig.root.position.copyFrom(position);
     this.rig.root.rotation.set(0, this.team === 'blue' ? 0 : Math.PI, 0);
     this.rig.resetVisual();
@@ -130,6 +133,7 @@ export class UnitEntity {
     this.recoveryGoalZ = 0;
     this.crowdEngaged = false;
     this.reservedSlot = -1;
+    this.pointBlankClock = 0;
     this.rig.setEnabled(false);
   }
 }

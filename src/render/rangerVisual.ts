@@ -42,8 +42,8 @@ export const RANGER_VISUAL_SCALE = RANGER_VISUAL_HEIGHT
   / ((RANGER_MESH_MAX_Y - RANGER_MESH_MIN_Y) * RANGER_ARMATURE_SCALE);
 const RANGER_GROUND_OFFSET = -RANGER_MESH_MIN_Y * RANGER_ARMATURE_SCALE * RANGER_VISUAL_SCALE;
 
-/** The authored Run loop is 0.533 seconds; 0.84 matches NYX's quicker 3.4-unit ground pace. */
-const RANGER_RUN_SPEED_RATIO = 0.84;
+/** The authored Run loop is 0.533 seconds; 1.04 matches NYX's quicker 4.2-unit ground pace. */
+const RANGER_RUN_SPEED_RATIO = 1.04;
 /**
  * Shoot has 151 authored keys at 30 fps. Frame 49 is the nocked, draw-ready pose. The draw hand
  * opens and the arm begins its release recoil at frame 125; mapping that key to the gameplay-owned
@@ -57,6 +57,14 @@ const RANGER_SHOOT_DRAW_START = authoredShootProgress(RANGER_SHOOT_DRAW_START_FR
 const RANGER_SHOOT_RELEASE = authoredShootProgress(RANGER_SHOOT_RELEASE_FRAME);
 const RANGER_DEATH_DURATION = 2.0333333015441895;
 const RANGER_CORPSE_LIFETIME = 1.18;
+/**
+ * removeRootTranslationTracks() strips the authored Hips translation from Death as well, so the
+ * collapse keeps the standing root height and the corpse ends up hovering. The lowest animated body
+ * vertex is sampled across the Death clip once per scene and the resulting per-progress corrections
+ * are applied to the visual wrapper only, never to the gameplay root or collider.
+ */
+const RANGER_DEATH_GROUND_SAMPLES = 13;
+let rangerDeathGroundCurve: readonly number[] | null = null;
 const RANGER_BOW_FALLBACK = new Vector3(2.35, 4.65, 0.55);
 const RANGER_ARROW_BONE = 'mixamorig:arrow';
 const RANGER_BODY_MIN_INFLUENCING_BONES = 8;
@@ -99,6 +107,8 @@ export class RangerVisualLibrary {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // The sampled Death curve describes this GLB, so a reload must measure the new asset again.
+    rangerDeathGroundCurve = null;
     this.container.dispose();
   }
 }
@@ -113,12 +123,14 @@ export class RangerVisualInstance {
   private readonly bowHand: TransformNode | null;
   private readonly hips: TransformNode | null;
   private readonly hipsRestPosition: Vector3 | null;
+  private readonly bodyMeshes: readonly AbstractMesh[];
   private readonly bowWorld = Vector3.Zero();
   private readonly parentInverse = Matrix.Identity();
   private readonly climbForwardLocal = Vector3.Zero();
   private currentClip: RangerClipName | null = null;
   private lastAttackProgress = -1;
   private lastAttackReleased = false;
+  private deathPoseProgress = 0;
   private disposed = false;
 
   constructor(
@@ -156,6 +168,7 @@ export class RangerVisualInstance {
     }
     const boneInfluences = new Map(meshes.map((mesh) => [mesh, influencingBoneIndices(mesh)]));
     const bodyMeshes = identifyBodyMeshes(meshes, boneInfluences);
+    this.bodyMeshes = [...bodyMeshes];
     const importedAuxiliaryMeshes = meshes.filter((mesh) => !bodyMeshes.has(mesh));
     const importedArrows = meshes.filter((mesh) => isRigidlySkinnedToBone(
       mesh,
@@ -239,6 +252,7 @@ export class RangerVisualInstance {
     fletchingVertical.checkCollisions = false;
     this.setHeldArrowVisible(false);
     this.guardImportedAuxiliaryBounds(importedAuxiliaryMeshes);
+    this.ensureDeathGroundCurve();
   }
 
   reset(): void {
@@ -249,6 +263,7 @@ export class RangerVisualInstance {
     this.wrapper.scaling.setAll(RANGER_VISUAL_SCALE);
     this.lastAttackProgress = -1;
     this.lastAttackReleased = false;
+    this.deathPoseProgress = 0;
     this.playClip('Idle', true, 1);
     this.setHeldArrowVisible(true);
   }
@@ -269,6 +284,10 @@ export class RangerVisualInstance {
     climbSurfaceNormal: Vector3 | null,
   ): void {
     if (this.disposed) return;
+    if (state !== 'dead' && this.deathPoseProgress !== 0) {
+      this.deathPoseProgress = 0;
+      this.wrapper.position.y = RANGER_GROUND_OFFSET;
+    }
     if (state === 'attacking') {
       this.clearClimbFacing();
       const beganNewAttack = this.currentClip !== 'Shoot'
@@ -293,6 +312,7 @@ export class RangerVisualInstance {
       this.clearClimbFacing();
       this.setHeldArrowVisible(false);
       this.playClip('Death', false, RANGER_DEATH_DURATION / RANGER_CORPSE_LIFETIME);
+      this.applyDeathGrounding();
     } else if (state === 'moving') {
       this.clearClimbFacing();
       this.setHeldArrowVisible(true);
@@ -465,6 +485,90 @@ export class RangerVisualInstance {
 
   private restoreHipsPosition(): void {
     if (this.hips && this.hipsRestPosition) this.hips.position.copyFrom(this.hipsRestPosition);
+  }
+
+  /**
+   * Sample the animated Death pose once per session and cache how far the lowest skinned vertex sits
+   * above the logical root at each point in the clip. Bounds are measured relative to the gameplay
+   * root's absolute position, so the curve is independent of wherever this instance was built.
+   */
+  private ensureDeathGroundCurve(): void {
+    if (rangerDeathGroundCurve || this.bodyMeshes.length === 0) return;
+    const group = this.clips.get('Death');
+    if (!group) return;
+    const previousBlending = group.enableBlending;
+    const samples: number[] = [];
+    // Blending would only lerp part-way toward each sampled key, so the authored pose is read raw.
+    group.enableBlending = false;
+    group.start(false, 1);
+    group.pause();
+    for (let index = 0; index < RANGER_DEATH_GROUND_SAMPLES; index += 1) {
+      const progress = index / (RANGER_DEATH_GROUND_SAMPLES - 1);
+      group.goToFrame(lerp(group.from, group.to, progress));
+      this.restoreHipsPosition();
+      samples.push(this.measureBodyGroundClearance());
+    }
+    // stop() leaves the skeleton on whatever pose was last written, so rewind to the clip's standing
+    // first frame before releasing it and cache the body bounds there rather than on the collapse.
+    group.goToFrame(group.from);
+    this.restoreHipsPosition();
+    group.stop(true);
+    group.enableBlending = previousBlending;
+    this.currentClip = null;
+    this.refreshBodyBounds();
+    rangerDeathGroundCurve = samples.every((value) => Number.isFinite(value)) ? samples : null;
+  }
+
+  /** Height of the lowest animated body vertex above the gameplay root, in world units. */
+  private measureBodyGroundClearance(): number {
+    this.refreshBodyBounds();
+    const rootY = this.visualParent.getAbsolutePosition().y;
+    let lowest = Number.POSITIVE_INFINITY;
+    for (const mesh of this.bodyMeshes) {
+      const minimum = mesh.getBoundingInfo().boundingBox.minimumWorld.y;
+      if (minimum < lowest) lowest = minimum;
+    }
+    return Number.isFinite(lowest) ? lowest - rootY : Number.NaN;
+  }
+
+  private refreshBodyBounds(): void {
+    this.visualParent.computeWorldMatrix(true);
+    this.wrapper.computeWorldMatrix(true);
+    for (const root of this.entries.rootNodes) root.computeWorldMatrix(true);
+    for (const skeleton of this.entries.skeletons) skeleton.prepare(true);
+    for (const mesh of this.bodyMeshes) {
+      mesh.computeWorldMatrix(true);
+      mesh.refreshBoundingInfo({
+        applySkeleton: mesh.skeleton !== null,
+        applyMorph: mesh.morphTargetManager !== null,
+      });
+      mesh.computeWorldMatrix(true);
+    }
+  }
+
+  /**
+   * Death-only visual correction. The Death clip's own playhead drives the sampled curve, so the
+   * drop follows the collapse instead of snapping, and the progress is held monotonically so the
+   * corpse cannot pop back up if the non-looping clip finishes inside the 1.18s corpse lifetime.
+   */
+  private applyDeathGrounding(): void {
+    const curve = rangerDeathGroundCurve;
+    if (!curve) return;
+    const group = this.clips.get('Death');
+    const span = group ? group.to - group.from : 0;
+    const framedProgress = group?.isStarted && span > 1e-6
+      ? clamp01((group.getCurrentFrame() - group.from) / span)
+      : this.deathPoseProgress;
+    this.deathPoseProgress = Math.max(this.deathPoseProgress, framedProgress);
+
+    const scaled = this.deathPoseProgress * (curve.length - 1);
+    const lowIndex = Math.min(curve.length - 1, Math.floor(scaled));
+    const highIndex = Math.min(curve.length - 1, lowIndex + 1);
+    const clearance = lerp(curve[lowIndex], curve[highIndex], scaled - lowIndex);
+    // The standing measurement already contains RANGER_GROUND_OFFSET, so subtracting the residual
+    // clearance seats the lowest vertex on the ground without letting the body sink through it.
+    const correction = Math.max(-RANGER_VISUAL_HEIGHT, Math.min(RANGER_VISUAL_HEIGHT, clearance));
+    this.wrapper.position.y = RANGER_GROUND_OFFSET - correction;
   }
 
   /**

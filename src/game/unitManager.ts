@@ -352,12 +352,22 @@ export class UnitManager {
       }
     }
 
+    const attackReleased = unit.attackHitApplied;
     if (unit.attackClock >= unit.stats.attackCooldown) {
       unit.attackClock = 0;
       unit.attackHitApplied = false;
     }
 
-    unit.rig.updateAnimation('attacking', elapsed, progress, 0, 0, false);
+    unit.rig.updateAnimation(
+      'attacking',
+      elapsed,
+      progress,
+      0,
+      0,
+      false,
+      unit.stats.windup / unit.stats.attackCooldown,
+      attackReleased,
+    );
   }
 
   private refreshTarget(unit: UnitEntity): void {
@@ -1006,6 +1016,7 @@ export class UnitManager {
       unit.state = 'attacking';
       this.faceUnit(unit, enemyCastle.gatePoint, deltaSeconds * 1.8);
       unit.attackClock += deltaSeconds;
+      const progress = Math.min(1, unit.attackClock / unit.stats.attackCooldown);
       if (!unit.attackHitApplied && unit.attackClock >= unit.stats.windup) {
         unit.attackHitApplied = true;
         // Stage 1 spends the gate's own damage table, stage 2 the castle's. The router in
@@ -1030,11 +1041,21 @@ export class UnitManager {
         else this.effects.castleHit(hitPos);
         this.audio.play('swing');
       }
+      const attackReleased = unit.attackHitApplied;
       if (unit.attackClock >= unit.stats.attackCooldown) {
         unit.attackClock = 0;
         unit.attackHitApplied = false;
       }
-      unit.rig.updateAnimation('attacking', elapsed, Math.min(1, unit.attackClock / unit.stats.attackCooldown), 0, 0, false);
+      unit.rig.updateAnimation(
+        'attacking',
+        elapsed,
+        progress,
+        0,
+        0,
+        false,
+        unit.stats.windup / unit.stats.attackCooldown,
+        attackReleased,
+      );
       return true;
     }
     return false;

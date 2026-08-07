@@ -3,7 +3,6 @@ import {
   AnimationGroup,
   AssetContainer,
   InstantiatedEntries,
-  Matrix,
   MeshBuilder,
   Scene,
   SceneLoader,
@@ -12,6 +11,8 @@ import {
   VertexBuffer,
 } from '@babylonjs/core';
 import '@babylonjs/loaders/glTF';
+import { RANGER_ARROW_VISUAL } from './rangerArrow';
+import type { MaterialLibrary } from './materials';
 
 export const RANGER_CLIP_NAMES = [
   'Run',
@@ -39,10 +40,19 @@ export const RANGER_VISUAL_SCALE = RANGER_VISUAL_HEIGHT
   / ((RANGER_MESH_MAX_Y - RANGER_MESH_MIN_Y) * RANGER_ARMATURE_SCALE);
 const RANGER_GROUND_OFFSET = -RANGER_MESH_MIN_Y * RANGER_ARMATURE_SCALE * RANGER_VISUAL_SCALE;
 
-/** The existing NYX timing, expressed only as a visual release point within one attack cycle. */
-const RANGER_ARROW_RELEASE_PROGRESS = 0.58 / 1.42;
-const RANGER_SHOOT_DURATION = 5.0333333015441895;
-const RANGER_ATTACK_CYCLE = 1.42;
+/** The authored Run loop is 0.533 seconds; 0.75 gives NYX a readable 0.711-second gait cycle. */
+const RANGER_RUN_SPEED_RATIO = 0.75;
+/**
+ * Shoot has 151 authored keys at 30 fps. Frame 49 is the nocked, draw-ready pose. The draw hand
+ * opens and the arm begins its release recoil at frame 125; mapping that key to the gameplay-owned
+ * windup skips only the long nocking preamble and keeps the full authored recovery.
+ */
+const RANGER_SHOOT_FIRST_FRAME = 1;
+const RANGER_SHOOT_DRAW_START_FRAME = 49;
+const RANGER_SHOOT_RELEASE_FRAME = 125;
+const RANGER_SHOOT_LAST_FRAME = 151;
+const RANGER_SHOOT_DRAW_START = authoredShootProgress(RANGER_SHOOT_DRAW_START_FRAME);
+const RANGER_SHOOT_RELEASE = authoredShootProgress(RANGER_SHOOT_RELEASE_FRAME);
 const RANGER_DEATH_DURATION = 2.0333333015441895;
 const RANGER_CORPSE_LIFETIME = 1.18;
 const RANGER_BOW_FALLBACK = new Vector3(2.35, 4.65, 0.55);
@@ -58,7 +68,10 @@ export class RangerVisualLibrary {
   readonly detectedClipNames: readonly string[];
   private disposed = false;
 
-  private constructor(private readonly container: AssetContainer) {
+  private constructor(
+    private readonly container: AssetContainer,
+    private readonly materials: MaterialLibrary,
+  ) {
     this.detectedClipNames = container.animationGroups.map((group) => group.name);
     const missing = RANGER_CLIP_NAMES.filter((name) => !this.detectedClipNames.includes(name));
     if (missing.length > 0) {
@@ -67,18 +80,18 @@ export class RangerVisualLibrary {
     }
   }
 
-  static async load(scene: Scene): Promise<RangerVisualLibrary> {
+  static async load(scene: Scene, materials: MaterialLibrary): Promise<RangerVisualLibrary> {
     const container = await SceneLoader.LoadAssetContainerAsync(
       '/assets/units/ranger/',
       'ranger.glb',
       scene,
     );
-    return new RangerVisualLibrary(container);
+    return new RangerVisualLibrary(container, materials);
   }
 
   createInstance(parent: TransformNode, id: number): RangerVisualInstance {
     if (this.disposed) throw new Error('Cannot instantiate a disposed Ranger visual library');
-    return new RangerVisualInstance(this.container, parent, id);
+    return new RangerVisualInstance(this.container, this.materials, parent, id);
   }
 
   dispose(): void {
@@ -98,13 +111,18 @@ export class RangerVisualInstance {
   private readonly bowHand: TransformNode | null;
   private readonly hips: TransformNode | null;
   private readonly hipsRestPosition: Vector3 | null;
-  private readonly parentInverse = new Matrix();
   private readonly bowWorld = Vector3.Zero();
   private currentClip: RangerClipName | null = null;
   private lastAttackProgress = -1;
+  private lastAttackReleased = false;
   private disposed = false;
 
-  constructor(container: AssetContainer, parent: TransformNode, id: number) {
+  constructor(
+    container: AssetContainer,
+    materials: MaterialLibrary,
+    parent: TransformNode,
+    id: number,
+  ) {
     const prefix = `unit-${id}-ranger-`;
     this.visualParent = parent;
     this.wrapper = new TransformNode(`${prefix}visual-wrapper`, parent.getScene());
@@ -134,12 +152,12 @@ export class RangerVisualInstance {
     }
     const boneInfluences = new Map(meshes.map((mesh) => [mesh, influencingBoneIndices(mesh)]));
     const bodyMeshes = identifyBodyMeshes(meshes, boneInfluences);
+    const importedAuxiliaryMeshes = meshes.filter((mesh) => !bodyMeshes.has(mesh));
     const importedArrows = meshes.filter((mesh) => isRigidlySkinnedToBone(
       mesh,
       boneInfluences.get(mesh),
       RANGER_ARROW_BONE,
     ));
-    const importedArrowMaterial = importedArrows[0]?.material ?? null;
     // The GLB arrow is driven by mixamorig:arrow, so it is not rendered alongside the custom held
     // arrow and pooled projectile. Bone influence, rather than the exporter's shifted names or
     // materials, identifies it.
@@ -159,32 +177,64 @@ export class RangerVisualInstance {
     this.bowHand = this.findAnimatedNode('mixamorig:LeftHand');
     this.removeRootTranslationTracks();
     this.heldArrow = new TransformNode(`${prefix}held-arrow`, parent.getScene());
-    this.heldArrow.parent = parent;
-    this.heldArrow.position.copyFrom(RANGER_BOW_FALLBACK);
+    this.heldArrow.parent = this.bowHand ?? parent;
+    if (this.bowHand) {
+      // The animated hand sits below the 337.385 wrapper and its matching 0.01 GLB root correction.
+      // Cancel the socket's final world scale once so this procedural arrow keeps world-unit sizing.
+      this.bowHand.computeWorldMatrix(true);
+      const socketScale = this.bowHand.absoluteScaling;
+      this.heldArrow.scaling.set(
+        inverseFiniteScale(socketScale.x),
+        inverseFiniteScale(socketScale.y),
+        inverseFiniteScale(socketScale.z),
+      );
+    } else {
+      this.heldArrow.position.copyFrom(RANGER_BOW_FALLBACK);
+    }
     const shaft = MeshBuilder.CreateCylinder(`${prefix}held-arrow-shaft`, {
-      height: 1.15,
-      diameter: 0.055,
+      height: RANGER_ARROW_VISUAL.shaftLength,
+      diameter: RANGER_ARROW_VISUAL.shaftDiameter,
       tessellation: 6,
     }, parent.getScene());
     shaft.parent = this.heldArrow;
     shaft.rotation.x = Math.PI / 2;
-    shaft.material = importedArrowMaterial;
+    shaft.material = materials.arrowShaft;
     shaft.isPickable = false;
     shaft.checkCollisions = false;
     const tip = MeshBuilder.CreateCylinder(`${prefix}held-arrow-tip`, {
-      height: 0.24,
+      height: RANGER_ARROW_VISUAL.tipLength,
       diameterTop: 0,
-      diameterBottom: 0.18,
+      diameterBottom: RANGER_ARROW_VISUAL.tipDiameter,
       tessellation: 6,
     }, parent.getScene());
     tip.parent = this.heldArrow;
-    tip.position.z = 0.68;
+    tip.position.z = RANGER_ARROW_VISUAL.tipOffset;
     tip.rotation.x = Math.PI / 2;
-    tip.material = importedArrowMaterial;
+    tip.material = materials.arrowHead;
     tip.isPickable = false;
     tip.checkCollisions = false;
+    const fletchingHorizontal = MeshBuilder.CreateBox(`${prefix}held-arrow-fletching-horizontal`, {
+      width: RANGER_ARROW_VISUAL.fletchingWidth,
+      height: RANGER_ARROW_VISUAL.fletchingThickness,
+      depth: RANGER_ARROW_VISUAL.fletchingLength,
+    }, parent.getScene());
+    fletchingHorizontal.parent = this.heldArrow;
+    fletchingHorizontal.position.z = RANGER_ARROW_VISUAL.fletchingOffset;
+    fletchingHorizontal.material = materials.arrowFletching;
+    fletchingHorizontal.isPickable = false;
+    fletchingHorizontal.checkCollisions = false;
+    const fletchingVertical = MeshBuilder.CreateBox(`${prefix}held-arrow-fletching-vertical`, {
+      width: RANGER_ARROW_VISUAL.fletchingThickness,
+      height: RANGER_ARROW_VISUAL.fletchingWidth,
+      depth: RANGER_ARROW_VISUAL.fletchingLength,
+    }, parent.getScene());
+    fletchingVertical.parent = this.heldArrow;
+    fletchingVertical.position.z = RANGER_ARROW_VISUAL.fletchingOffset;
+    fletchingVertical.material = materials.arrowFletching;
+    fletchingVertical.isPickable = false;
+    fletchingVertical.checkCollisions = false;
     this.setHeldArrowVisible(false);
-    this.guardImpossibleAuxiliaryBounds([...meshes, shaft, tip], bodyMeshes);
+    this.guardImportedAuxiliaryBounds(importedAuxiliaryMeshes);
   }
 
   reset(): void {
@@ -193,8 +243,9 @@ export class RangerVisualInstance {
     this.wrapper.rotation.set(0, 0, 0);
     this.wrapper.scaling.setAll(RANGER_VISUAL_SCALE);
     this.lastAttackProgress = -1;
-    this.setHeldArrowVisible(false);
+    this.lastAttackReleased = false;
     this.playClip('Idle', true, 1);
+    this.setHeldArrowVisible(true);
   }
 
   setEnabled(enabled: boolean): void {
@@ -204,34 +255,45 @@ export class RangerVisualInstance {
     }
   }
 
-  update(state: string, attackProgress: number, descending: boolean): void {
+  update(
+    state: string,
+    attackProgress: number,
+    attackReleaseProgress: number,
+    attackReleased: boolean,
+    descending: boolean,
+  ): void {
     if (this.disposed) return;
     if (state === 'attacking') {
       const beganNewAttack = this.currentClip !== 'Shoot'
         || this.lastAttackProgress < 0
         || attackProgress + 0.1 < this.lastAttackProgress;
       if (beganNewAttack) {
-        this.setHeldArrowVisible(true);
-        this.playClip('Shoot', false, RANGER_SHOOT_DURATION / RANGER_ATTACK_CYCLE, true);
+        this.playClip('Shoot', false, 1, true, true);
       }
-      if (attackProgress < RANGER_ARROW_RELEASE_PROGRESS) this.syncHeldArrowToBow();
-      if (attackProgress >= RANGER_ARROW_RELEASE_PROGRESS) this.setHeldArrowVisible(false);
+      // On the first gameplay release frame, land exactly on the authored finger-open key even if
+      // a long render delta stepped the attack clock slightly past its windup.
+      const releasedThisFrame = attackReleased && !this.lastAttackReleased;
+      this.seekShoot(releasedThisFrame ? attackReleaseProgress : attackProgress, attackReleaseProgress);
+      this.setHeldArrowVisible(!attackReleased);
       this.lastAttackProgress = attackProgress;
+      this.lastAttackReleased = attackReleased;
       return;
     }
 
     this.lastAttackProgress = -1;
+    this.lastAttackReleased = false;
     if (state === 'dead') {
       this.setHeldArrowVisible(false);
       this.playClip('Death', false, RANGER_DEATH_DURATION / RANGER_CORPSE_LIFETIME);
     } else if (state === 'moving') {
-      this.setHeldArrowVisible(false);
-      this.playClip('Run', true, 1);
+      this.setHeldArrowVisible(true);
+      this.playClip('Run', true, RANGER_RUN_SPEED_RATIO);
     } else if (state === 'climbing') {
       this.setHeldArrowVisible(false);
       this.playClip(descending ? 'ClimbDown' : 'ClimbUp', true, 1);
     } else {
-      this.setHeldArrowVisible(false);
+      // Idle, queued and other stationary states stop Run immediately and ready the next arrow.
+      this.setHeldArrowVisible(true);
       this.playClip('Idle', true, 1);
     }
   }
@@ -258,16 +320,44 @@ export class RangerVisualInstance {
     this.wrapper.dispose();
   }
 
-  private playClip(name: RangerClipName, loop: boolean, speedRatio: number, forceRestart = false): void {
+  private playClip(
+    name: RangerClipName,
+    loop: boolean,
+    speedRatio: number,
+    forceRestart = false,
+    pause = false,
+  ): void {
     if (!forceRestart && this.currentClip === name) return;
     if (this.currentClip) this.clips.get(this.currentClip)?.stop(true);
     this.restoreHipsPosition();
     const group = this.clips.get(name);
     if (!group) return;
     group.start(loop, speedRatio);
+    if (pause) group.pause();
     group.goToFrame(group.from);
     this.restoreHipsPosition();
     this.currentClip = name;
+  }
+
+  /** Seek Shoot from the gameplay attack clock so animation and projectile timing cannot drift. */
+  private seekShoot(attackProgress: number, attackReleaseProgress: number): void {
+    const group = this.clips.get('Shoot');
+    if (!group?.isStarted) return;
+    const cycleProgress = clamp01(attackProgress);
+    const releaseProgress = Math.min(0.999, Math.max(0.001, attackReleaseProgress));
+    const authoredProgress = cycleProgress <= releaseProgress
+      ? lerp(
+        RANGER_SHOOT_DRAW_START,
+        RANGER_SHOOT_RELEASE,
+        cycleProgress / releaseProgress,
+      )
+      : lerp(
+        RANGER_SHOOT_RELEASE,
+        1,
+        (cycleProgress - releaseProgress) / (1 - releaseProgress),
+      );
+    group.goToFrame(lerp(group.from, group.to, authoredProgress));
+    this.restoreHipsPosition();
   }
 
   private stopAll(): void {
@@ -278,17 +368,6 @@ export class RangerVisualInstance {
 
   private setHeldArrowVisible(visible: boolean): void {
     this.heldArrow.setEnabled(visible);
-  }
-
-  private syncHeldArrowToBow(): void {
-    const bowPosition = this.resolveBowWorldPosition();
-    if (!bowPosition) {
-      this.heldArrow.position.copyFrom(RANGER_BOW_FALLBACK);
-      return;
-    }
-    this.visualParent.computeWorldMatrix(true);
-    this.visualParent.getWorldMatrix().invertToRef(this.parentInverse);
-    Vector3.TransformCoordinatesToRef(bowPosition, this.parentInverse, this.heldArrow.position);
   }
 
   private resolveBowWorldPosition(): Vector3 | null {
@@ -353,14 +432,10 @@ export class RangerVisualInstance {
   }
 
   /**
-   * Force final skin/world bounds once and fail closed only for auxiliary renderables. The two
-   * body layers are protected by broad skeleton coverage, so misleading exporter names cannot make
-   * this guard hide the Ranger itself.
+   * Force final skin/world bounds once and fail closed for imported GLB auxiliaries only. Custom
+   * held arrows/projectiles never enter this list, and body layers are excluded before the call.
    */
-  private guardImpossibleAuxiliaryBounds(
-    meshes: readonly AbstractMesh[],
-    bodyMeshes: ReadonlySet<AbstractMesh>,
-  ): void {
+  private guardImportedAuxiliaryBounds(meshes: readonly AbstractMesh[]): void {
     this.visualParent.computeWorldMatrix(true);
     this.wrapper.computeWorldMatrix(true);
     for (const root of this.entries.rootNodes) root.computeWorldMatrix(true);
@@ -396,14 +471,26 @@ export class RangerVisualInstance {
         worldCenter: center.asArray(),
         centerDistance,
       };
-      if (bodyMeshes.has(mesh)) {
-        console.error('Ranger body bounds are invalid; refusing to hide the body mesh.', metrics);
-        continue;
-      }
       mesh.setEnabled(false);
       console.warn('Disabled Ranger auxiliary mesh with impossible world bounds.', metrics);
     }
   }
+}
+
+function inverseFiniteScale(value: number): number {
+  return Number.isFinite(value) && Math.abs(value) > 1e-6 ? 1 / Math.abs(value) : 1;
+}
+
+function authoredShootProgress(frame: number): number {
+  return (frame - RANGER_SHOOT_FIRST_FRAME) / (RANGER_SHOOT_LAST_FRAME - RANGER_SHOOT_FIRST_FRAME);
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function lerp(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
 }
 
 function influencingBoneIndices(mesh: AbstractMesh): ReadonlySet<number> {

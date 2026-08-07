@@ -107,7 +107,7 @@ async function prepareGame(quality: QualityTier): Promise<void> {
 
     ui.setLoading(0.57, 'Creating four animated unit squads');
     await nextFrame();
-    const rangerVisuals = await RangerVisualLibrary.load(arena.scene);
+    const rangerVisuals = await RangerVisualLibrary.load(arena.scene, arena.materials);
     const audio = new AudioManager();
     game = new GameController(arena, canvas, ui, audio, rangerVisuals);
 

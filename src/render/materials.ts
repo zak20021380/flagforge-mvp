@@ -266,6 +266,9 @@ export class MaterialLibrary {
   readonly road: PBRMaterial;
   readonly wood: PBRMaterial;
   readonly metal: PBRMaterial;
+  readonly arrowShaft: PBRMaterial;
+  readonly arrowHead: PBRMaterial;
+  readonly arrowFletching: PBRMaterial;
   readonly gold: PBRMaterial;
   readonly water: PBRMaterial;
   readonly waterDeep: PBRMaterial;
@@ -345,6 +348,20 @@ export class MaterialLibrary {
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#7d4c32'), 0.86);
     this.metal = pbr('mat-metal', Color3.FromHexString('#7a8690'), 0.28, 0.78);
+    // Arrows keep natural wood/steel/fletching colours, with a restrained emissive lift so the
+    // narrow silhouette remains readable under arena shadows without looking self-illuminated.
+    this.arrowShaft = pbr('mat-arrow-shaft', Color3.FromHexString('#9a5d2d'), 0.72, 0.04);
+    this.arrowShaft.emissiveColor = Color3.FromHexString('#291306');
+    this.arrowShaft.emissiveIntensity = 0.5;
+    this.arrowShaft.alpha = 1;
+    this.arrowHead = pbr('mat-arrow-head', Color3.FromHexString('#c5d0d6'), 0.3, 0.72);
+    this.arrowHead.emissiveColor = Color3.FromHexString('#303a40');
+    this.arrowHead.emissiveIntensity = 0.42;
+    this.arrowHead.alpha = 1;
+    this.arrowFletching = pbr('mat-arrow-fletching', Color3.FromHexString('#b9343e'), 0.74, 0.02);
+    this.arrowFletching.emissiveColor = Color3.FromHexString('#34080c');
+    this.arrowFletching.emissiveIntensity = 0.48;
+    this.arrowFletching.alpha = 1;
     this.gold = pbr('mat-gold', Color3.FromHexString('#dca83c'), 0.28, 0.8);
     this.water = pbr('mat-water', Color3.FromHexString('#2a7185'), 0.25, 0.05);
     this.water.alpha = 0.92;

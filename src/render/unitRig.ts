@@ -541,9 +541,24 @@ export class UnitRig {
     this.interactionPoseActive = false;
   }
 
-  updateAnimation(state: UnitState, elapsed: number, attackProgress: number, hitProgress: number, deathProgress: number, carryingFlag: boolean): void {
+  updateAnimation(
+    state: UnitState,
+    elapsed: number,
+    attackProgress: number,
+    hitProgress: number,
+    deathProgress: number,
+    carryingFlag: boolean,
+    attackReleaseProgress = 1,
+    attackReleased = false,
+  ): void {
     if (this.rangerVisual) {
-      this.rangerVisual.update(state, attackProgress, this.rangerClimbDescending);
+      this.rangerVisual.update(
+        state,
+        attackProgress,
+        attackReleaseProgress,
+        attackReleased,
+        this.rangerClimbDescending,
+      );
       if (state === 'dead') {
         this.healthBack.setEnabled(false);
         this.healthFill.setEnabled(false);

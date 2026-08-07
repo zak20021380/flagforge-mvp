@@ -95,19 +95,23 @@ async function prepareGame(quality: QualityTier): Promise<void> {
     engine.setHardwareScalingLevel(settings.hardwareScaling);
 
     ui.setLoading(0.26, 'Building battlefield and castles');
-    const [{ createArenaScene }, { GameController }, { AudioManager }] = await Promise.all([
+    const [{ createArenaScene }, { GameController }, { AudioManager }, { loadVanguardModelLibrary }] = await Promise.all([
       import('./render/arena'),
       import('./game/gameController'),
       import('./audio/audioManager'),
+      import('./render/vanguardModel'),
     ]);
     await nextFrame();
     arena = createArenaScene(engine, canvas, quality);
     applyViewportMetrics();
 
+    ui.setLoading(0.48, 'Loading animated Vanguard character');
+    const vanguardModels = await loadVanguardModelLibrary(arena.scene);
+
     ui.setLoading(0.57, 'Creating four animated unit squads');
     await nextFrame();
     const audio = new AudioManager();
-    game = new GameController(arena, canvas, ui, audio);
+    game = new GameController(arena, canvas, ui, audio, vanguardModels);
 
     ui.setLoading(0.83, 'Linking flag, AI, combat and castle breach');
     await nextFrame();

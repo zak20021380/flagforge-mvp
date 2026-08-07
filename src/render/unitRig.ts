@@ -10,6 +10,7 @@ import {
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
 import { MaterialLibrary } from './materials';
+import { VanguardModelLibrary, type VanguardVisual } from './vanguardModel';
 
 /**
  * World-space hand target on a real ladder surface. The ladder system derives these from the
@@ -55,6 +56,7 @@ export class UnitRig {
   private readonly healthBack: Mesh;
   private readonly healthFill: Mesh;
   private readonly baseScale: number;
+  private readonly vanguardVisual: VanguardVisual | null;
   private deathRotation = 0;
 
   // Arm bone lengths (local units; the visualRoot scale is applied at solve time). The elbow sits
@@ -113,6 +115,7 @@ export class UnitRig {
     readonly kind: UnitKind,
     readonly team: Team,
     id: number,
+    vanguardModels: VanguardModelLibrary,
   ) {
     this.root = new TransformNode(`unit-${id}-${team}-${kind}`, scene);
     this.visualRoot = new TransformNode(`unit-${id}-visual`, scene);
@@ -188,7 +191,8 @@ export class UnitRig {
     // BRAX is the broadest, FUSE is compact but bulky, NYX is slim and VEX is the smallest.
     this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
     this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
-    this.buildBody(scene, materials);
+    this.vanguardVisual = kind === 'brax' ? vanguardModels.instantiate(this.visualRoot, id) : null;
+    if (!this.vanguardVisual) this.buildBody(scene, materials);
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;
@@ -206,10 +210,13 @@ export class UnitRig {
   }
 
   setEnabled(enabled: boolean): void {
+    if (!enabled) this.vanguardVisual?.setActive(false);
     this.root.setEnabled(enabled);
+    if (enabled) this.vanguardVisual?.setActive(true);
   }
 
   dispose(): void {
+    this.vanguardVisual?.dispose();
     this.root.dispose();
   }
 
@@ -238,6 +245,7 @@ export class UnitRig {
     this.shieldRoot.rotation.set(0, 0, 0);
     this.deathRotation = 0;
     if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
+    this.vanguardVisual?.reset();
     this.setHealthRatio(1);
   }
 
@@ -500,6 +508,18 @@ export class UnitRig {
   }
 
   updateAnimation(state: UnitState, elapsed: number, attackProgress: number, hitProgress: number, deathProgress: number, carryingFlag: boolean): void {
+    if (this.vanguardVisual) {
+      if (!this.interactionPoseActive || state === 'dead') {
+        this.visualRoot.position.set(0, 0, 0);
+        this.visualRoot.rotation.set(0, 0, 0);
+      }
+      this.vanguardVisual.update(state, attackProgress, hitProgress);
+      if (state === 'dead') {
+        this.healthBack.setEnabled(false);
+        this.healthFill.setEnabled(false);
+      }
+      return;
+    }
     const idleSpeed = this.kind === 'brax' ? 2.6 : 3.4;
     const idleAmp = this.kind === 'brax' ? 0.032 : 0.042;
     const idleBob = Math.sin(elapsed * idleSpeed) * idleAmp;

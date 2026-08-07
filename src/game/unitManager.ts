@@ -5,7 +5,6 @@ import { clamp, laneX, oppositeTeam, randomRange, squaredDistanceXZ } from '../c
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
 import { UnitRig } from '../render/unitRig';
-import { VanguardModelLibrary } from '../render/vanguardModel';
 import { BridgeTraffic } from './bridgeTraffic';
 import { CastleLogic } from './castleLogic';
 import { CastleLadderSystem } from './castleLadderSystem';
@@ -65,7 +64,6 @@ export class UnitManager {
     private readonly matchFlow: MatchFlow,
     private readonly projectiles: ProjectilePool,
     private readonly audio: AudioManager,
-    private readonly vanguardModels: VanguardModelLibrary,
   ) {
     for (const team of ['blue', 'red'] as const) {
       for (const kind of ['brax', 'nyx', 'vex', 'fuse'] as const) {
@@ -208,7 +206,6 @@ export class UnitManager {
       kind,
       team,
       id,
-      this.vanguardModels,
     );
     rig.setEnabled(false);
     for (const mesh of rig.root.getChildMeshes()) {

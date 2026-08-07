@@ -4,7 +4,6 @@ import { CONFIG, PORTRAIT_LAYOUT, UNIT_STATS } from '../core/config';
 import { laneFromX } from '../core/math';
 import type { CastleState, Team, UnitKind } from '../core/types';
 import type { ArenaScene } from '../render/arena';
-import { VanguardModelLibrary } from '../render/vanguardModel';
 import type { SiegeHudState } from '../ui/gameUI';
 import { GameUI } from '../ui/gameUI';
 import { CastleLogic } from './castleLogic';
@@ -45,7 +44,6 @@ export class GameController {
     private readonly canvas: HTMLCanvasElement,
     private readonly ui: GameUI,
     private readonly audio: AudioManager,
-    private readonly vanguardModels: VanguardModelLibrary,
   ) {
     this.effects = new EffectPool(arena.scene, arena.materials);
     this.flag = new FlagController(
@@ -80,7 +78,6 @@ export class GameController {
       this.matchFlow,
       this.projectiles,
       this.audio,
-      this.vanguardModels,
     );
     this.units = unitManager;
     this.ai = new EnemyAI(this.enemyEnergy, this.units, this.flag, this.castles, this.matchFlow);
@@ -132,7 +129,6 @@ export class GameController {
   dispose(): void {
     this.projectiles.dispose();
     this.units.dispose();
-    this.vanguardModels.dispose();
     this.audio.dispose();
     this.ui.disposeMeters();
   }

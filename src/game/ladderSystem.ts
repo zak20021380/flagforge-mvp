@@ -439,7 +439,7 @@ export class LadderSystem {
         const dz = route.z - segStart.z;
         const dist = Math.hypot(dx, dy, dz);
         const mountP = Math.min(1, dist / Math.max(0.01, totalLen));
-        unit.rig.applyMountPose(mountP, lean, unit.age, this.computeHandGrips(ladder, active), mountP);
+        unit.rig.applyMountPose(mountP, lean, unit.age, this.computeHandGrips(ladder, active), mountP, true);
       } else if (isOnClimbSegment) {
         const segStart = path[1];
         const segEnd = path[2];
@@ -460,7 +460,7 @@ export class LadderSystem {
         const dz = route.z - segStart.z;
         const dist = Math.hypot(dx, dy, dz);
         const dismountP = Math.min(1, dist / Math.max(0.01, totalLen));
-        unit.rig.applyTopDismount(dismountP, unit.age, this.computeHandGrips(ladder, active), 1 - dismountP);
+        unit.rig.applyTopDismount(dismountP, unit.age, this.computeHandGrips(ladder, active), 1 - dismountP, true);
       }
     }
 

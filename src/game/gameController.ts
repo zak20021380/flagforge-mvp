@@ -4,6 +4,7 @@ import { CONFIG, PORTRAIT_LAYOUT, UNIT_STATS } from '../core/config';
 import { laneFromX } from '../core/math';
 import type { CastleState, Team, UnitKind } from '../core/types';
 import type { ArenaScene } from '../render/arena';
+import type { RangerVisualLibrary } from '../render/rangerVisual';
 import type { SiegeHudState } from '../ui/gameUI';
 import { GameUI } from '../ui/gameUI';
 import { CastleLogic } from './castleLogic';
@@ -44,6 +45,7 @@ export class GameController {
     private readonly canvas: HTMLCanvasElement,
     private readonly ui: GameUI,
     private readonly audio: AudioManager,
+    rangerVisuals: RangerVisualLibrary,
   ) {
     this.effects = new EffectPool(arena.scene, arena.materials);
     this.flag = new FlagController(
@@ -78,6 +80,7 @@ export class GameController {
       this.matchFlow,
       this.projectiles,
       this.audio,
+      rangerVisuals,
     );
     this.units = unitManager;
     this.ai = new EnemyAI(this.enemyEnergy, this.units, this.flag, this.castles, this.matchFlow);

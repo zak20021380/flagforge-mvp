@@ -4,6 +4,7 @@ import { ARENA_RIVERS, BLUE_BATTLEFIELD, CENTRAL_TOWER, CONFIG, ENEMY_CASTLE_ASS
 import { clamp, laneX, oppositeTeam, randomRange, squaredDistanceXZ } from '../core/math';
 import type { Lane, NavigationArea, Team, UnitKind } from '../core/types';
 import { MaterialLibrary } from '../render/materials';
+import type { RangerVisualLibrary } from '../render/rangerVisual';
 import { UnitRig } from '../render/unitRig';
 import { BridgeTraffic } from './bridgeTraffic';
 import { CastleLogic } from './castleLogic';
@@ -64,6 +65,7 @@ export class UnitManager {
     private readonly matchFlow: MatchFlow,
     private readonly projectiles: ProjectilePool,
     private readonly audio: AudioManager,
+    private readonly rangerVisuals: RangerVisualLibrary,
   ) {
     for (const team of ['blue', 'red'] as const) {
       for (const kind of ['brax', 'nyx', 'vex', 'fuse'] as const) {
@@ -196,6 +198,7 @@ export class UnitManager {
   dispose(): void {
     for (const unit of this.units) unit.rig.dispose();
     this.units.length = 0;
+    this.rangerVisuals.dispose();
   }
 
   private createUnit(team: Team, kind: UnitKind): UnitEntity {
@@ -206,6 +209,7 @@ export class UnitManager {
       kind,
       team,
       id,
+      this.rangerVisuals,
     );
     rig.setEnabled(false);
     for (const mesh of rig.root.getChildMeshes()) {
@@ -332,8 +336,10 @@ export class UnitManager {
     if (!unit.attackHitApplied && unit.attackClock >= unit.stats.windup) {
       unit.attackHitApplied = true;
       if (unit.kind === 'nyx') {
+        const projectileOrigin = unit.rig.projectileOrigin(1.75);
+        unit.rig.releaseHeldProjectile();
         this.projectiles.launch(
-          unit.position.add(new Vector3(0, 1.75, 0)),
+          projectileOrigin,
           target,
           unit.stats.damage,
           unit.stats.projectileSpeed ?? 16,

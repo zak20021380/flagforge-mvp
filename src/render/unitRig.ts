@@ -10,6 +10,7 @@ import {
 } from '@babylonjs/core';
 import type { Team, UnitKind, UnitState } from '../core/types';
 import { MaterialLibrary } from './materials';
+import type { RangerVisualInstance, RangerVisualLibrary } from './rangerVisual';
 
 /**
  * World-space hand target on a real ladder surface. The ladder system derives these from the
@@ -55,6 +56,8 @@ export class UnitRig {
   private readonly healthBack: Mesh;
   private readonly healthFill: Mesh;
   private readonly baseScale: number;
+  private readonly rangerVisual: RangerVisualInstance | null;
+  private rangerClimbDescending = false;
   private deathRotation = 0;
 
   // Arm bone lengths (local units; the visualRoot scale is applied at solve time). The elbow sits
@@ -113,6 +116,7 @@ export class UnitRig {
     readonly kind: UnitKind,
     readonly team: Team,
     id: number,
+    rangerVisuals?: RangerVisualLibrary,
   ) {
     this.root = new TransformNode(`unit-${id}-${team}-${kind}`, scene);
     this.visualRoot = new TransformNode(`unit-${id}-visual`, scene);
@@ -186,20 +190,31 @@ export class UnitRig {
 
     // Kept in step with UNIT_STATS[kind].scale so the collision body and the silhouette agree:
     // BRAX is the broadest, FUSE is compact but bulky, NYX is slim and VEX is the smallest.
-    this.baseScale = (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : kind === 'nyx' ? 0.94 : 1.02) * 1.15;
-    this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
-    this.buildBody(scene, materials);
+    this.baseScale = kind === 'nyx'
+      ? 1
+      : (kind === 'brax' ? 1.06 : kind === 'vex' ? 0.88 : 1.02) * 1.15;
+    if (kind === 'nyx') this.visualRoot.scaling.setAll(1);
+    else this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
+    if (kind === 'nyx') {
+      if (!rangerVisuals) throw new Error('The Ranger visual library must be loaded before creating NYX units');
+      this.rangerVisual = rangerVisuals.createInstance(this.visualRoot, id);
+      // The flag remains gameplay-owned, but its visual socket sits beside the taller GLB shoulder.
+      this.flagSocket.position = new Vector3(0.85, 3.45, 0.1);
+    } else {
+      this.rangerVisual = null;
+      this.buildBody(scene, materials);
+    }
 
     this.healthBack = MeshBuilder.CreateBox(`unit-${id}-health-back`, { width: 1.2, height: 0.07, depth: 0.03 }, scene);
     this.healthBack.parent = this.root;
-    this.healthBack.position = new Vector3(0, kind === 'brax' ? 4.05 : 3.45, 0);
+    this.healthBack.position = new Vector3(0, kind === 'nyx' ? 6.48 : kind === 'brax' ? 4.05 : 3.45, 0);
     this.healthBack.material = materials.black;
     this.healthBack.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.healthBack.isPickable = false;
 
     this.healthFill = MeshBuilder.CreateBox(`unit-${id}-health-fill`, { width: 1.14, height: 0.045, depth: 0.035 }, scene);
     this.healthFill.parent = this.root;
-    this.healthFill.position = new Vector3(0, kind === 'brax' ? 4.05 : 3.45, -0.02);
+    this.healthFill.position = new Vector3(0, kind === 'nyx' ? 6.48 : kind === 'brax' ? 4.05 : 3.45, -0.02);
     this.healthFill.material = materials.team(team);
     this.healthFill.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.healthFill.isPickable = false;
@@ -207,9 +222,11 @@ export class UnitRig {
 
   setEnabled(enabled: boolean): void {
     this.root.setEnabled(enabled);
+    this.rangerVisual?.setEnabled(enabled);
   }
 
   dispose(): void {
+    this.rangerVisual?.dispose();
     this.root.dispose();
   }
 
@@ -224,7 +241,8 @@ export class UnitRig {
   resetVisual(): void {
     this.visualRoot.rotation.set(0, 0, 0);
     this.visualRoot.position.set(0, 0, 0);
-    this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
+    if (this.kind === 'nyx') this.visualRoot.scaling.setAll(1);
+    else this.visualRoot.scaling.set(this.baseScale, this.baseScale * 1.02, this.baseScale);
     this.torso.rotation.set(0, 0, 0);
     this.torso.position.y = 1.35;
     this.head.rotation.set(0, 0, 0);
@@ -236,9 +254,21 @@ export class UnitRig {
     this.rightLeg.rotation.set(0, 0, 0);
     this.weaponRoot.rotation.set(0, 0, 0);
     this.shieldRoot.rotation.set(0, 0, 0);
+    this.rangerClimbDescending = false;
     this.deathRotation = 0;
     if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
+    this.rangerVisual?.reset();
     this.setHealthRatio(1);
+  }
+
+  /** World-space projectile release point. Ranger uses the animated held-arrow joint at the bow. */
+  projectileOrigin(fallbackHeight: number): Vector3 {
+    const fallback = this.root.position.add(new Vector3(0, fallbackHeight, 0));
+    return this.rangerVisual?.projectileOrigin(fallback) ?? fallback;
+  }
+
+  releaseHeldProjectile(): void {
+    this.rangerVisual?.releaseHeldArrow();
   }
 
   /**
@@ -273,8 +303,12 @@ export class UnitRig {
     }
   }
 
-  applyMountPose(progress: number, lean: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1): void {
+  applyMountPose(progress: number, lean: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1, descending = false): void {
     this.interactionPoseActive = true;
+    if (this.rangerVisual) {
+      this.rangerClimbDescending = descending;
+      return;
+    }
     const p = Math.max(0, Math.min(1, progress));
     const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
     const sway = Math.sin(elapsed * 5) * (1 - ease) * 0.018;
@@ -298,6 +332,10 @@ export class UnitRig {
 
   applyClimbCycle(phase: number, lean: number, elapsed: number, descending = false, grips?: ClimbGripPair, gripStrength = 1): void {
     this.interactionPoseActive = true;
+    if (this.rangerVisual) {
+      this.rangerClimbDescending = descending;
+      return;
+    }
     const p = ((phase % 1) + 1) % 1;
     const dir = descending ? -1 : 1;
     const cycle = p * Math.PI * 2;
@@ -330,8 +368,12 @@ export class UnitRig {
     if (grips) this.solveClimbArms(grips, gripStrength);
   }
 
-  applyTopDismount(progress: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1): void {
+  applyTopDismount(progress: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1, descending = false): void {
     this.interactionPoseActive = true;
+    if (this.rangerVisual) {
+      this.rangerClimbDescending = descending;
+      return;
+    }
     const p = Math.max(0, Math.min(1, progress));
     const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
     const handRelease = Math.max(0, (p - 0.45) * 1.818);
@@ -500,6 +542,14 @@ export class UnitRig {
   }
 
   updateAnimation(state: UnitState, elapsed: number, attackProgress: number, hitProgress: number, deathProgress: number, carryingFlag: boolean): void {
+    if (this.rangerVisual) {
+      this.rangerVisual.update(state, attackProgress, this.rangerClimbDescending);
+      if (state === 'dead') {
+        this.healthBack.setEnabled(false);
+        this.healthFill.setEnabled(false);
+      }
+      return;
+    }
     const idleSpeed = this.kind === 'brax' ? 2.6 : 3.4;
     const idleAmp = this.kind === 'brax' ? 0.032 : 0.042;
     const idleBob = Math.sin(elapsed * idleSpeed) * idleAmp;

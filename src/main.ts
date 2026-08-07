@@ -95,10 +95,11 @@ async function prepareGame(quality: QualityTier): Promise<void> {
     engine.setHardwareScalingLevel(settings.hardwareScaling);
 
     ui.setLoading(0.26, 'Building battlefield and castles');
-    const [{ createArenaScene }, { GameController }, { AudioManager }] = await Promise.all([
+    const [{ createArenaScene }, { GameController }, { AudioManager }, { RangerVisualLibrary }] = await Promise.all([
       import('./render/arena'),
       import('./game/gameController'),
       import('./audio/audioManager'),
+      import('./render/rangerVisual'),
     ]);
     await nextFrame();
     arena = createArenaScene(engine, canvas, quality);
@@ -106,8 +107,9 @@ async function prepareGame(quality: QualityTier): Promise<void> {
 
     ui.setLoading(0.57, 'Creating four animated unit squads');
     await nextFrame();
+    const rangerVisuals = await RangerVisualLibrary.load(arena.scene);
     const audio = new AudioManager();
-    game = new GameController(arena, canvas, ui, audio);
+    game = new GameController(arena, canvas, ui, audio, rangerVisuals);
 
     ui.setLoading(0.83, 'Linking flag, AI, combat and castle breach');
     await nextFrame();

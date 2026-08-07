@@ -3,7 +3,9 @@ import {
   AnimationGroup,
   AssetContainer,
   InstantiatedEntries,
+  Matrix,
   MeshBuilder,
+  Quaternion,
   Scene,
   SceneLoader,
   TransformNode,
@@ -40,8 +42,8 @@ export const RANGER_VISUAL_SCALE = RANGER_VISUAL_HEIGHT
   / ((RANGER_MESH_MAX_Y - RANGER_MESH_MIN_Y) * RANGER_ARMATURE_SCALE);
 const RANGER_GROUND_OFFSET = -RANGER_MESH_MIN_Y * RANGER_ARMATURE_SCALE * RANGER_VISUAL_SCALE;
 
-/** The authored Run loop is 0.533 seconds; 0.75 gives NYX a readable 0.711-second gait cycle. */
-const RANGER_RUN_SPEED_RATIO = 0.75;
+/** The authored Run loop is 0.533 seconds; 0.84 matches NYX's quicker 3.4-unit ground pace. */
+const RANGER_RUN_SPEED_RATIO = 0.84;
 /**
  * Shoot has 151 authored keys at 30 fps. Frame 49 is the nocked, draw-ready pose. The draw hand
  * opens and the arm begins its release recoil at frame 125; mapping that key to the gameplay-owned
@@ -112,6 +114,8 @@ export class RangerVisualInstance {
   private readonly hips: TransformNode | null;
   private readonly hipsRestPosition: Vector3 | null;
   private readonly bowWorld = Vector3.Zero();
+  private readonly parentInverse = Matrix.Identity();
+  private readonly climbForwardLocal = Vector3.Zero();
   private currentClip: RangerClipName | null = null;
   private lastAttackProgress = -1;
   private lastAttackReleased = false;
@@ -240,6 +244,7 @@ export class RangerVisualInstance {
   reset(): void {
     this.stopAll();
     this.wrapper.position.set(0, RANGER_GROUND_OFFSET, 0);
+    this.wrapper.rotationQuaternion = null;
     this.wrapper.rotation.set(0, 0, 0);
     this.wrapper.scaling.setAll(RANGER_VISUAL_SCALE);
     this.lastAttackProgress = -1;
@@ -261,9 +266,11 @@ export class RangerVisualInstance {
     attackReleaseProgress: number,
     attackReleased: boolean,
     descending: boolean,
+    climbSurfaceNormal: Vector3 | null,
   ): void {
     if (this.disposed) return;
     if (state === 'attacking') {
+      this.clearClimbFacing();
       const beganNewAttack = this.currentClip !== 'Shoot'
         || this.lastAttackProgress < 0
         || attackProgress + 0.1 < this.lastAttackProgress;
@@ -283,15 +290,19 @@ export class RangerVisualInstance {
     this.lastAttackProgress = -1;
     this.lastAttackReleased = false;
     if (state === 'dead') {
+      this.clearClimbFacing();
       this.setHeldArrowVisible(false);
       this.playClip('Death', false, RANGER_DEATH_DURATION / RANGER_CORPSE_LIFETIME);
     } else if (state === 'moving') {
+      this.clearClimbFacing();
       this.setHeldArrowVisible(true);
       this.playClip('Run', true, RANGER_RUN_SPEED_RATIO);
     } else if (state === 'climbing') {
+      this.applyClimbFacing(climbSurfaceNormal);
       this.setHeldArrowVisible(false);
       this.playClip(descending ? 'ClimbDown' : 'ClimbUp', true, 1);
     } else {
+      this.clearClimbFacing();
       // Idle, queued and other stationary states stop Run immediately and ready the next arrow.
       this.setHeldArrowVisible(true);
       this.playClip('Idle', true, 1);
@@ -368,6 +379,31 @@ export class RangerVisualInstance {
 
   private setHeldArrowVisible(visible: boolean): void {
     this.heldArrow.setEnabled(visible);
+  }
+
+  /**
+   * The gameplay ladder rig faces its local -Z into the rungs, while the Ranger GLB's authored
+   * forward axis is local +Z. Resolve the real ladder normal through the parent transform and turn
+   * only this visual wrapper, leaving the gameplay root and its normal ground/target yaw untouched.
+   */
+  private applyClimbFacing(surfaceNormal: Vector3 | null): void {
+    if (!surfaceNormal || surfaceNormal.lengthSquared() <= 1e-8) return;
+    this.visualParent.computeWorldMatrix(true);
+    this.visualParent.getWorldMatrix().invertToRef(this.parentInverse);
+    Vector3.TransformNormalToRef(surfaceNormal, this.parentInverse, this.climbForwardLocal);
+    this.climbForwardLocal.y = 0;
+    if (this.climbForwardLocal.lengthSquared() <= 1e-8) return;
+    this.climbForwardLocal.normalize().scaleInPlace(-1);
+    this.wrapper.rotationQuaternion = Quaternion.FromLookDirectionLH(
+      this.climbForwardLocal,
+      Vector3.Up(),
+    );
+  }
+
+  private clearClimbFacing(): void {
+    if (!this.wrapper.rotationQuaternion && this.wrapper.rotation.lengthSquared() <= 1e-8) return;
+    this.wrapper.rotationQuaternion = null;
+    this.wrapper.rotation.set(0, 0, 0);
   }
 
   private resolveBowWorldPosition(): Vector3 | null {

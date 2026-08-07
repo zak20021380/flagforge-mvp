@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, PBRMaterial, Scene, StandardMaterial, Texture } from '@babylonjs/core';
+import { Color3, DynamicTexture, Material, PBRMaterial, Scene, StandardMaterial, Texture } from '@babylonjs/core';
 import type { Team } from '../core/types';
 
 /**
@@ -348,20 +348,23 @@ export class MaterialLibrary {
     this.road = pbr('mat-road', Color3.FromHexString('#756248'), 0.96);
     this.wood = pbr('mat-wood', Color3.FromHexString('#7d4c32'), 0.86);
     this.metal = pbr('mat-metal', Color3.FromHexString('#7a8690'), 0.28, 0.78);
-    // Arrows keep natural wood/steel/fletching colours, with a restrained emissive lift so the
-    // narrow silhouette remains readable under arena shadows without looking self-illuminated.
-    this.arrowShaft = pbr('mat-arrow-shaft', Color3.FromHexString('#9a5d2d'), 0.72, 0.04);
-    this.arrowShaft.emissiveColor = Color3.FromHexString('#291306');
-    this.arrowShaft.emissiveIntensity = 0.5;
+    // High-contrast opaque arrow materials keep the small silhouette readable over grass, paving
+    // and shadow while retaining natural wood/steel/fletching colours.
+    this.arrowShaft = pbr('mat-arrow-shaft', Color3.FromHexString('#c47a2b'), 0.68, 0.03);
+    this.arrowShaft.emissiveColor = Color3.FromHexString('#4a2308');
+    this.arrowShaft.emissiveIntensity = 0.72;
     this.arrowShaft.alpha = 1;
-    this.arrowHead = pbr('mat-arrow-head', Color3.FromHexString('#c5d0d6'), 0.3, 0.72);
-    this.arrowHead.emissiveColor = Color3.FromHexString('#303a40');
-    this.arrowHead.emissiveIntensity = 0.42;
+    this.arrowShaft.transparencyMode = Material.MATERIAL_OPAQUE;
+    this.arrowHead = pbr('mat-arrow-head', Color3.FromHexString('#eef6f7'), 0.26, 0.7);
+    this.arrowHead.emissiveColor = Color3.FromHexString('#5b737c');
+    this.arrowHead.emissiveIntensity = 0.62;
     this.arrowHead.alpha = 1;
-    this.arrowFletching = pbr('mat-arrow-fletching', Color3.FromHexString('#b9343e'), 0.74, 0.02);
-    this.arrowFletching.emissiveColor = Color3.FromHexString('#34080c');
-    this.arrowFletching.emissiveIntensity = 0.48;
+    this.arrowHead.transparencyMode = Material.MATERIAL_OPAQUE;
+    this.arrowFletching = pbr('mat-arrow-fletching', Color3.FromHexString('#f0444f'), 0.7, 0.01);
+    this.arrowFletching.emissiveColor = Color3.FromHexString('#650a13');
+    this.arrowFletching.emissiveIntensity = 0.7;
     this.arrowFletching.alpha = 1;
+    this.arrowFletching.transparencyMode = Material.MATERIAL_OPAQUE;
     this.gold = pbr('mat-gold', Color3.FromHexString('#dca83c'), 0.28, 0.8);
     this.water = pbr('mat-water', Color3.FromHexString('#2a7185'), 0.25, 0.05);
     this.water.alpha = 0.92;

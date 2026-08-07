@@ -711,7 +711,7 @@ export const UNIT_STATS: Record<UnitKind, UnitStats> = {
     cost: 3,
     maxHealth: 78,
     damage: 34,
-    speed: 3.05,
+    speed: 3.4,
     attackRange: 9.2,
     aggroRange: 11.4,
     attackCooldown: 1.42,

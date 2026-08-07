@@ -58,6 +58,8 @@ export class UnitRig {
   private readonly baseScale: number;
   private readonly rangerVisual: RangerVisualInstance | null;
   private rangerClimbDescending = false;
+  private readonly rangerClimbSurfaceNormal = Vector3.Zero();
+  private rangerHasClimbSurfaceNormal = false;
   private deathRotation = 0;
 
   // Arm bone lengths (local units; the visualRoot scale is applied at solve time). The elbow sits
@@ -255,6 +257,8 @@ export class UnitRig {
     this.weaponRoot.rotation.set(0, 0, 0);
     this.shieldRoot.rotation.set(0, 0, 0);
     this.rangerClimbDescending = false;
+    this.rangerClimbSurfaceNormal.set(0, 0, 0);
+    this.rangerHasClimbSurfaceNormal = false;
     this.deathRotation = 0;
     if (this.weaponCarriedOnBack) this.setWeaponCarryOnBack(false);
     this.rangerVisual?.reset();
@@ -306,7 +310,7 @@ export class UnitRig {
   applyMountPose(progress: number, lean: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1, descending = false): void {
     this.interactionPoseActive = true;
     if (this.rangerVisual) {
-      this.rangerClimbDescending = descending;
+      this.setRangerClimbState(descending, grips);
       return;
     }
     const p = Math.max(0, Math.min(1, progress));
@@ -333,7 +337,7 @@ export class UnitRig {
   applyClimbCycle(phase: number, lean: number, elapsed: number, descending = false, grips?: ClimbGripPair, gripStrength = 1): void {
     this.interactionPoseActive = true;
     if (this.rangerVisual) {
-      this.rangerClimbDescending = descending;
+      this.setRangerClimbState(descending, grips);
       return;
     }
     const p = ((phase % 1) + 1) % 1;
@@ -371,7 +375,7 @@ export class UnitRig {
   applyTopDismount(progress: number, elapsed: number, grips?: ClimbGripPair, gripStrength = 1, descending = false): void {
     this.interactionPoseActive = true;
     if (this.rangerVisual) {
-      this.rangerClimbDescending = descending;
+      this.setRangerClimbState(descending, grips);
       return;
     }
     const p = Math.max(0, Math.min(1, progress));
@@ -541,6 +545,13 @@ export class UnitRig {
     this.interactionPoseActive = false;
   }
 
+  private setRangerClimbState(descending: boolean, grips?: ClimbGripPair): void {
+    this.rangerClimbDescending = descending;
+    if (!grips) return;
+    this.rangerClimbSurfaceNormal.copyFrom(grips.left.normal);
+    this.rangerHasClimbSurfaceNormal = this.rangerClimbSurfaceNormal.lengthSquared() > 1e-8;
+  }
+
   updateAnimation(
     state: UnitState,
     elapsed: number,
@@ -558,6 +569,7 @@ export class UnitRig {
         attackReleaseProgress,
         attackReleased,
         this.rangerClimbDescending,
+        this.rangerHasClimbSurfaceNormal ? this.rangerClimbSurfaceNormal : null,
       );
       if (state === 'dead') {
         this.healthBack.setEnabled(false);

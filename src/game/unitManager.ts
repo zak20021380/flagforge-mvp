@@ -206,7 +206,6 @@ export class UnitManager {
       kind,
       team,
       id,
-      (mesh) => this.shadows.addShadowCaster(mesh),
     );
     rig.setEnabled(false);
     for (const mesh of rig.root.getChildMeshes()) {
